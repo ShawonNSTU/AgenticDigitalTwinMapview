@@ -65,8 +65,6 @@ func setup(d: Dictionary) -> DeviceNode:
 	label.font_size = 24
 	label.pixel_size = 0.0006
 	label.outline_size = 10
-	label.modulate = Color("0f172a")
-	label.outline_modulate = Color(1, 1, 1, 0.9)
 	label.position.y = size.y / 2 + 0.22
 	add_child(label)
 
@@ -104,7 +102,7 @@ func set_health(h: String) -> void:
 	_health = h
 	var c := Store.color_for(h)
 	ring_mat.albedo_color = Color(c, 0.9 if h != "ok" else 0.45)
-	label.modulate = c.darkened(0.25) if h != "ok" else Color("0f172a")
+	label.modulate = c.lightened(0.3) if h != "ok" else Color.WHITE
 	label.text = data.id if h == "ok" else "%s  ●" % data.id
 	_update_label()
 

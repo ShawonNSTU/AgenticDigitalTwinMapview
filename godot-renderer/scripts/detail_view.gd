@@ -1,6 +1,5 @@
 class_name DetailView
 extends Node3D
-
 ## The opened device as a digital twin, in place on the map.
 ##
 ## The device is shown at a readable size (TWIN metres across, same orientation as installed) inside an
@@ -9,12 +8,9 @@ extends Node3D
 ## Internal flows (data/internal_flows.json) run between the parts. Their speed comes from the device's
 ## live readings, their colour from the medium, and a part in fault stops every flow touching it.
 
-
 signal part_selected(pos: Vector3, size: float)
 signal legend_changed(text: String)
 
-const INK := Color("0f172a")              # label colours for the light theme: dark text on a white outline
-const PAPER := Color(1, 1, 1, 0.9)
 const TWIN := 1.1          # metres across the largest side of the twin
 const SPREAD := 2.0        # exploded: part positions spread over SPREAD × TWIN on every axis
 const BODY_PORT := Vector3(-0.55, -0.35, -0.45)  # where '@body' flows enter/leave, in body fractions
@@ -111,8 +107,6 @@ func _make_part(p: Dictionary, local: Vector3, size: Vector3, l: Array, out: Vec
 	label.font_size = 24
 	label.pixel_size = 0.0006 / scale_factor()  # labels sit in the scaled twin; keep one on-screen size for every device
 	label.outline_size = 8
-	label.modulate = INK
-	label.outline_modulate = PAPER
 	label.visible = false  # labels show once exploded, to avoid a pile-up inside the shell
 	twin.add_child(label)
 	label.position = local + Vector3(0, size.y * 0.5, 0)
@@ -286,8 +280,7 @@ func _build_ports() -> void:
 		l.font_size = 16
 		l.pixel_size = 0.0005
 		l.outline_size = 6
-		l.modulate = col.darkened(0.45)
-		l.outline_modulate = PAPER
+		l.modulate = col.lightened(0.5)
 		_flow_root.add_child(l)
 		l.global_position = at + Vector3(0, 0.07, 0)
 
@@ -347,8 +340,7 @@ func _build_flows() -> void:
 			tag.font_size = 20
 			tag.pixel_size = 0.0005
 			tag.outline_size = 6
-			tag.modulate = color.darkened(0.4)
-			tag.outline_modulate = PAPER
+			tag.modulate = color.lightened(0.45)
 			holder.add_child(tag)
 			tag.global_position = pts[pts.size() / 2] + Vector3(0, 0.05, 0)
 		_flows.append({"mats": mats, "from": f.from, "to": f.to, "color": color, "rate": rule, "beads": beads, "tag": tag, "tag_reading": tag_reading})
@@ -392,7 +384,7 @@ func _refresh_flows() -> void:
 			f.beads.set_speed(0, speed * 0.7)
 		if f.tag:
 			f.tag.text = _tag_text(f.tag_reading)
-			f.tag.modulate = col.darkened(0.4)
+			f.tag.modulate = col.lightened(0.45)
 
 
 func focus_part(key: String) -> void:
@@ -422,5 +414,5 @@ func _on_data(id: String, data: Dictionary) -> void:
 		(e.node as TwinPart).apply(drive_params(e.drives, _readings), p.health, str(p.value))
 		var c := Store.color_for(p.health)
 		e.label.text = "%s\n%s" % [e.name, p.value]
-		e.label.modulate = c.darkened(0.3) if p.health != "ok" else INK
+		e.label.modulate = c.lightened(0.4) if p.health != "ok" else Color.WHITE
 	_refresh_flows()

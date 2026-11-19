@@ -1,7 +1,9 @@
 extends Node3D
 ## Builds the scene from data and wires Bus signals to the floor, devices, piping, detail view and camera.
 
-const SUN := 0.7  # daylight strength: enough for shading without washing light floors out to white
+# Fixed evening light (the look at 22:00): low sun, ambient light carries the room colours.
+const SUN := 0.15
+const SUN_TILT := -0.05
 var rig: CameraRig
 var floor_builder: FloorBuilder
 var piping: Piping
@@ -207,14 +209,13 @@ func _on_scenario(_key: String) -> void:
 func _environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("dfe5ed")  # light theme, close to the page's stage
+	env.background_color = Color("0b0e12")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("aab4c3")
-	env.ambient_light_energy = 0.4
+	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
-	env.glow_intensity = 0.3
-	env.glow_hdr_threshold = 1.4  # bloom only the bright flow beads, not the light floor
+	env.glow_intensity = 0.6
 	env.ssao_enabled = true  # Forward+ only; ignored by the web (Compatibility) renderer
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -222,6 +223,7 @@ func _environment() -> void:
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
 	sun.light_energy = SUN
+	sun.rotation = Vector3(SUN_TILT, deg_to_rad(-35.0), 0)
 	add_child(sun)
 
 
@@ -250,11 +252,8 @@ func _hud() -> void:
 		layer.add_child(help)
 
 
-## 4D: the sun follows the simulated clock (06:00 east, 14:00 high, 22:00 below the horizon).
+## The clock no longer moves the sun: the map keeps one fixed evening light (see SUN).
 func _on_time(t: float) -> void:
-	var day := clampf((t - 6.0) / 14.0, 0.0, 1.0)
-	sun.rotation = Vector3(-lerpf(0.15, PI - 0.15, day) if t < 20.0 else -0.05, deg_to_rad(-35.0), 0)
-	sun.light_energy = SUN if t < 19.0 else lerpf(SUN, 0.15, clampf((t - 19.0) / 2.0, 0.0, 1.0))
 	hud.text = "%02d:%02d   ·   scenario: %s" % [int(t), int((t - floorf(t)) * 60.0), Store.scenario]
 
 
