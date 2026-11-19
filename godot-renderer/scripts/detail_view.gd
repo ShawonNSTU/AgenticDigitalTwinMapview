@@ -4,6 +4,10 @@ extends Node3D
 ## around it on leader lines, each with a live value and health colour from GET /api/devices/:id.
 
 signal part_selected(pos: Vector3)
+signal legend_changed(text: String)
+
+const MEDIA_NAMES := {"refrigerant_liquid": "refrigerant (liquid)", "refrigerant_gas": "refrigerant (gas)", "air": "air", "water": "water", "drain": "drain water", "power": "power", "signal": "signal", "heat": "heat", "light": "light"}
+static var _flow_defs: Dictionary = {}
 
 const PART_SIZE := 0.16
 var device: DeviceNode
@@ -11,11 +15,17 @@ var _parts := {}   # key -> {node, mat, label}
 var _lines: MeshInstance3D
 var _ghost := ShaderMaterial.new()
 var _focus := ""
+var _flows: Array = []   # {mats, from, to, color}
+var _health := {}        # part key -> health from the latest live data
 
 
 func _ready() -> void:
 	_ghost.shader = preload("res://shaders/ghost.gdshader")
 	Bus.device_data.connect(_on_data)
+	if _flow_defs.is_empty():
+		var f := FileAccess.open("res://data/internal_flows.json", FileAccess.READ)
+		if f:
+			_flow_defs = JSON.parse_string(f.get_as_text())
 
 
 ## yaw: the camera yaw the view will settle at, so the parts fan out facing the viewer.
@@ -88,6 +98,53 @@ func open(dev: DeviceNode, yaw: float) -> void:
 		im.surface_add_vertex(centre)
 		im.surface_add_vertex(pos)
 	im.surface_end()
+	# Internal flows appear once the parts have spread out.
+	var dev_id: String = dev.data.id
+	get_tree().create_timer(0.55 + 0.03 * n).timeout.connect(func():
+		if device and device.data.id == dev_id:
+			_build_flows(dev.data.type, centre))
+
+
+func _build_flows(type: String, centre: Vector3) -> void:
+	var media: Dictionary = _flow_defs.get("_media", {})
+	var used := {}
+	for f in _flow_defs.get(type, []):
+		var a: Vector3 = centre if f.from == "@body" else _parts.get(f.from, {}).get("pos", centre)
+		var b: Vector3 = centre if f.to == "@body" else _parts.get(f.to, {}).get("pos", centre)
+		if a.distance_to(b) < 0.01:
+			continue
+		# Bend each line outward from the device centre so flows don't cross through the shell.
+		var mid := (a + b) / 2
+		var out := mid - centre
+		out.y *= 0.3
+		var ctrl := mid + (out.normalized() * 0.18 if out.length() > 0.01 else Vector3.UP * 0.18)
+		var color := Color(media.get(f.medium, "#ffffff"))
+		var radius := 0.014 if f.medium.begins_with("refrigerant") or f.medium in ["water", "drain", "air"] else 0.007
+		var holder := Node3D.new()
+		add_child(holder)
+		var mats := Tube.build(holder, Tube.arc(a, b, ctrl), color, radius, 0.12)
+		_flows.append({"mats": mats, "from": f.from, "to": f.to, "color": color})
+		used[f.medium] = true
+	var names: Array = []
+	for m in used:
+		names.append(MEDIA_NAMES.get(m, m))
+	legend_changed.emit("Flows: " + ", ".join(names) if names.size() else "")
+	_refresh_flows()
+
+
+## Flow speed follows part health: ok flows, watch slows, fault stops and turns red.
+func _refresh_flows() -> void:
+	for f in _flows:
+		var worst := "ok"
+		for k in [f.from, f.to]:
+			var h: String = _health.get(k, "ok")
+			if h == "fault" or (h == "watch" and worst == "ok"):
+				worst = h
+		var speed := 0.35 if worst == "ok" else (0.12 if worst == "watch" else 0.0)
+		var col: Color = f.color if worst == "ok" else f.color.lerp(Store.color_for(worst), 0.6)
+		for m in f.mats:
+			m.set_shader_parameter("speed", speed)
+			m.set_shader_parameter("base_color", col)
 
 
 func close() -> void:
@@ -98,6 +155,9 @@ func close() -> void:
 	for c in get_children():
 		c.queue_free()
 	_parts.clear()
+	_flows.clear()
+	_health.clear()
+	legend_changed.emit("")
 
 
 func focus_part(key: String) -> void:
@@ -116,6 +176,7 @@ func _on_data(id: String, data: Dictionary) -> void:
 	if device == null or id != device.data.id:
 		return
 	for p in data.get("parts", []):
+		_health[p.key] = p.health
 		if not _parts.has(p.key):
 			continue
 		var e: Dictionary = _parts[p.key]
@@ -124,3 +185,4 @@ func _on_data(id: String, data: Dictionary) -> void:
 		e.mat.emission = c * (0.9 if p.health != "ok" else 0.25)
 		e.label.text = "%s\n%s" % [e.name, p.value]
 		e.label.modulate = c.lightened(0.4) if p.health != "ok" else Color.WHITE
+	_refresh_flows()

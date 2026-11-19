@@ -42,14 +42,24 @@ autoloads/bridge.gd   postMessage bridge with the host page (docs/contracts/brid
 scripts/main.gd       builds the scene and routes Bus signals
 scripts/floor_builder.gd   rooms, cut-away walls, labels, room status tint
 scripts/device_node.gd     device body, health ring, highlight beam, click area
-scripts/detail_view.gd     opened device: x-ray shell + exploded parts with live values
+scripts/detail_view.gd     opened device: x-ray shell + exploded parts with live values + internal flows
+scripts/tube.gd            shared pipe builder (floor piping and internal flows)
 scripts/piping.gd          liquid/gas lines ODU → each AC, flow speed by health, trace
 scripts/camera_rig.gd      orbit/pan/zoom, touch, fly_to
 shaders/pipe_flow.gdshader animated refrigerant dashes (works on WebGL 2)
 shaders/ghost.gdshader     fresnel x-ray shell
-data/*.json                generated from the HTML prototype; same files as web/lib/sim/data
+data/*.json                sample home (same files as web/lib/sim/data); used until the platform sends a layout
+data/internal_flows.json   per device type: flows between parts (refrigerant, air, water, drain, power, signal…)
 tests/smoke.gd             drives every bridge command; `godot --path . -- --smoke [--shot=out.png]`
+tests/demo_shots.gd        screenshots of the upload flow against a running platform:
+                           `godot --path . -- --demo-shots=/tmp/out --open=AC-03 --part=filter`
 ```
+
+## Uploaded floor plans
+
+`Store` polls `/api/floor`. When `layoutVersion` changes it loads `/api/building` and the plan image, then
+`Bus.layout_changed` makes `main.gd` rebuild the world and play plan → 3D: the image lies on the floor,
+rooms take colour, walls rise, devices drop in, piping appears, and the camera tilts from top-down.
 
 ## What is placeholder
 

@@ -1,8 +1,15 @@
 # Agentic Digital Twin · Map View
 
-Proof of concept: a smart home floor as a live 3D map (Godot 4.7), with devices that open in place into
-their internal parts, animated refrigerant piping, guided troubleshooting, and an AI agent that finds,
-explains and controls devices and drives the map. All device data is simulated.
+Proof of concept with three features:
+
+1. **Floor plan to 3D map.** Upload a floor plan image, let AI detect the rooms (or draw them), place
+   SmartThings devices (or auto-place typical ones), and render it as a 3D map view in Godot.
+2. **Device digital twin.** Click any device: it opens in place into its internal components, with the
+   internal flows (refrigerant, air, water, power, signal), the piping to the rest of the system and live data per part.
+3. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what
+   to do, and control devices (risky commands need confirmation).
+
+All device data is simulated.
 
 | Folder | What | Stack |
 |---|---|---|
@@ -44,6 +51,9 @@ godot --headless --path godot-renderer --export-release "Web"
 
 Open http://localhost:3000. Without the Godot web export the page shows a placeholder in place of the 3D view;
 the device list, side panel, timeline and chat still work.
+
+To use your own plan: open http://localhost:3000/setup (or "Upload floor plan" in the header).
+Room detection needs `ANTHROPIC_API_KEY`; without it, draw the rooms by dragging on the plan.
 
 Try in the chat: "which air conditioners have a problem?", "what's wrong with ODU-01", "set AC-01 to 24 degrees",
 "unlock the front door" (the agent asks for confirmation first). Pick a scenario in the timeline bar.

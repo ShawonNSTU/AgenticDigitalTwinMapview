@@ -52,8 +52,30 @@ func fly_to(new_target: Vector3, new_distance: float, new_pitch := NAN, new_yaw 
 	_tw.tween_method(func(_v): _apply(), 0.0, 1.0, secs)
 
 
-func reset() -> void:
-	fly_to(_home.target, _home.distance, _home.pitch, _home.yaw)
+var home_target: Vector3:
+	get: return _home.target
+var home_distance: float:
+	get: return _home.distance
+
+
+func set_home(t: Vector3, d: float) -> void:
+	_home.target = t
+	_home.distance = d
+	jump(t, d, _home.pitch, _home.yaw)
+
+
+func jump(t: Vector3, d: float, p: float, y: float) -> void:
+	if _tw:
+		_tw.kill()
+	target = t
+	distance = d
+	pitch = p
+	yaw = y
+	_apply()
+
+
+func reset(secs := 0.9) -> void:
+	fly_to(_home.target, _home.distance, _home.pitch, _home.yaw, secs)
 
 
 func _unhandled_input(e: InputEvent) -> void:

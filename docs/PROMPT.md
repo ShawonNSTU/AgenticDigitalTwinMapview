@@ -21,16 +21,22 @@ Work in phases (section 17). At the end of each phase: run all three parts toget
 
 ## 2. What the PoC must demonstrate
 
+Three features, in this order. Everything else in this brief serves them.
+
+1. **Floor plan to 3D map.** The user uploads a floor plan image. AI vision proposes the rooms, the user corrects them, places SmartThings devices (or auto-places typical ones per room), and the plan turns into a 3D map view with every device where it is installed.
+2. **Device digital twin.** Clicking any device opens it in place on the map into a digital twin of its internal components, with the internal flows (refrigerant, air, water, drain, power, signal), the piping that connects it to the rest of the system, and real-time readings and health on every part.
+3. **AI agent.** In plain language the user can search devices and get them highlighted on the map, get insights about a device (what is wrong, the evidence, what to do), and control devices, with confirmation for risky commands.
+
 A floor of a building (a home in the demo) shown as a live 3D map. Every smart device is placed where it is installed. The air-conditioning piping is drawn and animated. Clicking any device opens it **in place on the map** into its internal components, each showing live readings and health. A rule engine diagnoses faults, traces system-wide faults through the pipes, and guides the technician step by step. An AI agent answers questions in plain language and drives the map: it finds devices and lights them up, explains faults by opening the device at the right part, and sends device commands after the user confirms.
 
 The story the guided tour must tell, in order:
 
-1. Start from a plain 2D floor plan image.
-2. The plan turns into a 3D map view: rooms get colour, walls rise, furniture appears.
+1. Upload a 2D floor plan image; AI detects the rooms; the presenter fixes one room name and auto-places devices.
+2. The plan turns into a 3D map view: the image fades back, rooms get colour, walls rise, furniture appears.
 3. All smart devices drop onto the map as pins.
 4. The AC piping layer appears with live refrigerant flow.
 5. A device turns red on the map (live health).
-6. The device opens in place into its internal parts with live readings.
+6. The device opens in place into its internal parts with live readings, and its internal flows run between the parts (for an AC: refrigerant through the coil, air through filter, coil, fan and louver, condensate to the drain, power and signals from the control board).
 7. Guided troubleshooting moves the camera to each part, step by step.
 8. The fix is applied and the readings visibly recover.
 9. A system-wide fault: the trace runs through the pipes from the affected rooms back to the outdoor unit.
@@ -98,6 +104,17 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
 ```
 
 **Rule for map actions:** the agent never talks to Godot directly. It emits `ui_action` events in its SSE stream; the page forwards them to the renderer with `lib/bridge.ts`. The same message types are used by the side panel, so anything the agent can do, a click can do too.
+
+## 4a. Floor plan upload (web/app/setup, agent-backend/app/floorplan.py)
+
+1. **Upload:** PNG, JPEG or WebP. The browser downscales to at most 2000 px and sends a data URL.
+2. **Detect rooms:** `POST /api/floorplan/parse` → agent `POST /floorplan/parse`. Claude vision returns axis-aligned room rectangles in 0..1 image coordinates plus an optional outdoor point. Clean and clamp the result; never trust it blindly. Without an API key, explain and fall back to drawing.
+3. **Review:** rooms are drawn over the image; the user renames, deletes or redraws (drag to draw). L-shaped rooms are two rectangles with the same name.
+4. **Devices:** auto-place typical devices from room names (kitchen → AC, light, fridge, oven; laundry → washer, dryer, leak sensor; and so on) plus one outdoor unit outside the plan, or place by hand from a type list. Ids follow the type prefix (AC-01, LT-01, ODU-01).
+5. **Scale:** the user enters the real width of the plan in metres. Image fractions map to metres with the origin at the image centre.
+6. **Build:** `POST /api/building` replaces the layout in the platform. The simulator picks the devices each scenario acts on from the new layout (bedroom AC for blocked airflow, the two ACs farthest from the outdoor unit for the refrigerant leak, the leak sensor nearest the washer), so every scenario works on any plan.
+7. **Render:** the platform bumps `layoutVersion`; Godot sees it in `/api/floor`, loads `/api/building` and the plan image, rebuilds the scene and plays the plan-to-3D animation. The web page gets a `layout` SSE event and refreshes its lists.
+8. Later phases: walls and door gaps traced from the image (not only room rectangles), non-rectangular rooms, multiple floors, and importing real device lists instead of placing them.
 
 ## 5. Visual direction
 
@@ -233,7 +250,8 @@ This is the core of the PoC. Each item must be visible during the tour and liste
 2. All other devices are hidden. A distance fog (or depth-based desaturation) pushes the room into the background.
 3. The shell goes to the ghost shader. Parts animate from their assembled positions to exploded positions. An explode/assemble toggle is available.
 4. Each part gets a floating label: name, live value, health colour. Clicking a part focuses the camera on it and charts its history.
-5. Fans spin at their live speed. The AC louver opens to its live angle. The filter texture gets visibly dirtier as airflow drops. The coil turns frosty white below 3 °C.
+5. **Internal flows** (`godot-renderer/data/internal_flows.json`): each type lists flows between part keys, or between a part and `@body` (the device's own pipe or cable connection), with a medium: refrigerant liquid/gas, air, water, drain, power, signal, heat, light. Draw them as curved tubes with the flow shader. Speed and colour follow the health of the parts at both ends: normal flows, watch slows, fault stops and turns red. Show a legend of the media in view. While a device is open, other devices and the floor piping are hidden.
+6. Fans spin at their live speed. The AC louver opens to its live angle. The filter texture gets visibly dirtier as airflow drops. The coil turns frosty white below 3 °C.
 
 ### 8.3 Side panel and chat (web/)
 
@@ -278,7 +296,10 @@ Next.js Route Handlers (`dynamic = 'force-dynamic'`), state kept on `globalThis`
 | `GET /api/devices/:id/history?part=` | `{unit, now, points: [[hour, value]...]}` for 06:00–22:00 |
 | `GET/POST /api/devices/:id/commands` | list / run whitelisted commands; 409 when confirmation is needed |
 | `GET/POST /api/sim` | scenario, clock, play/pause, speed, "mark as fixed" |
-| `GET /api/events` | SSE: `clock` every 500 ms, `health` when any device changes |
+| `GET /api/events` | SSE: `clock` every 500 ms, `health` when any device changes, `layout` after an upload |
+| `GET/POST/DELETE /api/building` | current layout / replace it with an uploaded plan, rooms and devices / back to the sample home |
+| `GET /api/building/plan` | the uploaded plan image |
+| `POST /api/floorplan/parse` | proxy to the agent's room detection |
 | `POST /api/chat` | proxy to `agent-backend` `/chat`, streams SSE back |
 
 Health levels: ok, watch, fault. A device's health is the worst of its parts. Inferred findings are labelled as inferred. Commands override readings on top of the simulation (for example AC set point), so the agent's actions are visible on the map.
@@ -353,6 +374,8 @@ A collapsible panel listing every technique in section 7 with an on/off toggle a
 ## 15. Acceptance criteria
 
 1. The tour runs from step 1 to 14 and back without errors or broken state.
+1a. Uploading a new floor plan (AI detection or hand-drawn rooms) and rendering it works end to end in under a minute, and all four scenarios produce findings on the new layout.
+1b. Every device type shows its internal flows when opened, and the flows react to live part health.
 2. Every one of the 38 devices can be opened in place and shows parts with live values that change with the timeline.
 3. All four scenarios produce the specified findings. "Mark as fixed" makes readings recover.
 4. The trace pulse follows the correct pipe path to the outdoor unit.
@@ -375,7 +398,7 @@ Suggested split for 5–6 people: two on Godot rendering, one on Godot interacti
 
 | Phase | Godot | Agent | Web | Done when |
 | --- | --- | --- | --- | --- |
-| 1. Foundations (scaffold exists) | autoloads, data, camera, floor, device bodies, piping, open-in-place with primitives | tools, search, demo mode, tests | platform API, bridge, panel, chat, timeline | All three run together; smoke test and pytest pass |
+| 1. Foundations (scaffold exists) | autoloads, data, camera, floor, device bodies, piping, open-in-place with primitives and internal flows, uploaded layouts with plan-to-3D animation | tools, search, demo mode, room detection, tests | platform API, plan upload editor, bridge, panel, chat, timeline | All three run together; smoke test and pytest pass |
 | 2. Floor | procedural walls with door gaps, 2D plan texture, build-up shader, furniture, lighting | floor summary wording | Devices tab, header summary | Tour steps 1–2 look finished |
 | 3. Devices and pins | screen-space pins with icons and health, layers | search eval set v1 | hover highlight, layer toggles | Step 3 works; agent search lights up pins |
 | 4. Piping | network with bends and joints, flow particles, trace pulse | trace in explanations | — | Steps 4 and 9 work |

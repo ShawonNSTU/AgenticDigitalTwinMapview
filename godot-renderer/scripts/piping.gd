@@ -11,7 +11,6 @@ const GAS := Color("ff8a3d")
 
 var _runs := {}  # ac id -> Array[ShaderMaterial]
 var traced := ""  # AC id whose circuit is traced; "" = none
-var _shader := preload("res://shaders/pipe_flow.gdshader")
 
 
 func build() -> void:
@@ -44,36 +43,9 @@ func _first(type: String) -> Dictionary:
 
 
 func _tube(pts: Array, color: Color, reverse: bool) -> Array:
-	var mats: Array = []
-	var run := 0.0
-	for k in range(pts.size() - 1):
-		var a: Vector3 = pts[k]
-		var b: Vector3 = pts[k + 1]
-		var len := a.distance_to(b)
-		if len < 0.01:
-			continue
-		var m := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = RADIUS
-		cm.bottom_radius = RADIUS
-		cm.height = len
-		cm.radial_segments = 10
-		cm.rings = 1
-		m.mesh = cm
-		var mat := ShaderMaterial.new()
-		mat.shader = _shader
-		mat.set_shader_parameter("base_color", color)
-		mat.set_shader_parameter("seg_len", len)
-		mat.set_shader_parameter("offset", run)
-		mat.set_meta("reverse", reverse)
-		m.material_override = mat
-		add_child(m)
-		# Align the cylinder's Y axis from a to b. UV.y = 0 is the top (b), so flow runs a -> b.
-		var y := (b - a).normalized()
-		var x := y.cross(Vector3.FORWARD if absf(y.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
-		m.global_transform = Transform3D(Basis(x, y, x.cross(y).normalized()).orthonormalized(), (a + b) / 2)
-		run += len
-		mats.append(mat)
+	var mats := Tube.build(self, pts, color, RADIUS)
+	for m in mats:
+		m.set_meta("reverse", reverse)
 	return mats
 
 

@@ -8,30 +8,19 @@ var detail: DetailView
 var sun: DirectionalLight3D
 var hud: Label
 var devices := {}  # id -> DeviceNode
+var world: Node3D   # everything built from the layout; rebuilt when a plan is uploaded
+var legend: Label
 var _highlight: Array = []
 
 
 func _ready() -> void:
 	get_viewport().physics_object_picking = true
 	_environment()
-	floor_builder = FloorBuilder.new()
-	add_child(floor_builder)
-	floor_builder.build()
-	var holder := Node3D.new()
-	holder.name = "Devices"
-	add_child(holder)
-	for d in Store.devices:
-		var n := DeviceNode.new()
-		holder.add_child(n)
-		devices[d.id] = n.setup(d)
-	piping = Piping.new()
-	add_child(piping)
-	piping.build()
-	detail = DetailView.new()
-	add_child(detail)
 	rig = CameraRig.new()
 	add_child(rig)
 	_hud()
+	_build_world(false)
+	Bus.layout_changed.connect(func(): _build_world(true))
 
 	Bus.health_changed.connect(_on_health)
 	Bus.highlight_requested.connect(_on_highlight)
@@ -49,12 +38,69 @@ func _ready() -> void:
 	Bus.reset_view_requested.connect(func(): _on_close(); piping.trace(""); rig.reset())
 	Bus.time_changed.connect(_on_time)
 	Bus.scenario_changed.connect(func(_k): _on_close(); piping.trace(""); _on_time(Store.t))
-	detail.part_selected.connect(func(pos): rig.fly_to(pos, 1.1))
 	_on_time(Store.t)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--demo-shots="):
+			var shots := Node.new()
+			shots.set_script(load("res://tests/demo_shots.gd"))
+			add_child(shots)
 	if OS.get_cmdline_user_args().has("--smoke"):
 		var smoke := Node.new()
 		smoke.set_script(load("res://tests/smoke.gd"))
 		add_child(smoke)
+
+
+func _build_world(animate: bool) -> void:
+	if world:
+		Store.open_id = ""
+		world.free()
+	devices.clear()
+	_highlight = []
+	world = Node3D.new()
+	world.name = "World"
+	add_child(world)
+	floor_builder = FloorBuilder.new()
+	world.add_child(floor_builder)
+	floor_builder.build()
+	var holder := Node3D.new()
+	holder.name = "Devices"
+	world.add_child(holder)
+	for d in Store.devices:
+		var n := DeviceNode.new()
+		holder.add_child(n)
+		devices[d.id] = n.setup(d)
+	piping = Piping.new()
+	world.add_child(piping)
+	piping.build()
+	detail = DetailView.new()
+	world.add_child(detail)
+	detail.part_selected.connect(func(pos): rig.fly_to(pos.lerp(detail.device.global_position, 0.35) if detail.device else pos, 1.9))
+	detail.legend_changed.connect(func(text): legend.text = text)
+	legend.text = ""
+	var fr: Rect2 = Store.floor_rect()
+	rig.set_home(Vector3(fr.get_center().x, 0, fr.get_center().y), clampf(fr.size.length() * 0.95, 8.0, 60.0))
+	if animate:
+		_play_plan_to_3d()
+
+
+## Tour step "plan → 3D": top-down on the plan, walls rise, devices drop in, piping fades in, camera tilts.
+func _play_plan_to_3d() -> void:
+	rig.jump(rig.home_target, rig.home_distance, deg_to_rad(-88.0), 0.0)
+	floor_builder.play_build_up()
+	piping.visible = false
+	var i := 0
+	for id in devices:
+		var n: DeviceNode = devices[id]
+		var y := n.position.y
+		n.position.y = y + 2.5
+		n.visible = false
+		var tw := create_tween()
+		tw.tween_interval(1.4 + 0.02 * i)
+		tw.tween_callback(func(): n.visible = true)
+		tw.tween_property(n, "position:y", y, 0.45).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		i += 1
+	get_tree().create_timer(1.6 + 0.02 * i).timeout.connect(func(): piping.visible = true)
+	get_tree().create_timer(1.0).timeout.connect(func(): rig.reset(1.8))
 
 
 func _environment() -> void:
@@ -84,6 +130,10 @@ func _hud() -> void:
 	hud.position = Vector2(14, 10)
 	hud.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
 	layer.add_child(hud)
+	legend = Label.new()
+	legend.position = Vector2(14, 34)
+	legend.add_theme_color_override("font_color", Color(1, 1, 1, 0.65))
+	layer.add_child(legend)
 	if not OS.has_feature("web"):
 		var help := Label.new()
 		help.text = "Click a device to focus · double-click to open · P piping · Esc back · drag orbit · right-drag pan · wheel zoom"
@@ -132,6 +182,11 @@ func _on_open(id: String, part: String) -> void:
 		return
 	Store.open_id = id
 	var dev: DeviceNode = devices[id]
+	# Only the opened device stays: other devices and the floor piping step back.
+	for other in devices:
+		devices[other].visible = other == id
+	dev.set_highlight(false, false)
+	piping.visible = false
 	detail.open(dev, rig.yaw)
 	var dist: float = Store.types.get(dev.data.type, {}).get("cameraDistance", 2.5)
 	rig.fly_to(dev.global_position + Vector3(0, 0.15, 0), dist + 0.4, deg_to_rad(-18.0))
@@ -143,6 +198,9 @@ func _on_close() -> void:
 	if detail.device == null:
 		return
 	detail.close()
+	for other in devices:
+		devices[other].visible = true
+	piping.visible = true
 	Store.open_id = ""
 	Bus.device_closed.emit()
 	rig.reset()

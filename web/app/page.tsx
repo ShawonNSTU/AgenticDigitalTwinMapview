@@ -20,6 +20,7 @@ export default function Home() {
     const es = new EventSource('/api/events');
     es.addEventListener('clock', e => { const s = JSON.parse((e as MessageEvent).data); setSim(s); send({ type: 'setTime', t: s.t }); });
     es.addEventListener('health', () => fetch('/api/devices').then(r => r.json()).then(x => setDevices(x.devices)));
+    es.addEventListener('layout', () => { setSel(null); fetch('/api/devices').then(r => r.json()).then(x => setDevices(x.devices)); });
     fetch('/api/devices').then(r => r.json()).then(x => setDevices(x.devices));
     return () => es.close();
   }, []);
@@ -37,7 +38,7 @@ export default function Home() {
     <main className="app">
       <header className="row between">
         <b>Agentic Digital Twin · Map View</b>
-        <span className="muted">{devices.length} devices · {bad.length ? `${bad.length} need attention` : 'all healthy'}</span>
+        <span className="row"><span className="muted">{devices.length} devices · {bad.length ? `${bad.length} need attention` : 'all healthy'}</span><a href="/setup"><button>Upload floor plan</button></a></span>
       </header>
       <section className="stage"><TwinView onEvent={onEvent} /></section>
       <aside className="side">

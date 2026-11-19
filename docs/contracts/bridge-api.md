@@ -32,6 +32,9 @@ Every message is `{ source: "twin-renderer", type, ...fields }`.
 | `partClicked` | `id`, `part` | click on a part of an opened device |
 | `deviceClosed` | | the open device was closed (Esc, back, scenario change) |
 
+Layout changes (floor plan upload) do not go through the bridge: the renderer sees `layoutVersion` change in
+`/api/floor`, loads `/api/building` and rebuilds. The page only refreshes its own lists.
+
 ## Rules
 
 - Part keys are the `key`s in `data/device_types.json`. Device ids are the `id`s in `data/devices.json`.

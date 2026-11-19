@@ -1,0 +1,52 @@
+{
+  "_doc": "Internal flows drawn between parts when a device is opened. from/to are part keys; '@body' is the device's own pipe or cable connection. medium picks the colour and line style.",
+  "_media": {
+    "refrigerant_liquid": "#4c8dff", "refrigerant_gas": "#ff8a3d", "air": "#bfe6ff", "water": "#3fc1c9",
+    "drain": "#2f7d8c", "power": "#ffd34d", "signal": "#b48cff", "heat": "#ff5a3d", "light": "#fff6d5"
+  },
+  "ac": [
+    {"from": "@body", "to": "coil", "medium": "refrigerant_liquid"},
+    {"from": "coil", "to": "@body", "medium": "refrigerant_gas"},
+    {"from": "filter", "to": "coil", "medium": "air"},
+    {"from": "coil", "to": "fan", "medium": "air"},
+    {"from": "fan", "to": "louver", "medium": "air"},
+    {"from": "coil", "to": "drain", "medium": "drain"},
+    {"from": "motor", "to": "fan", "medium": "power"},
+    {"from": "coilsens", "to": "pcb", "medium": "signal"},
+    {"from": "roomsens", "to": "pcb", "medium": "signal"},
+    {"from": "pcb", "to": "motor", "medium": "power"},
+    {"from": "pcb", "to": "louver", "medium": "signal"},
+    {"from": "wifi", "to": "pcb", "medium": "signal"}
+  ],
+  "odu": [
+    {"from": "@body", "to": "acc", "medium": "refrigerant_gas"},
+    {"from": "acc", "to": "comp", "medium": "refrigerant_gas"},
+    {"from": "lp", "to": "inv", "medium": "signal"},
+    {"from": "comp", "to": "hp", "medium": "refrigerant_gas"},
+    {"from": "hp", "to": "fw", "medium": "refrigerant_gas"},
+    {"from": "fw", "to": "coil", "medium": "refrigerant_gas"},
+    {"from": "coil", "to": "eev", "medium": "refrigerant_liquid"},
+    {"from": "eev", "to": "@body", "medium": "refrigerant_liquid"},
+    {"from": "fans", "to": "coil", "medium": "air"},
+    {"from": "inv", "to": "comp", "medium": "power"},
+    {"from": "inv", "to": "fans", "medium": "power"},
+    {"from": "hp", "to": "inv", "medium": "signal"}
+  ],
+  "light": [{"from": "@body", "to": "driver", "medium": "power"}, {"from": "driver", "to": "led", "medium": "power"}, {"from": "radio", "to": "driver", "medium": "signal"}, {"from": "led", "to": "diff", "medium": "light"}],
+  "tv": [{"from": "@body", "to": "psu", "medium": "power"}, {"from": "psu", "to": "main", "medium": "power"}, {"from": "psu", "to": "panel", "medium": "power"}, {"from": "main", "to": "panel", "medium": "signal"}, {"from": "wifi", "to": "main", "medium": "signal"}],
+  "speaker": [{"from": "wifi", "to": "amp", "medium": "signal"}, {"from": "amp", "to": "woofer", "medium": "signal"}, {"from": "mic", "to": "amp", "medium": "signal"}],
+  "blinds": [{"from": "batt", "to": "motor", "medium": "power"}, {"from": "radio", "to": "motor", "medium": "signal"}],
+  "fridge": [{"from": "comp", "to": "cond", "medium": "refrigerant_gas"}, {"from": "cond", "to": "evap", "medium": "refrigerant_liquid"}, {"from": "evap", "to": "comp", "medium": "refrigerant_gas"}, {"from": "ftemp", "to": "comp", "medium": "signal"}, {"from": "ztemp", "to": "comp", "medium": "signal"}, {"from": "door", "to": "comp", "medium": "signal"}],
+  "oven": [{"from": "pcb", "to": "elem", "medium": "power"}, {"from": "elem", "to": "fan", "medium": "heat"}, {"from": "probe", "to": "pcb", "medium": "signal"}],
+  "vacuum": [{"from": "batt", "to": "brush", "medium": "power"}, {"from": "batt", "to": "lidar", "medium": "power"}, {"from": "brush", "to": "bin", "medium": "air"}],
+  "camera": [{"from": "ir", "to": "img", "medium": "light"}, {"from": "img", "to": "wifi", "medium": "signal"}, {"from": "mic", "to": "wifi", "medium": "signal"}],
+  "doorbell": [{"from": "batt", "to": "cam", "medium": "power"}, {"from": "btn", "to": "wifi", "medium": "signal"}, {"from": "cam", "to": "wifi", "medium": "signal"}],
+  "lock": [{"from": "batt", "to": "bolt", "medium": "power"}, {"from": "keypad", "to": "bolt", "medium": "signal"}, {"from": "radio", "to": "bolt", "medium": "signal"}],
+  "washer": [{"from": "@body", "to": "valve", "medium": "water"}, {"from": "valve", "to": "motor", "medium": "water"}, {"from": "motor", "to": "pump", "medium": "water"}, {"from": "pump", "to": "@body", "medium": "drain"}, {"from": "level", "to": "pcb", "medium": "signal"}, {"from": "pcb", "to": "valve", "medium": "signal"}, {"from": "pcb", "to": "pump", "medium": "power"}, {"from": "dlock", "to": "pcb", "medium": "signal"}],
+  "dryer": [{"from": "heat", "to": "motor", "medium": "heat"}, {"from": "motor", "to": "lint", "medium": "air"}, {"from": "lint", "to": "temp", "medium": "air"}, {"from": "temp", "to": "@body", "medium": "air"}],
+  "leak": [{"from": "probe", "to": "radio", "medium": "signal"}, {"from": "batt", "to": "radio", "medium": "power"}],
+  "temphum": [{"from": "temp", "to": "radio", "medium": "signal"}, {"from": "hum", "to": "radio", "medium": "signal"}, {"from": "batt", "to": "radio", "medium": "power"}],
+  "motion": [{"from": "lens", "to": "pir", "medium": "light"}, {"from": "pir", "to": "radio", "medium": "signal"}, {"from": "batt", "to": "radio", "medium": "power"}],
+  "plug": [{"from": "@body", "to": "relay", "medium": "power"}, {"from": "relay", "to": "meter", "medium": "power"}, {"from": "meter", "to": "radio", "medium": "signal"}],
+  "purifier": [{"from": "hepa", "to": "fan", "medium": "air"}, {"from": "fan", "to": "@body", "medium": "air"}, {"from": "pm", "to": "pcb", "medium": "signal"}, {"from": "pcb", "to": "fan", "medium": "power"}]
+}

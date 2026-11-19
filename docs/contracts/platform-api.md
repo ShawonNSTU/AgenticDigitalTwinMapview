@@ -4,7 +4,7 @@ Base URL: the Next.js app (`http://localhost:3000` in development). All response
 Time `t` is in hours (6.0 to 22.0). Health is `ok`, `watch` or `fault`.
 
 ## GET /api/floor
-`{ time, scenario, rooms: [{key, name, x:[x0,x1], z:[z0,z1], color}], devices: [{id, type, label, room, name, position:[x,y,z], rotationY, health, healthLabel}] }`
+`{ time, scenario, layoutVersion, rooms: [{key, name, x:[x0,x1], z:[z0,z1], color}], devices: [{id, type, label, room, name, position:[x,y,z], rotationY, health, healthLabel}] }`
 
 ## GET /api/devices?type=&room=&health=
 `{ count, devices: [...same items as floor.devices] }`
@@ -49,6 +49,24 @@ POST body (all optional): `{ scenario, t, playing, speed, fix }`. Changing scena
 ## GET /api/events (SSE)
 - `event: clock` every 500 ms, data = sim state
 - `event: health` when any device's health changes, data = `[{id, health}]`
+- `event: layout` after a floor plan upload or reset, data = `{version}`
+
+## GET /api/building
+`{ version, custom, wallHeight, outdoorPad: {x, z}, rooms: [...], devices: [{id, type, room, name, position, rotationY}], plan: null | {url, x0, x1, z0, z1} }`
+`plan` bounds are the image's extent in metres on the floor (x, z).
+
+## POST /api/building
+Body: `{ rooms: [{key, name, x:[x0,x1], z:[z0,z1], color}], devices: [{id, type, room, name, position:[x,y,z], rotationY?}], outdoorPad?, plan?: {dataUrl, x0, x1, z0, z1} }`.
+Replaces the layout, clears command overrides and the fix time, bumps `version`. 400 with a message on invalid input (unknown type, duplicate id, bad image).
+
+## DELETE /api/building
+Back to the sample home.
+
+## GET /api/building/plan
+The uploaded image (404 for the sample home).
+
+## POST /api/floorplan/parse
+Body `{ image: dataURL }`. Proxied to the agent; returns `{ rooms: [{name, x0, y0, x1, y1}], outdoor: {x, y} | null }` in 0..1 image coordinates, or `{error}` (422 without an API key, 502 if the agent is down).
 
 ## POST /api/chat
 Proxy to the agent. See `agent-api.md`.

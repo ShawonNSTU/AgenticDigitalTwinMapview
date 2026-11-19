@@ -16,6 +16,11 @@ Response: `text/event-stream`. Events, in any order, ending with `done`:
 ## GET /search?q=
 Search without the model: `{ query, understood: {types, rooms, health, ids}, count, devices: [{id, label, room, health}] }`.
 
+## POST /floorplan/parse
+Body `{ image: dataURL }` (PNG, JPEG, WebP, GIF). Claude vision detects rooms.
+200 `{ rooms: [{name, x0, y0, x1, y1}], outdoor: {x, y} | null }` with coordinates as fractions of the image (y down).
+422 `{ error }` when there is no API key, the model returns no rooms, or the image is not a data URL.
+
 ## GET /health
 `{ ok, mode: "claude" | "demo", model, platform }`
 

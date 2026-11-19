@@ -16,23 +16,24 @@ var scenario := "normal"
 var health: Dictionary = {}       # id -> "ok" | "watch" | "fault"
 var open_id := ""                 # device whose internals are open
 var platform_url := "http://localhost:3000"
+var layout_version := 0           # 0 = bundled sample home (same as the platform's sample)
+var plan_texture: Texture2D       # uploaded floor plan image, or null
+var plan_bounds := Rect2()        # x/z extent of the plan image in metres
 
 var _floor_req: HTTPRequest
 var _dev_req: HTTPRequest
+var _building_req: HTTPRequest
+var _plan_req: HTTPRequest
+var _busy_building := false
+var _pending_layout: Dictionary = {}
 var _busy_floor := false
 var _busy_dev := false
 
 
 func _ready() -> void:
 	var b: Dictionary = _load("res://data/building.json")
-	rooms = b.get("rooms", [])
-	outdoor_pad = b.get("outdoorPad", {})
-	wall_height = b.get("wallHeight", 1.15)
-	devices = _load("res://data/devices.json")
 	types = _load("res://data/device_types.json")
-	for d in devices:
-		by_id[d.id] = d
-		health[d.id] = "ok"
+	_apply_layout(b.get("rooms", []), _load("res://data/devices.json"), b.get("outdoorPad", {}), b.get("wallHeight", 1.15))
 	var env_url := OS.get_environment("PLATFORM_URL")
 	if env_url != "":
 		platform_url = env_url
@@ -42,8 +43,12 @@ func _ready() -> void:
 			platform_url = origin
 	_floor_req = HTTPRequest.new()
 	_dev_req = HTTPRequest.new()
-	add_child(_floor_req)
-	add_child(_dev_req)
+	_building_req = HTTPRequest.new()
+	_plan_req = HTTPRequest.new()
+	for r in [_floor_req, _dev_req, _building_req, _plan_req]:
+		add_child(r)
+	_building_req.request_completed.connect(_on_building)
+	_plan_req.request_completed.connect(_on_plan)
 	_floor_req.request_completed.connect(_on_floor)
 	_dev_req.request_completed.connect(_on_device)
 	var timer := Timer.new()
@@ -94,6 +99,10 @@ func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteAr
 	var data = JSON.parse_string(body.get_string_from_utf8())
 	if typeof(data) != TYPE_DICTIONARY:
 		return
+	if int(data.get("layoutVersion", 0)) != layout_version and not _busy_building:
+		_busy_building = true
+		_building_req.request(platform_url + "/api/building")
+		return
 	set_time(float(data.get("time", t)))
 	set_scenario(str(data.get("scenario", scenario)))
 	for d in data.get("devices", []):
@@ -121,3 +130,71 @@ func set_scenario(key: String) -> void:
 	if key != scenario:
 		scenario = key
 		Bus.scenario_changed.emit(key)
+
+
+func _apply_layout(new_rooms: Array, new_devices: Array, pad: Dictionary, wall_h: float) -> void:
+	rooms = new_rooms
+	devices = new_devices
+	outdoor_pad = pad
+	wall_height = wall_h
+	by_id.clear()
+	health.clear()
+	for d in devices:
+		by_id[d.id] = d
+		health[d.id] = "ok"
+	open_id = ""
+
+
+func _on_building(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		_busy_building = false
+		return
+	var b = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(b) != TYPE_DICTIONARY:
+		_busy_building = false
+		return
+	_pending_layout = b
+	var plan = b.get("plan")
+	if plan is Dictionary:
+		_plan_req.request(platform_url + str(plan.url))  # finish once the image arrives
+	else:
+		_finish_layout(null)
+
+
+func _on_plan(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
+	var tex: Texture2D = null
+	if result == HTTPRequest.RESULT_SUCCESS and code == 200:
+		var img := Image.new()
+		var err := ERR_FILE_UNRECOGNIZED
+		if body.size() > 8 and body[0] == 0x89 and body[1] == 0x50:
+			err = img.load_png_from_buffer(body)
+		elif body.size() > 3 and body[0] == 0xFF and body[1] == 0xD8:
+			err = img.load_jpg_from_buffer(body)
+		else:
+			err = img.load_webp_from_buffer(body)
+		if err == OK:
+			img.generate_mipmaps()
+			tex = ImageTexture.create_from_image(img)
+	_finish_layout(tex)
+
+
+func _finish_layout(tex: Texture2D) -> void:
+	var b := _pending_layout
+	_pending_layout = {}
+	_busy_building = false
+	plan_texture = tex
+	var plan = b.get("plan")
+	plan_bounds = Rect2(plan.x0, plan.z0, plan.x1 - plan.x0, plan.z1 - plan.z0) if plan is Dictionary else Rect2()
+	_apply_layout(b.get("rooms", []), b.get("devices", []), b.get("outdoorPad", {}), float(b.get("wallHeight", wall_height)))
+	layout_version = int(b.get("version", 0))
+	Bus.layout_changed.emit()
+
+
+## Bounds of all rooms in metres (x, z), for framing the camera.
+func floor_rect() -> Rect2:
+	if rooms.is_empty():
+		return Rect2(-5, -5, 10, 10)
+	var r := Rect2(rooms[0].x[0], rooms[0].z[0], 0, 0)
+	for room in rooms:
+		r = r.expand(Vector2(room.x[0], room.z[0])).expand(Vector2(room.x[1], room.z[1]))
+	return r

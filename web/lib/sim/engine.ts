@@ -4,11 +4,50 @@
 import building from './data/building.json';
 import devices from './data/devices.json';
 
-export const ROOMS = building.rooms;
-const RM = Object.fromEntries(ROOMS.map(r => [r.key, r]));
-const counters = {};
-export const DEV: any[] = devices.map(d => ({ ...d, p: d.position, n: (counters[d.type] = (counters[d.type] ?? -1) + 1) }));
-export const byId: Record<string, any> = Object.fromEntries(DEV.map(d => [d.id, d]));
+// The layout (rooms + devices) can be replaced at runtime by an uploaded floor plan (setLayout).
+// All mutable state lives on globalThis and is mutated in place: Next.js may load this module once per
+// route bundle, and every copy must see the same layout, scenario and clock.
+const G = ((globalThis as any).__twinEngine ??= {
+  ROOMS: [], DEV: [], byId: {}, init: false,
+  LAYOUT: { outdoorPad: building.outdoorPad, wallHeight: building.wallHeight, version: 0, custom: false },
+  R: { odu: null, far: [], filterAc: null, washer: null, leak: null, lowBatt: null, farNames: '' },
+  state: { scen: 'normal', fixT: null },
+  scenNames: {},
+});
+export const ROOMS: any[] = G.ROOMS;
+export const DEV: any[] = G.DEV;
+export const byId: Record<string, any> = G.byId;
+export const LAYOUT: { outdoorPad: any; wallHeight: number; version: number; custom: boolean } = G.LAYOUT;
+
+/** Devices that each scenario acts on. Chosen from the layout, so scenarios work on any uploaded plan. */
+export const R: { odu: string | null; far: string[]; filterAc: string | null; washer: string | null; leak: string | null; lowBatt: string | null; farNames: string } = G.R;
+
+export function setLayout(rooms: any[], devices: any[], extra: { outdoorPad?: any; wallHeight?: number; custom?: boolean } = {}) {
+  ROOMS.splice(0, ROOMS.length, ...rooms);
+  const counters = {};
+  DEV.splice(0, DEV.length, ...devices.map(d => ({ ...d, p: d.position, n: (counters[d.type] = (counters[d.type] ?? -1) + 1) })));
+  for (const k of Object.keys(byId)) delete byId[k];
+  for (const d of DEV) byId[d.id] = d;
+  if (extra.outdoorPad) LAYOUT.outdoorPad = extra.outdoorPad;
+  if (extra.wallHeight) LAYOUT.wallHeight = extra.wallHeight;
+  LAYOUT.custom = !!extra.custom;
+  LAYOUT.version++;
+  const of = (type) => DEV.filter(d => d.type === type);
+  const dist = (a, b) => Math.hypot(a.p[0] - b.p[0], a.p[2] - b.p[2]);
+  const odu = of('odu')[0], acs = of('ac'), washer = of('washer')[0];
+  R.odu = odu?.id ?? null;
+  R.far = (odu ? [...acs].sort((a, b) => dist(b, odu) - dist(a, odu)) : [...acs].reverse()).slice(0, 2).map(d => d.id).reverse();
+  const roomName = (k) => ROOMS.find(r => r.key === k)?.name ?? k;
+  const bed = acs.find(d => /bed/i.test(roomName(d.room)) && !/primary|master/i.test(roomName(d.room)));
+  R.filterAc = (bed ?? acs.find(d => !R.far.includes(d.id)) ?? acs[0])?.id ?? null;
+  R.washer = washer?.id ?? null;
+  const leaks = of('leak');
+  R.leak = (washer ? [...leaks].sort((a, b) => dist(a, washer) - dist(b, washer))[0] : leaks[0])?.id ?? null;
+  R.lowBatt = of('motion')[0]?.id ?? null;
+  R.farNames = R.far.map(id => roomName(byId[id].room)).join(', ');
+  // Scenario names follow the layout, so the picker reads right on an uploaded plan.
+  G.scenNames.filter = R.filterAc ? `Scenario 1 · ${roomName(byId[R.filterAc].room)} AC: blocked airflow` : undefined;
+}
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const SCEN: Record<string, any> = {
@@ -17,16 +56,15 @@ export const SCEN: Record<string, any> = {
   refrig: { name: 'Scenario 2 · Refrigerant shortage (whole system)', onset: 9, ramp: 4 },
   washer: { name: 'Scenario 3 · Washer drain fault and water leak', onset: 14, ramp: .2 },
 };
-export const state = { scen: 'normal' as string, fixT: null as number | null };
+export const state: { scen: string; fixT: number | null } = G.state;
 function sev(t) { const s = SCEN[state.scen]; if (!s.onset) return 0; let v = clamp((t - s.onset) / s.ramp, 0, 1); if (state.fixT != null && t >= state.fixT) v *= clamp(1 - (t - state.fixT) / .5, 0, 1); return v; }
-const occ = (room, t) => ({ media: t > 19, living: (t > 9 && t < 12) || t > 17, kitchen: (t > 6.5 && t < 8.5) || (t > 17.5 && t < 20), primary: t < 7.5 || t > 21, bedroom: t < 7.5 || t > 10.5, dining: (t > 7 && t < 8.5) || (t > 18.5 && t < 20.5), bath: (t > 6.5 && t < 7.5) || t > 21.5, laundry: t > 13.5 && t < 16 }[room] || false);
-const FAR = ['AC-03', 'AC-04'];
+const occ = (room, t) => ({ media: t > 19, living: (t > 9 && t < 12) || t > 17, kitchen: (t > 6.5 && t < 8.5) || (t > 17.5 && t < 20), primary: t < 7.5 || t > 21, bedroom: t < 7.5 || t > 10.5, dining: (t > 7 && t < 8.5) || (t > 18.5 && t < 20.5), bath: (t > 6.5 && t < 7.5) || t > 21.5, laundry: t > 13.5 && t < 16 }[room] ?? (t > 7 && t < 9 || t > 18 && t < 23));
 function acRead(d, t) {
   const w = Math.sin(t * 1.3 + d.n) * .25;
   const r = { on: true, set: 24, room: 24 + w * .6, evIn: 7 + w * .3, evOut: 12 + w * .3, fan: 55, air: 100, louver: 35, drain: 'Flowing', rssi: -52 - d.n * 3, err: null };
   const s = sev(t);
-  if (state.scen === 'filter' && d.id === 'AC-05') { r.air = 100 - 55 * s; r.fan = 55 + 45 * s; r.evIn = 7 - 6 * s; r.evOut = 12 - 8 * s; r.room += 3.5 * s; }
-  if (state.scen === 'refrig') { const f = FAR.includes(d.id) ? 1 : .3; r.evIn += 3 * s * f; r.evOut += 9 * s * f; r.room += 2.5 * s * f; r.fan += 20 * s * f; }
+  if (state.scen === 'filter' && d.id === R.filterAc) { r.air = 100 - 55 * s; r.fan = 55 + 45 * s; r.evIn = 7 - 6 * s; r.evOut = 12 - 8 * s; r.room += 3.5 * s; }
+  if (state.scen === 'refrig') { const f = R.far.includes(d.id) ? 1 : .3; r.evIn += 3 * s * f; r.evOut += 9 * s * f; r.room += 2.5 * s * f; r.fan += 20 * s * f; }
   r.sh = r.evOut - r.evIn; r.amps = .18 + r.fan * .004; return r;
 }
 function oduRead(t) { const s = state.scen === 'refrig' ? sev(t) : 0; return { dis: 74 + 34 * s, suc: 12 + 7 * s, lp: 9.4 - 2.4 * s, hp: 26 - 3 * s, hz: 58 + 30 * s, fan: 26, eev: Math.round(300 + 180 * s) }; }
@@ -36,7 +74,7 @@ function read(d, t) {
   switch (d.type) {
     case 'ac': return acRead(d, t);
     case 'odu': return oduRead(t);
-    case 'light': { const lv = o ? LT_LEVEL[d.room] : 0; return { lv, ma: lv * 4.1, ledT: 28 + lv * .22, rssi: -55 - d.n * 2 }; }
+    case 'light': { const lv = o ? (LT_LEVEL[d.room] ?? 70) : 0; return { lv, ma: lv * 4.1, ledT: 28 + lv * .22, rssi: -55 - d.n * 2 }; }
     case 'tv': return { on: o && d.room === 'media' ? true : (o && t > 19), w: o ? 112 : 0.5, rssi: -48 };
     case 'speaker': return { on: o, vol: o ? 30 : 0, rssi: -50 - d.n };
     case 'blinds': return { pos: t > 7 && t < 19.5 ? 100 : 0, batt: 64 - d.n * 4, rssi: -62 };
@@ -51,9 +89,9 @@ function read(d, t) {
       return { state: stuck && t > 14.1 ? 'Stopped · drain error' : run ? 'Washing' : 'Idle', motor: run && !(stuck && t > 14.1) ? 1200 : 0, pump: f > 0 ? 0 : (run ? .22 : 0), level: f > 0 ? 'High (not draining)' : run ? 'Normal' : 'Empty', lockd: run ? 'Locked' : 'Open', valve: run && !stuck ? 'Open' : 'Closed', err: stuck && t > 14.1 ? 'Drain error (mock code)' : null };
     }
     case 'dryer': return { state: t > 15.5 && t < 16.5 ? 'Drying' : 'Idle', heat: t > 15.5 && t < 16.5 ? 'On' : 'Off', lint: 'Clean', temp: t > 15.5 && t < 16.5 ? 62 : 25 };
-    case 'leak': { const wet = d.id === 'LK-01' && state.scen === 'washer' && t > 14.3 && (state.fixT == null || t < state.fixT + .3); return { wet, batt: 88 - d.n * 5, rssi: -60 - d.n * 3 }; }
+    case 'leak': { const wet = d.id === R.leak && state.scen === 'washer' && t > 14.3 && (state.fixT == null || t < state.fixT + .3); return { wet, batt: 88 - d.n * 5, rssi: -60 - d.n * 3 }; }
     case 'temphum': return { temp: 24.5 + (occ('bath', t) ? 1.5 : 0), hum: occ('bath', t) ? 78 : 55, batt: 81, rssi: -63 };
-    case 'motion': return { motion: o && Math.sin(t * 9 + d.n) > 0, batt: d.id === 'MS-01' ? 12 : 74, rssi: -61 - d.n * 2 };
+    case 'motion': return { motion: o && Math.sin(t * 9 + d.n) > 0, batt: d.id === R.lowBatt ? 12 : 74, rssi: -61 - d.n * 2 };
     case 'plug': return { on: true, w: o ? 42 : 3.2, kwh: ((t - 6) * .05).toFixed(2), rssi: -57 };
     case 'purifier': return { fan: o ? 3 : 1, pm: 8 + (o ? 4 : 0), hepa: 62 };
   }
@@ -167,14 +205,14 @@ export const health = (d, t) => { const r = read(d, t); return worst(TYPES[d.typ
 /* findings: evidence, confidence and guided steps, each step tied to a part */
 export function finding(d, t) {
   if (!d) return null;
-  if (state.scen === 'filter' && d.id === 'AC-05' && sev(t) > .3) { const r = read(d, t); return { lvl: 'fault', title: 'Airflow blocked: air filter most likely clogged', conf: 'Inferred · there is no filter sensor, but three readings agree', ev: [`Airflow down to ${r.air.toFixed(0)} %`, `Fan at ${r.fan.toFixed(0)} % to compensate`, `Coil inlet ${r.evIn.toFixed(1)} °C, close to freezing`, `Room ${r.room.toFixed(1)} °C, set point ${r.set} °C not reached`],
+  if (state.scen === 'filter' && d.id === R.filterAc && sev(t) > .3) { const r = read(d, t); return { lvl: 'fault', title: 'Airflow blocked: air filter most likely clogged', conf: 'Inferred · there is no filter sensor, but three readings agree', ev: [`Airflow down to ${r.air.toFixed(0)} %`, `Fan at ${r.fan.toFixed(0)} % to compensate`, `Coil inlet ${r.evIn.toFixed(1)} °C, close to freezing`, `Room ${r.room.toFixed(1)} °C, set point ${r.set} °C not reached`],
     steps: [{ t: 'Switch to fan-only for 10 minutes so ice on the coil melts', p: 'coil' }, { t: 'Lift the front panel and slide out the air filter', p: 'filter' }, { t: 'Wash the filter in lukewarm water, dry it and refit', p: 'filter' }, { t: 'Check airflow and fan speed return to normal', p: 'fan' }] }; }
-  if (state.scen === 'refrig' && (d.id === 'ODU-01' || FAR.includes(d.id)) && sev(t) > .35) { const o = oduRead(t), r = acRead(byId['AC-04'], t); return { lvl: o.dis > 100 ? 'fault' : 'watch', title: 'Refrigerant shortage: likely a leak in the circuit', conf: 'Likely · four readings agree; the leak location is not measured', ev: [`Outdoor unit discharge ${o.dis.toFixed(1)} °C (normal under 100)`, `Low pressure ${o.lp.toFixed(1)} kgf/cm² and falling`, `Far rooms (Kitchen, Primary suite): superheat ${r.sh.toFixed(1)} K`, 'Rooms nearest the outdoor unit are least affected'],
-    steps: [{ t: 'Confirm low pressure on the outdoor unit gauge port', p: 'lp' }, { t: 'Check expansion valves are fully open to the far rooms', p: 'eev' }, { t: 'Leak-test joints along the pipe run to the far rooms', p: 'acc' }, { t: 'Repair, vacuum and recharge; watch discharge temperature drop', p: 'comp' }], trace: 'AC-04' }; }
-  if (state.scen === 'washer' && d.id === 'WA-01' && t > 14.1) return { lvl: 'fault', title: 'Washer cannot drain: drain pump blocked', conf: 'Confirmed by sensor · pump current 0 A, water level stays high, and the leak sensor next to it is wet', ev: ['Drain pump current 0 A since 14:00', 'Water level sensor: high, not draining', 'Cycle stopped with a drain error', 'Leak sensor LK-01 beside the washer reports water'],
+  if (state.scen === 'refrig' && R.far.length && (d.id === R.odu || R.far.includes(d.id)) && sev(t) > .35) { const o = oduRead(t), r = acRead(byId[R.far[R.far.length - 1]], t); return { lvl: o.dis > 100 ? 'fault' : 'watch', title: 'Refrigerant shortage: likely a leak in the circuit', conf: 'Likely · four readings agree; the leak location is not measured', ev: [`Outdoor unit discharge ${o.dis.toFixed(1)} °C (normal under 100)`, `Low pressure ${o.lp.toFixed(1)} kgf/cm² and falling`, `Far rooms (${R.farNames}): superheat ${r.sh.toFixed(1)} K`, 'Rooms nearest the outdoor unit are least affected'],
+    steps: [{ t: 'Confirm low pressure on the outdoor unit gauge port', p: 'lp' }, { t: 'Check expansion valves are fully open to the far rooms', p: 'eev' }, { t: 'Leak-test joints along the pipe run to the far rooms', p: 'acc' }, { t: 'Repair, vacuum and recharge; watch discharge temperature drop', p: 'comp' }], trace: R.far[R.far.length - 1] }; }
+  if (state.scen === 'washer' && d.id === R.washer && t > 14.1) return { lvl: 'fault', title: 'Washer cannot drain: drain pump blocked', conf: 'Confirmed by sensor · pump current 0 A, water level stays high, and the leak sensor next to it is wet', ev: ['Drain pump current 0 A since 14:00', 'Water level sensor: high, not draining', 'Cycle stopped with a drain error', `Leak sensor ${R.leak ?? ''} beside the washer reports water`],
     steps: [{ t: 'Switch off the washer and mop up the water around it', p: 'dlock' }, { t: 'Open the filter cap at the bottom front and drain the remaining water', p: 'pump' }, { t: 'Remove debris from the pump filter and check the impeller turns', p: 'pump' }, { t: 'Run a drain-and-spin cycle and confirm the level sensor reads empty', p: 'level' }] };
-  if (state.scen === 'washer' && d.id === 'LK-01' && read(d, t).wet) return { lvl: 'fault', title: 'Water detected beside the washer', conf: 'Confirmed by sensor · probes are wet', ev: ['Water on the floor since 14:18', 'The washer next to it stopped with a drain error at 14:06', 'Likely source: the washer, not the plumbing'], steps: [{ t: 'Dry the area and check the probes stay dry', p: 'probe' }, { t: 'Open the washer to fix the cause (see WA-01)', p: 'probe', go: 'WA-01' }] };
-  if (d.id === 'MS-01') return { lvl: 'watch', title: 'Battery low: about 2 weeks left', conf: 'Confirmed by device · battery report', ev: ['Battery at 12 %', 'Motion events still arriving normally'], steps: [{ t: 'Twist off the back cover', p: 'lens' }, { t: 'Replace the CR123A battery', p: 'batt' }, { t: 'Walk past the sensor and check motion is reported', p: 'pir' }] };
+  if (state.scen === 'washer' && d.id === R.leak && read(d, t).wet) return { lvl: 'fault', title: 'Water detected beside the washer', conf: 'Confirmed by sensor · probes are wet', ev: ['Water on the floor since 14:18', 'The washer next to it stopped with a drain error at 14:06', 'Likely source: the washer, not the plumbing'], steps: [{ t: 'Dry the area and check the probes stay dry', p: 'probe' }, { t: `Open the washer to fix the cause (see ${R.washer})`, p: 'probe', go: R.washer }] };
+  if (d.id === R.lowBatt) return { lvl: 'watch', title: 'Battery low: about 2 weeks left', conf: 'Confirmed by device · battery report', ev: ['Battery at 12 %', 'Motion events still arriving normally'], steps: [{ t: 'Twist off the back cover', p: 'lens' }, { t: 'Replace the CR123A battery', p: 'batt' }, { t: 'Walk past the sensor and check motion is reported', p: 'pir' }] };
   return null;
 }
 
@@ -200,3 +238,8 @@ export function partHistory(id: string, key: string, t0 = 6, t1 = 22, step = 0.1
   for (let t = t0; t <= t1 + 1e-9; t += step) out.push([+t.toFixed(2), +p.s(read(d, t))]);
   return out;
 }
+
+if (!G.init) { setLayout(building.rooms, devices); LAYOUT.version = 0; G.init = true; }
+
+/** Scenario display name, adjusted to the current layout. */
+export const scenarioName = (key: string) => G.scenNames[key] ?? SCEN[key]?.name;

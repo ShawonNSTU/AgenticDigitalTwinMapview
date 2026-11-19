@@ -1,6 +1,8 @@
 // Runtime state of the simulated device platform: scenario, clock and device overrides.
 // Kept on globalThis so it survives hot reloads in development. One process = one demo.
-import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL } from './engine';
+import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, scenarioName } from './engine';
+import building from './data/building.json';
+import sampleDevices from './data/devices.json';
 
 type Override = Record<string, unknown>;
 interface Runtime {
@@ -10,9 +12,10 @@ interface Runtime {
   lastTick: number; // ms
   overrides: Record<string, Override>; // per-device values set by commands
   log: { at: number; deviceId: string; command: string; args: unknown; by: string }[];
+  plan: { bytes: Buffer; mime: string; x0: number; x1: number; z0: number; z1: number } | null; // uploaded floor plan image
 }
 const g = globalThis as unknown as { __twin?: Runtime };
-export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [] });
+export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [], plan: null });
 
 /** Advance the clock if playing. Called by every request and by the event stream. */
 export function tick(): number {
@@ -26,7 +29,7 @@ export function tick(): number {
 }
 
 export function simState() {
-  return { t: +rt.t.toFixed(3), playing: rt.playing, speed: rt.speed, scenario: engineState.scen, fixT: engineState.fixT, scenarios: Object.entries(SCEN).map(([key, s]) => ({ key, name: (s as { name: string }).name })) };
+  return { t: +rt.t.toFixed(3), playing: rt.playing, speed: rt.speed, scenario: engineState.scen, fixT: engineState.fixT, scenarios: Object.keys(SCEN).map(key => ({ key, name: scenarioName(key) })) };
 }
 
 export function setSim(p: { scenario?: string; t?: number; playing?: boolean; speed?: number; fix?: boolean }) {
@@ -51,6 +54,7 @@ export function floor(t = tick()) {
   return {
     time: t,
     scenario: engineState.scen,
+    layoutVersion: LAYOUT.version,
     rooms: ROOMS,
     devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h] }; }),
   };
@@ -92,4 +96,39 @@ export function runCommand(id: string, command: string, args: Record<string, unk
   rt.overrides[id] = { ...(rt.overrides[id] ?? {}), ...spec.apply(args) };
   rt.log.push({ at: rt.t, deviceId: id, command, args, by });
   return { ok: true, device: device(id) };
+}
+
+/* ---------------- building layout (floor plan upload) ---------------- */
+
+/** Static layout for the renderer: rooms, device placements and the plan image bounds. */
+export function buildingState() {
+  return {
+    version: LAYOUT.version,
+    custom: LAYOUT.custom,
+    wallHeight: LAYOUT.wallHeight,
+    outdoorPad: LAYOUT.outdoorPad,
+    rooms: ROOMS,
+    devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 })),
+    plan: rt.plan ? { url: `/api/building/plan?v=${LAYOUT.version}`, x0: rt.plan.x0, x1: rt.plan.x1, z0: rt.plan.z0, z1: rt.plan.z1 } : null,
+  };
+}
+
+export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null) {
+  const pad = outdoorPad ?? (() => { const o = devices.find(d => d.type === 'odu'); return o ? { x: o.position[0], z: o.position[2] } : LAYOUT.outdoorPad; })();
+  setLayout(rooms, devices, { outdoorPad: pad, custom: true });
+  if (plan) {
+    const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(plan.dataUrl);
+    if (!m) throw new Error('plan.dataUrl must be a base64 PNG, JPEG or WebP data URL');
+    rt.plan = { bytes: Buffer.from(m[2], 'base64'), mime: m[1], x0: plan.x0, x1: plan.x1, z0: plan.z0, z1: plan.z1 };
+  }
+  rt.overrides = {};
+  engineState.fixT = null;
+  return buildingState();
+}
+
+export function resetBuilding() {
+  setLayout(building.rooms, sampleDevices, { outdoorPad: building.outdoorPad, custom: false });
+  rt.plan = null;
+  rt.overrides = {};
+  return buildingState();
 }

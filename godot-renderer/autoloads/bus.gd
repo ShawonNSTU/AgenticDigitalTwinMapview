@@ -17,6 +17,7 @@ signal time_changed(t: float)
 signal scenario_changed(key: String)
 signal health_changed(id: String, health: String)
 signal device_data(id: String, data: Dictionary)
+signal layout_changed  # a floor plan was uploaded (or reset); rebuild the scene from Store
 
 # Events back to the host page
 signal device_clicked(id: String)
