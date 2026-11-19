@@ -198,7 +198,7 @@ func set_walls_faded(on: bool) -> void:
 		return
 	var m: StandardMaterial3D = _walls[0].material_override
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if on else BaseMaterial3D.TRANSPARENCY_DISABLED
-	m.albedo_color.a = 0.18 if on else 1.0
+	m.albedo_color.a = 0.07 if on else 1.0
 	# focus mode for an opened twin: labels step back and a dark veil lies over the floor so the twin reads
 	for c in get_children():
 		if c is Label3D:
