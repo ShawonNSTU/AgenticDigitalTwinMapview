@@ -1,0 +1,57 @@
+extends Node
+## Message bridge to the host page (web export inside an iframe).
+## Host -> renderer: window.postMessage({source: "twin-host", type, ...})
+## Renderer -> host: parent.postMessage({source: "twin-renderer", type, ...})
+## Contract: docs/contracts/bridge-api.md
+
+const VERSION := "0.1.0"
+var _cb: JavaScriptObject  # keep a reference or the callback is collected
+
+
+func _ready() -> void:
+	Bus.device_clicked.connect(func(id): emit_event({"type": "deviceClicked", "id": id}))
+	Bus.part_clicked.connect(func(id, part): emit_event({"type": "partClicked", "id": id, "part": part}))
+	Bus.device_closed.connect(func(): emit_event({"type": "deviceClosed"}))
+	if not OS.has_feature("web"):
+		return
+	_cb = JavaScriptBridge.create_callback(_on_message)
+	var window := JavaScriptBridge.get_interface("window")
+	window.addEventListener("message", _cb)
+	# Tell the host we can take commands once the scene has been built.
+	get_tree().process_frame.connect(func(): emit_event({"type": "ready", "version": VERSION}), CONNECT_ONE_SHOT)
+
+
+func emit_event(msg: Dictionary) -> void:
+	if not OS.has_feature("web"):
+		return
+	msg["source"] = "twin-renderer"
+	JavaScriptBridge.eval("window.parent.postMessage(%s, '*')" % JSON.stringify(msg), true)
+
+
+func _on_message(args: Array) -> void:
+	var ev = args[0]
+	# Read event.data through JSON to get plain Godot types.
+	var json := JavaScriptBridge.get_interface("JSON")
+	var text = json.stringify(ev.data)
+	if typeof(text) != TYPE_STRING:
+		return
+	var msg = JSON.parse_string(text)
+	if typeof(msg) == TYPE_DICTIONARY and msg.get("source", "") == "twin-host":
+		handle(msg)
+
+
+## Also used by tests and the desktop debug console.
+func handle(msg: Dictionary) -> void:
+	match msg.get("type", ""):
+		"highlight": Bus.highlight_requested.emit(msg.get("ids", []), str(msg.get("reason", "")))
+		"clearHighlight": Bus.highlight_cleared.emit()
+		"focusDevice": Bus.focus_requested.emit(str(msg.get("id", "")))
+		"openDevice": Bus.open_requested.emit(str(msg.get("id", "")), str(msg.get("part", "")))
+		"closeDevice": Bus.close_requested.emit()
+		"focusPart": Bus.part_focus_requested.emit(str(msg.get("id", "")), str(msg.get("part", "")))
+		"trace": Bus.trace_requested.emit(str(msg.get("from", "")))
+		"setLayer": Bus.layer_changed.emit(str(msg.get("layer", "")), bool(msg.get("on", true)))
+		"setTime": Store.set_time(float(msg.get("t", Store.t)))
+		"setScenario": Store.set_scenario(str(msg.get("key", "normal")))
+		"resetView": Bus.reset_view_requested.emit()
+		_: push_warning("Bridge: unknown message %s" % msg)

@@ -1,0 +1,1222 @@
+{
+  "ac": {
+    "label": "Air conditioner",
+    "iconSvg": "<rect x=\"3\" y=\"6\" width=\"18\" height=\"8\" rx=\"2\"/><path d=\"M7 18v2M12 18v3M17 18v2\"/>",
+    "cameraDistance": 2.3,
+    "detailScale": 1,
+    "explodeRadius": null,
+    "handBuilt": true,
+    "parts": [
+      {
+        "key": "filter",
+        "name": "Air filter",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": true
+      },
+      {
+        "key": "fan",
+        "name": "Cross-flow fan",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "motor",
+        "name": "Fan motor",
+        "unit": "A",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "coil",
+        "name": "Evaporator coil",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "coilsens",
+        "name": "Coil temp. sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "roomsens",
+        "name": "Room temp. sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "louver",
+        "name": "Louver motor",
+        "unit": "°",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "drain",
+        "name": "Drain pan and hose",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "pcb",
+        "name": "Control board",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "wifi",
+        "name": "Wi-Fi module",
+        "unit": "dBm",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      }
+    ]
+  },
+  "odu": {
+    "label": "Outdoor unit",
+    "iconSvg": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"4.5\"/>",
+    "cameraDistance": 3.2,
+    "detailScale": 1,
+    "explodeRadius": null,
+    "handBuilt": true,
+    "parts": [
+      {
+        "key": "comp",
+        "name": "Compressor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "lp",
+        "name": "Low-pressure sensor",
+        "unit": "kgf/cm²",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "acc",
+        "name": "Accumulator · suction",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "eev",
+        "name": "Expansion valves",
+        "unit": "step",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "hp",
+        "name": "High-pressure sensor",
+        "unit": "kgf/cm²",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "fw",
+        "name": "4-way valve",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "coil",
+        "name": "Outdoor coil",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "fans",
+        "name": "Fan",
+        "unit": "step",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "inv",
+        "name": "Inverter board",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      }
+    ]
+  },
+  "light": {
+    "label": "Smart light",
+    "iconSvg": "<path d=\"M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z\"/>",
+    "cameraDistance": 1.1,
+    "detailScale": 1,
+    "explodeRadius": 0.32,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "led",
+        "name": "LED board",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.2,
+          0.01
+        ],
+        "color": "#fef3c7",
+        "inferred": false
+      },
+      {
+        "key": "driver",
+        "name": "LED driver",
+        "unit": "mA",
+        "shape": "box",
+        "size": [
+          0.12,
+          0.035,
+          0.07
+        ],
+        "color": "#475569",
+        "inferred": false
+      },
+      {
+        "key": "diff",
+        "name": "Diffuser",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.23,
+          0.008
+        ],
+        "color": "#f8fafc",
+        "inferred": false
+      },
+      {
+        "key": "radio",
+        "name": "Wireless radio",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "tv": {
+    "label": "TV",
+    "iconSvg": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"12\" rx=\"1.5\"/><path d=\"M8 21h8\"/>",
+    "cameraDistance": 2.2,
+    "detailScale": 1,
+    "explodeRadius": 0.7,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "panel",
+        "name": "Display panel",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          1.2,
+          0.68,
+          0.02
+        ],
+        "color": "#111827",
+        "inferred": false
+      },
+      {
+        "key": "main",
+        "name": "Main board",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.3,
+          0.2,
+          0.02
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "psu",
+        "name": "Power supply",
+        "unit": "W",
+        "shape": "box",
+        "size": [
+          0.25,
+          0.15,
+          0.03
+        ],
+        "color": "#475569",
+        "inferred": false
+      },
+      {
+        "key": "wifi",
+        "name": "Wi-Fi module",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "speaker": {
+    "label": "Speaker",
+    "iconSvg": "<rect x=\"6\" y=\"3\" width=\"12\" height=\"18\" rx=\"2\"/><circle cx=\"12\" cy=\"14\" r=\"3\"/><circle cx=\"12\" cy=\"7.5\" r=\"1\"/>",
+    "cameraDistance": 0.9,
+    "detailScale": 2,
+    "explodeRadius": 0.16,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "woofer",
+        "name": "Driver",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.05,
+          0.03
+        ],
+        "color": "#334155",
+        "inferred": false
+      },
+      {
+        "key": "amp",
+        "name": "Amplifier",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.06,
+          0.04,
+          0.01
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "mic",
+        "name": "Mic array",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.03,
+          0.005
+        ],
+        "color": "#64748b",
+        "inferred": false
+      },
+      {
+        "key": "wifi",
+        "name": "Wi-Fi module",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "blinds": {
+    "label": "Smart blinds",
+    "iconSvg": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"1\"/><path d=\"M4 7h16M4 11h16M4 15h16\"/>",
+    "cameraDistance": 1.6,
+    "detailScale": 1,
+    "explodeRadius": 0.45,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "motor",
+        "name": "Tube motor",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.03,
+          0.5
+        ],
+        "color": "#475569",
+        "inferred": false
+      },
+      {
+        "key": "batt",
+        "name": "Battery pack",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.035
+        ],
+        "color": "#6b7280",
+        "inferred": false
+      },
+      {
+        "key": "radio",
+        "name": "Wireless radio",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "fridge": {
+    "label": "Refrigerator",
+    "iconSvg": "<rect x=\"6\" y=\"2.5\" width=\"12\" height=\"19\" rx=\"1.5\"/><path d=\"M6 9h12M9 5.5v1.5M9 12v3\"/>",
+    "cameraDistance": 2.6,
+    "detailScale": 1,
+    "explodeRadius": 0.7,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "comp",
+        "name": "Compressor",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.1,
+          0.2
+        ],
+        "color": "#1d2433",
+        "inferred": false
+      },
+      {
+        "key": "cond",
+        "name": "Condenser coil",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.5,
+          0.3,
+          0.03
+        ],
+        "color": "#9aa6b8",
+        "inferred": false
+      },
+      {
+        "key": "evap",
+        "name": "Evaporator",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.4,
+          0.25,
+          0.03
+        ],
+        "color": "#bfdcff",
+        "inferred": false
+      },
+      {
+        "key": "ftemp",
+        "name": "Fridge sensor",
+        "unit": "°C",
+        "shape": "sph",
+        "size": [
+          0.025
+        ],
+        "color": "#e24b4a",
+        "inferred": false
+      },
+      {
+        "key": "ztemp",
+        "name": "Freezer sensor",
+        "unit": "°C",
+        "shape": "sph",
+        "size": [
+          0.025
+        ],
+        "color": "#2563eb",
+        "inferred": false
+      },
+      {
+        "key": "door",
+        "name": "Door switch",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.04,
+          0.02,
+          0.02
+        ],
+        "color": "#f59e0b",
+        "inferred": false
+      }
+    ]
+  },
+  "oven": {
+    "label": "Oven",
+    "iconSvg": "<rect x=\"3.5\" y=\"4\" width=\"17\" height=\"16\" rx=\"1.5\"/><rect x=\"6.5\" y=\"9\" width=\"11\" height=\"8\" rx=\"1\"/><path d=\"M7 6.5h1M10 6.5h1\"/>",
+    "cameraDistance": 1.7,
+    "detailScale": 1,
+    "explodeRadius": 0.45,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "elem",
+        "name": "Heating element",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.4,
+          0.02,
+          0.3
+        ],
+        "color": "#b45309",
+        "inferred": false
+      },
+      {
+        "key": "probe",
+        "name": "Cavity temp. sensor",
+        "unit": "°C",
+        "shape": "cyl",
+        "size": [
+          0.01,
+          0.12
+        ],
+        "color": "#e24b4a",
+        "inferred": false
+      },
+      {
+        "key": "fan",
+        "name": "Convection fan",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.08,
+          0.02
+        ],
+        "color": "#64748b",
+        "inferred": false
+      },
+      {
+        "key": "pcb",
+        "name": "Control board",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.15,
+          0.08,
+          0.01
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "vacuum": {
+    "label": "Robot vacuum",
+    "iconSvg": "<circle cx=\"12\" cy=\"12\" r=\"8.5\"/><circle cx=\"12\" cy=\"9\" r=\"2\"/>",
+    "cameraDistance": 1,
+    "detailScale": 1.6,
+    "explodeRadius": 0.26,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "batt",
+        "name": "Battery",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.035
+        ],
+        "color": "#6b7280",
+        "inferred": false
+      },
+      {
+        "key": "brush",
+        "name": "Brush motor",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.02,
+          0.14
+        ],
+        "color": "#334155",
+        "inferred": false
+      },
+      {
+        "key": "lidar",
+        "name": "Lidar sensor",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.04,
+          0.02
+        ],
+        "color": "#1d2433",
+        "inferred": false
+      },
+      {
+        "key": "bin",
+        "name": "Dust bin",
+        "unit": "%",
+        "shape": "box",
+        "size": [
+          0.1,
+          0.04,
+          0.06
+        ],
+        "color": "#94a3b8",
+        "inferred": false
+      }
+    ]
+  },
+  "camera": {
+    "label": "Camera",
+    "iconSvg": "<circle cx=\"12\" cy=\"10\" r=\"6\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/><path d=\"M9 20h6M12 16v4\"/>",
+    "cameraDistance": 0.8,
+    "detailScale": 3,
+    "explodeRadius": 0.09,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "img",
+        "name": "Image sensor",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.02,
+          0.02,
+          0.004
+        ],
+        "color": "#1d2433",
+        "inferred": false
+      },
+      {
+        "key": "ir",
+        "name": "IR LEDs",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.004
+        ],
+        "color": "#7f1d1d",
+        "inferred": false
+      },
+      {
+        "key": "mic",
+        "name": "Microphone",
+        "unit": "",
+        "shape": "sph",
+        "size": [
+          0.006
+        ],
+        "color": "#64748b",
+        "inferred": false
+      },
+      {
+        "key": "wifi",
+        "name": "Wi-Fi module",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "doorbell": {
+    "label": "Video doorbell",
+    "iconSvg": "<rect x=\"8\" y=\"2.5\" width=\"8\" height=\"19\" rx=\"4\"/><circle cx=\"12\" cy=\"8\" r=\"1.8\"/><circle cx=\"12\" cy=\"15\" r=\"2.3\"/>",
+    "cameraDistance": 0.8,
+    "detailScale": 3,
+    "explodeRadius": 0.09,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "cam",
+        "name": "Camera module",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.02,
+          0.02,
+          0.006
+        ],
+        "color": "#1d2433",
+        "inferred": false
+      },
+      {
+        "key": "btn",
+        "name": "Button",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.005
+        ],
+        "color": "#94a3b8",
+        "inferred": false
+      },
+      {
+        "key": "batt",
+        "name": "Battery",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.035
+        ],
+        "color": "#6b7280",
+        "inferred": false
+      },
+      {
+        "key": "wifi",
+        "name": "Wi-Fi module",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "lock": {
+    "label": "Door lock",
+    "iconSvg": "<rect x=\"5\" y=\"10\" width=\"14\" height=\"11\" rx=\"2\"/><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"/><circle cx=\"12\" cy=\"15.5\" r=\"1.3\"/>",
+    "cameraDistance": 0.8,
+    "detailScale": 3,
+    "explodeRadius": 0.09,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "bolt",
+        "name": "Bolt motor",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.04,
+          0.012,
+          0.012
+        ],
+        "color": "#94a3b8",
+        "inferred": false
+      },
+      {
+        "key": "keypad",
+        "name": "Keypad",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.03,
+          0.05,
+          0.005
+        ],
+        "color": "#1d2433",
+        "inferred": false
+      },
+      {
+        "key": "batt",
+        "name": "Battery (4 × AA)",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.035
+        ],
+        "color": "#6b7280",
+        "inferred": false
+      },
+      {
+        "key": "radio",
+        "name": "Wireless radio",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "washer": {
+    "label": "Washer",
+    "iconSvg": "<rect x=\"4\" y=\"2.5\" width=\"16\" height=\"19\" rx=\"2\"/><circle cx=\"12\" cy=\"13\" r=\"5\"/><path d=\"M7 6h2\"/>",
+    "cameraDistance": 1.9,
+    "detailScale": 1,
+    "explodeRadius": 0.55,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "pump",
+        "name": "Drain pump",
+        "unit": "A",
+        "shape": "box",
+        "size": [
+          0.1,
+          0.08,
+          0.08
+        ],
+        "color": "#34445f",
+        "inferred": false
+      },
+      {
+        "key": "level",
+        "name": "Water level sensor",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.015,
+          0.05
+        ],
+        "color": "#2563eb",
+        "inferred": false
+      },
+      {
+        "key": "motor",
+        "name": "Drum motor",
+        "unit": "rpm",
+        "shape": "cyl",
+        "size": [
+          0.08,
+          0.1
+        ],
+        "color": "#475569",
+        "inferred": false
+      },
+      {
+        "key": "valve",
+        "name": "Water inlet valve",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.04,
+          0.04
+        ],
+        "color": "#2f6fed",
+        "inferred": false
+      },
+      {
+        "key": "dlock",
+        "name": "Door lock",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.04,
+          0.03,
+          0.02
+        ],
+        "color": "#f59e0b",
+        "inferred": false
+      },
+      {
+        "key": "pcb",
+        "name": "Control board",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.16,
+          0.1,
+          0.01
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "dryer": {
+    "label": "Dryer",
+    "iconSvg": "<rect x=\"4\" y=\"2.5\" width=\"16\" height=\"19\" rx=\"2\"/><circle cx=\"12\" cy=\"13\" r=\"5\"/><path d=\"M10 12a2 2 0 1 1 2 3M7 6h2M11 6h1\"/>",
+    "cameraDistance": 1.9,
+    "detailScale": 1,
+    "explodeRadius": 0.55,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "heat",
+        "name": "Heater",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.3,
+          0.03,
+          0.08
+        ],
+        "color": "#b45309",
+        "inferred": false
+      },
+      {
+        "key": "motor",
+        "name": "Drum motor",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.08,
+          0.1
+        ],
+        "color": "#475569",
+        "inferred": false
+      },
+      {
+        "key": "lint",
+        "name": "Lint filter",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.2,
+          0.01,
+          0.12
+        ],
+        "color": "#cbd5e1",
+        "inferred": false
+      },
+      {
+        "key": "temp",
+        "name": "Exhaust temp. sensor",
+        "unit": "°C",
+        "shape": "sph",
+        "size": [
+          0.015
+        ],
+        "color": "#e24b4a",
+        "inferred": false
+      }
+    ]
+  },
+  "leak": {
+    "label": "Water leak sensor",
+    "iconSvg": "<path d=\"M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z\"/>",
+    "cameraDistance": 0.7,
+    "detailScale": 3,
+    "explodeRadius": 0.08,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "probe",
+        "name": "Water probes",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.006,
+          0.02
+        ],
+        "color": "#b8c2d1",
+        "inferred": false
+      },
+      {
+        "key": "batt",
+        "name": "Battery (CR2032)",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.035
+        ],
+        "color": "#6b7280",
+        "inferred": false
+      },
+      {
+        "key": "radio",
+        "name": "Wireless radio",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "temphum": {
+    "label": "Temp. and humidity sensor",
+    "iconSvg": "<path d=\"M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z\"/><path d=\"M12 9v6\"/>",
+    "cameraDistance": 0.7,
+    "detailScale": 3,
+    "explodeRadius": 0.08,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "temp",
+        "name": "Temperature sensor",
+        "unit": "°C",
+        "shape": "sph",
+        "size": [
+          0.006
+        ],
+        "color": "#e24b4a",
+        "inferred": false
+      },
+      {
+        "key": "hum",
+        "name": "Humidity sensor",
+        "unit": "%",
+        "shape": "box",
+        "size": [
+          0.01,
+          0.01,
+          0.003
+        ],
+        "color": "#2563eb",
+        "inferred": false
+      },
+      {
+        "key": "batt",
+        "name": "Battery (CR2032)",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.035
+        ],
+        "color": "#6b7280",
+        "inferred": false
+      },
+      {
+        "key": "radio",
+        "name": "Wireless radio",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "motion": {
+    "label": "Motion sensor",
+    "iconSvg": "<circle cx=\"12\" cy=\"5\" r=\"2\"/><path d=\"M9 21l2-6 2 2v4M11 15l-1-5 4 1 2 3M10 10l-3 2\"/>",
+    "cameraDistance": 0.7,
+    "detailScale": 3,
+    "explodeRadius": 0.08,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "pir",
+        "name": "PIR motion sensor",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.008,
+          0.008
+        ],
+        "color": "#334155",
+        "inferred": false
+      },
+      {
+        "key": "lens",
+        "name": "Fresnel lens",
+        "unit": "",
+        "shape": "sph",
+        "size": [
+          0.016
+        ],
+        "color": "#f8fafc",
+        "inferred": false
+      },
+      {
+        "key": "batt",
+        "name": "Battery (CR123A)",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.012,
+          0.035
+        ],
+        "color": "#6b7280",
+        "inferred": false
+      },
+      {
+        "key": "radio",
+        "name": "Wireless radio",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "plug": {
+    "label": "Smart plug",
+    "iconSvg": "<path d=\"M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4\"/>",
+    "cameraDistance": 0.7,
+    "detailScale": 3,
+    "explodeRadius": 0.08,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "relay",
+        "name": "Relay",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.02,
+          0.015,
+          0.015
+        ],
+        "color": "#1d2433",
+        "inferred": false
+      },
+      {
+        "key": "meter",
+        "name": "Power meter",
+        "unit": "W",
+        "shape": "box",
+        "size": [
+          0.012,
+          0.003,
+          0.012
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "radio",
+        "name": "Wireless radio",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "purifier": {
+    "label": "Air purifier",
+    "iconSvg": "<rect x=\"6\" y=\"3\" width=\"12\" height=\"18\" rx=\"3\"/><path d=\"M9 7h6M9 10h6M9 13h6\"/>",
+    "cameraDistance": 1.6,
+    "detailScale": 1,
+    "explodeRadius": 0.38,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "hepa",
+        "name": "HEPA filter",
+        "unit": "%",
+        "shape": "cyl",
+        "size": [
+          0.12,
+          0.25
+        ],
+        "color": "#e2e8f0",
+        "inferred": false
+      },
+      {
+        "key": "fan",
+        "name": "Fan",
+        "unit": "",
+        "shape": "cyl",
+        "size": [
+          0.1,
+          0.04
+        ],
+        "color": "#64748b",
+        "inferred": false
+      },
+      {
+        "key": "pm",
+        "name": "PM2.5 sensor",
+        "unit": "µg/m³",
+        "shape": "box",
+        "size": [
+          0.04,
+          0.03,
+          0.02
+        ],
+        "color": "#1d2433",
+        "inferred": false
+      },
+      {
+        "key": "pcb",
+        "name": "Control board",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.1,
+          0.06,
+          0.01
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  }
+}

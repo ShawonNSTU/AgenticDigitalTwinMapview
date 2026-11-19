@@ -1,0 +1,458 @@
+[
+  {
+    "id": "AC-01",
+    "type": "ac",
+    "room": "media",
+    "name": "Air conditioner · Media room",
+    "position": [
+      -7.5,
+      2.15,
+      -0.62
+    ],
+    "rotationY": 3.1416
+  },
+  {
+    "id": "AC-02",
+    "type": "ac",
+    "room": "living",
+    "name": "Air conditioner · Living room",
+    "position": [
+      -1.5,
+      2.15,
+      -4.3
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "AC-03",
+    "type": "ac",
+    "room": "kitchen",
+    "name": "Air conditioner · Kitchen",
+    "position": [
+      3.6,
+      2.15,
+      -5.88
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "AC-04",
+    "type": "ac",
+    "room": "primary",
+    "name": "Air conditioner · Primary suite",
+    "position": [
+      9.88,
+      2.15,
+      -2.5
+    ],
+    "rotationY": -1.5708
+  },
+  {
+    "id": "AC-05",
+    "type": "ac",
+    "room": "bedroom",
+    "name": "Air conditioner · Bedroom",
+    "position": [
+      -9.88,
+      2.15,
+      2.5
+    ],
+    "rotationY": 1.5708
+  },
+  {
+    "id": "AC-06",
+    "type": "ac",
+    "room": "dining",
+    "name": "Air conditioner · Dining room",
+    "position": [
+      0.5,
+      2.15,
+      5.88
+    ],
+    "rotationY": 3.1416
+  },
+  {
+    "id": "ODU-01",
+    "type": "odu",
+    "room": "out",
+    "name": "Outdoor unit · Back yard",
+    "position": [
+      -4.2,
+      0,
+      -7.3
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-01",
+    "type": "light",
+    "room": "media",
+    "name": "Smart light · Media room",
+    "position": [
+      -6.6,
+      2.6,
+      -3.85
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-02",
+    "type": "light",
+    "room": "living",
+    "name": "Smart light · Living room",
+    "position": [
+      -1.1,
+      2.6,
+      -2.220446049250313e-16
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-03",
+    "type": "light",
+    "room": "kitchen",
+    "name": "Smart light · Kitchen",
+    "position": [
+      3.9,
+      2.6,
+      -2.85
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-04",
+    "type": "light",
+    "room": "primary",
+    "name": "Smart light · Primary suite",
+    "position": [
+      8.4,
+      2.6,
+      -2.85
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-05",
+    "type": "light",
+    "room": "bedroom",
+    "name": "Smart light · Bedroom",
+    "position": [
+      -6.6,
+      2.6,
+      2.15
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-06",
+    "type": "light",
+    "room": "dining",
+    "name": "Smart light · Dining room",
+    "position": [
+      -0.30000000000000004,
+      2.6,
+      3.4
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-07",
+    "type": "light",
+    "room": "bath",
+    "name": "Smart light · Bathroom",
+    "position": [
+      8.65,
+      2.6,
+      3.15
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LT-08",
+    "type": "light",
+    "room": "laundry",
+    "name": "Smart light · Laundry room",
+    "position": [
+      5.15,
+      2.6,
+      3.15
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "TV-01",
+    "type": "tv",
+    "room": "media",
+    "name": "TV · Media room",
+    "position": [
+      -9.85,
+      1.2,
+      -3.3
+    ],
+    "rotationY": 1.5708
+  },
+  {
+    "id": "TV-02",
+    "type": "tv",
+    "room": "living",
+    "name": "TV · Living room",
+    "position": [
+      0.92,
+      1.2,
+      -1.2
+    ],
+    "rotationY": -1.5708
+  },
+  {
+    "id": "SP-01",
+    "type": "speaker",
+    "room": "living",
+    "name": "Speaker · Living room",
+    "position": [
+      -4.4,
+      0.55,
+      -3.8
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "SP-02",
+    "type": "speaker",
+    "room": "primary",
+    "name": "Speaker · Primary suite",
+    "position": [
+      5.6,
+      0.8,
+      -5.4
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "BL-01",
+    "type": "blinds",
+    "room": "media",
+    "name": "Smart blinds · Media room",
+    "position": [
+      -7.5,
+      1.7,
+      -5.95
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "BL-02",
+    "type": "blinds",
+    "room": "primary",
+    "name": "Smart blinds · Primary suite",
+    "position": [
+      7.5,
+      1.7,
+      -5.95
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "BL-03",
+    "type": "blinds",
+    "room": "bedroom",
+    "name": "Smart blinds · Bedroom",
+    "position": [
+      -7.5,
+      1.7,
+      5.95
+    ],
+    "rotationY": 3.1416
+  },
+  {
+    "id": "FR-01",
+    "type": "fridge",
+    "room": "kitchen",
+    "name": "Refrigerator · Kitchen",
+    "position": [
+      1.5,
+      0.9,
+      -5.55
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "OV-01",
+    "type": "oven",
+    "room": "kitchen",
+    "name": "Oven · Kitchen",
+    "position": [
+      4.55,
+      0.45,
+      -3.2
+    ],
+    "rotationY": -1.5708
+  },
+  {
+    "id": "VC-01",
+    "type": "vacuum",
+    "room": "living",
+    "name": "Robot vacuum · Living room",
+    "position": [
+      -3.6,
+      0.06,
+      0.9
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "CM-01",
+    "type": "camera",
+    "room": "living",
+    "name": "Camera · Living room",
+    "position": [
+      -4.88,
+      2.2,
+      -2.2
+    ],
+    "rotationY": 1.5708
+  },
+  {
+    "id": "CM-02",
+    "type": "camera",
+    "room": "deck",
+    "name": "Camera · Deck",
+    "position": [
+      -0.15,
+      2.2,
+      -5.9
+    ],
+    "rotationY": -1.5708
+  },
+  {
+    "id": "DB-01",
+    "type": "doorbell",
+    "room": "porch",
+    "name": "Video doorbell · Porch",
+    "position": [
+      -3.4,
+      1.3,
+      6.1
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LK-D1",
+    "type": "lock",
+    "room": "porch",
+    "name": "Door lock · Porch",
+    "position": [
+      -3.9,
+      1,
+      6.05
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "WA-01",
+    "type": "washer",
+    "room": "laundry",
+    "name": "Washer · Laundry room",
+    "position": [
+      3.5,
+      0.45,
+      5.55
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "DR-01",
+    "type": "dryer",
+    "room": "laundry",
+    "name": "Dryer · Laundry room",
+    "position": [
+      4.25,
+      0.45,
+      5.55
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LK-01",
+    "type": "leak",
+    "room": "laundry",
+    "name": "Water leak sensor · Laundry room",
+    "position": [
+      3.9,
+      0.02,
+      4.8
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "LK-02",
+    "type": "leak",
+    "room": "bath",
+    "name": "Water leak sensor · Bathroom",
+    "position": [
+      6.4,
+      0.02,
+      4.2
+    ],
+    "rotationY": 0
+  },
+  {
+    "id": "TH-01",
+    "type": "temphum",
+    "room": "bath",
+    "name": "Temp. and humidity sensor · Bathroom",
+    "position": [
+      9.88,
+      1.5,
+      3.5
+    ],
+    "rotationY": -1.5708
+  },
+  {
+    "id": "MS-01",
+    "type": "motion",
+    "room": "primary",
+    "name": "Motion sensor · Primary suite",
+    "position": [
+      5.12,
+      2.2,
+      0.9
+    ],
+    "rotationY": 1.5708
+  },
+  {
+    "id": "MS-02",
+    "type": "motion",
+    "room": "bedroom",
+    "name": "Motion sensor · Bedroom",
+    "position": [
+      -5.12,
+      2.2,
+      5.2
+    ],
+    "rotationY": -1.5708
+  },
+  {
+    "id": "PL-01",
+    "type": "plug",
+    "room": "dining",
+    "name": "Smart plug · Dining room",
+    "position": [
+      2.88,
+      0.35,
+      3
+    ],
+    "rotationY": -1.5708
+  },
+  {
+    "id": "AP-01",
+    "type": "purifier",
+    "room": "bedroom",
+    "name": "Air purifier · Bedroom",
+    "position": [
+      -5.6,
+      0.3,
+      0.2
+    ],
+    "rotationY": 0
+  }
+]

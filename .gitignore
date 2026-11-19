@@ -1,0 +1,23 @@
+# Node / Next.js
+node_modules/
+web/.next/
+web/next-env.d.ts
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Godot
+godot-renderer/.godot/
+build/
+web/public/godot/*
+!web/public/godot/.gitkeep
+
+# Secrets
+.env
+.env.local
+
+.DS_Store

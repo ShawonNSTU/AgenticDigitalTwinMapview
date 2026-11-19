@@ -1,0 +1,139 @@
+{
+  "rooms": [
+    {
+      "key": "media",
+      "name": "Media room",
+      "x": [
+        -10,
+        -5
+      ],
+      "z": [
+        -6,
+        -0.5
+      ],
+      "color": "#8fb4f2"
+    },
+    {
+      "key": "living",
+      "name": "Living room",
+      "x": [
+        -5,
+        1
+      ],
+      "z": [
+        -4.4,
+        2
+      ],
+      "color": "#a6e3a8"
+    },
+    {
+      "key": "deck",
+      "name": "Deck",
+      "x": [
+        -3.2,
+        0
+      ],
+      "z": [
+        -6,
+        -4.4
+      ],
+      "color": "#c4b5f0"
+    },
+    {
+      "key": "kitchen",
+      "name": "Kitchen",
+      "x": [
+        1,
+        5
+      ],
+      "z": [
+        -6,
+        1.5
+      ],
+      "color": "#f6dc8a"
+    },
+    {
+      "key": "primary",
+      "name": "Primary suite",
+      "x": [
+        5,
+        10
+      ],
+      "z": [
+        -6,
+        1.5
+      ],
+      "color": "#7fd6c6"
+    },
+    {
+      "key": "bedroom",
+      "name": "Bedroom",
+      "x": [
+        -10,
+        -5
+      ],
+      "z": [
+        -0.5,
+        6
+      ],
+      "color": "#f3b0dc"
+    },
+    {
+      "key": "porch",
+      "name": "Porch",
+      "x": [
+        -5,
+        -2
+      ],
+      "z": [
+        2,
+        6
+      ],
+      "color": "#cfeec0"
+    },
+    {
+      "key": "dining",
+      "name": "Dining room",
+      "x": [
+        -2,
+        3
+      ],
+      "z": [
+        2,
+        6
+      ],
+      "color": "#9fd9f2"
+    },
+    {
+      "key": "laundry",
+      "name": "Laundry room",
+      "x": [
+        3,
+        5.5
+      ],
+      "z": [
+        1.5,
+        6
+      ],
+      "color": "#94bff2"
+    },
+    {
+      "key": "bath",
+      "name": "Bathroom",
+      "x": [
+        5.5,
+        10
+      ],
+      "z": [
+        1.5,
+        6
+      ],
+      "color": "#a9e6d0"
+    }
+  ],
+  "outdoorPad": {
+    "x": -4.2,
+    "z": -7.3
+  },
+  "wallHeight": 1.15
+}

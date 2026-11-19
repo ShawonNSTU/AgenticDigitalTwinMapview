@@ -1,0 +1,26 @@
+# web
+
+Next.js app: the product page around the Godot 3D view, plus the simulated device platform that the
+renderer and the agent read.
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
+
+`AGENT_URL` (see `.env.example`) points the `/api/chat` proxy at the agent backend.
+
+| Path | Purpose |
+|---|---|
+| `app/page.tsx` | layout: 3D view, side panel (agent chat, device list, device detail), timeline |
+| `components/TwinView.tsx` | iframe host for the Godot web export in `public/godot/` |
+| `components/DevicePanel.tsx` | health, finding, guided steps, live parts |
+| `components/ChatPanel.tsx` | streams agent answers; forwards `ui_action` to the renderer |
+| `components/Timeline.tsx` | play, scrub, scenario |
+| `lib/bridge.ts` | typed postMessage bridge ([contract](../docs/contracts/bridge-api.md)) |
+| `lib/sim/engine.ts` | simulator: scenarios, readings, part health, findings (ported from the HTML prototype) |
+| `lib/sim/runtime.ts` | clock, command whitelist and overrides |
+| `app/api/*` | platform API ([contract](../docs/contracts/platform-api.md)) |
+
+The simulation is deterministic from (scenario, time, device), so any client can scrub time freely.
+State is in memory: one server process is one demo.

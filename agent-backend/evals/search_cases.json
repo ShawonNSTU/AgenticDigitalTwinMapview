@@ -1,0 +1,13 @@
+[
+  {"q": "show me all the air conditioners", "all_prefix": "AC-"},
+  {"q": "which ACs have a problem?", "ids": ["AC-04", "AC-05"]},
+  {"q": "faulty aircon", "ids": ["AC-05"]},
+  {"q": "lights in the kitchen", "all_prefix": "LT-", "room": "kitchen"},
+  {"q": "devices in the bedroom", "room": "bedroom"},
+  {"q": "open AC-05", "ids": ["AC-05"]},
+  {"q": "where is the outdoor unit", "ids": ["ODU-01"]},
+  {"q": "show the washer", "ids": ["WA-01"]},
+  {"q": "security devices", "types": ["lock", "camera", "doorbell", "motion"]},
+  {"q": "leak sensors", "all_prefix": "LK-"},
+  {"q": "unicorn stable", "ids": []}
+]
