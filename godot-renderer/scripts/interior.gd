@@ -1,7 +1,12 @@
 class_name Interior
 extends Node3D
 ## Interiors read from the floor plan (Store.furniture): columns, seating, tables, desks, workstation pods,
-## sanitary ware, stairs, gym equipment and so on, built procedurally and drawn with GPU instancing.
+## sanitary ware, stairs, gym equipment and so on, drawn with GPU instancing.
+##
+## Chairs, desks, tables, sofas, beds, bookcases, sinks, toilets, plants and the computers on every desk are
+## modelled glTF assets (Kenney Furniture Kit, CC0, assets/furniture/kenney). Each model is split into its
+## surfaces, fitted to the item's footprint and recoloured to an office palette through its material names.
+## Kinds with no fitting model (columns, stairs, doors, pod partitions, gym kit, screens, railings) stay procedural.
 ##
 ## Each item: {kind, x, z, w, d, rot}. w is the size across, d front to back (metres), rot the facing
 ## direction (0 faces +z). Every kind is a small recipe of boxes/cylinders in the item's frame; all parts that
@@ -21,6 +26,15 @@ const PALETTE := {
 	"mirror": [Color("cfd8e3"), 1.0, 0.05], "monitor": [Color("1a1c20"), 0.3, 0.3], "display": [Color("5b8def"), 0.0, 0.3],
 	"keyboard": [Color("30343b"), 0.1, 0.6], "cushion": [Color("a3876f"), 0.0, 0.9], "leaf": [Color("3f7f3b"), 0.0, 0.85],
 	"partition2": [Color("d6dbe1"), 0.0, 0.5], "slide": [Color("e9f1ff"), 0.0, 0.4],
+	"wood_dark": [Color("8a6446"), 0.0, 0.55], "porcelain": [Color("f7f8fa"), 0.05, 0.15], "chrome": [Color("d4d8dd"), 0.55, 0.3],
+	"mesh_black": [Color("23262c"), 0.1, 0.7], "soil": [Color("4a3a2c"), 0.0, 0.95],
+}
+const MODEL_DIR := "res://assets/furniture/kenney/"
+## Kenney material name -> palette key (the kit's pastel colours read as toys in an office)
+const RECOLOUR := {
+	"wood": "wood", "woodDark": "wood_dark", "carpet": "fabric", "carpetWhite": "porcelain", "carpetDark": "mesh_black", "carpetDarker": "rail",
+	"metal": "chrome", "metalLight": "porcelain", "metalMedium": "frame", "metalDark": "dark", "plant": "leaf",
+	"_defaultMat": "porcelain", "glass": "glass", "paper": "white", "darkWood": "wood_dark",
 }
 const GLOW := ["led", "console", "display", "slide"]
 const TEXTURED := {"wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6}
@@ -33,6 +47,8 @@ var _w := 1.0
 var _d := 1.0
 var _meshes := {}
 var _mats := {}
+var _models := {}        # model name -> {parts: [[mesh key, Transform3D, material name]], box: AABB}
+var _swap := {}          # per-item material swaps (e.g. sofa fabric), set by the recipe before _model()
 
 
 func build(items: Array) -> void:
@@ -61,6 +77,8 @@ func draw_calls() -> int:
 func _mesh(k: String) -> Mesh:
 	if _meshes.has(k):
 		return _meshes[k]
+	if k.begins_with("m:"):
+		push_error("model mesh missing: " + k)
 	var m: Mesh
 	match k:
 		"cyl":
@@ -127,6 +145,68 @@ func _emit(mesh: String, mat: String, t: Transform3D) -> void:
 	_batches.get_or_add(mesh + "|" + mat, []).append(t)
 
 
+## Loads a glTF model once and splits it into single-surface meshes (so each can be instanced with its own
+## palette material), with their transforms relative to the model root and the model's overall box.
+func _load_model(name: String) -> Dictionary:
+	if _models.has(name):
+		return _models[name]
+	var info := {"parts": [], "box": AABB()}
+	var sc := load(MODEL_DIR + name + ".glb") as PackedScene
+	if sc == null:
+		_models[name] = info
+		return info
+	var root: Node3D = sc.instantiate()
+	var first := true
+	var idx := 0
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		var t := Transform3D.IDENTITY
+		var p: Node = mi
+		while p != root:
+			t = (p as Node3D).transform * t
+			p = p.get_parent()
+		var bb: AABB = t * mi.mesh.get_aabb()
+		info.box = bb if first else info.box.merge(bb)
+		first = false
+		for si in mi.mesh.get_surface_count():
+			var am := ArrayMesh.new()
+			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mi.mesh.surface_get_arrays(si))
+			var mat := mi.mesh.surface_get_material(si)
+			var key := "m:%s#%d" % [name, idx]
+			idx += 1
+			_meshes[key] = am
+			info.parts.append([key, t, mat.resource_name if mat else "_defaultMat"])
+	root.free()
+	_models[name] = info
+	return info
+
+
+## Places a model in the current item frame (_ir): centred at `at` (metres, item frame), turned by `yaw`,
+## its box stretched to w x h x d metres. h <= 0 keeps the model's proportions (uniform scale fitting w x d).
+func _model(name: String, at: Vector3, w: float, d: float, h := 0.0, yaw := 0.0) -> void:
+	var info := _load_model(name)
+	if info.parts.is_empty():
+		return
+	var box: AABB = info.box
+	var sz: Vector3 = box.size.max(Vector3.ONE * 0.001)
+	# the footprint is given in the item frame; a quarter turn swaps the model's x and z
+	var quarter := absf(sin(yaw)) > 0.7
+	var fw := d if quarter else w
+	var fd := w if quarter else d
+	var sc: Vector3
+	if h > 0.0:
+		sc = Vector3(fw / sz.x, h / sz.y, fd / sz.z)
+	else:
+		var u := minf(fw / sz.x, fd / sz.z)
+		sc = Vector3(u, u, u)
+	var centre := Vector3(box.get_center().x, box.position.y, box.get_center().z)
+	var place := _ir * Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(sc), at) * Transform3D(Basis.IDENTITY, -centre)
+	for part in info.parts:
+		var matname: String = part[2]
+		var pal: String = _swap.get(matname, RECOLOUR.get(matname, "white"))
+		_emit(part[0], pal, place * (part[1] as Transform3D))
+
+
 ## Part in footprint fractions (x, z) and metres (y).
 func _b(mat: String, c: Vector3, s: Vector3, mesh := "box") -> void:
 	_emit(mesh, mat, _it * Transform3D(Basis.from_scale(s), c))
@@ -139,11 +219,13 @@ func _bm(mat: String, c: Vector3, s: Vector3, mesh := "box") -> void:
 
 ## A monitor on a stand and a keyboard for one seat, in the current item frame (_ir); the user sits on the -z side.
 func _setup(x: float, dd: float) -> void:
-	_bm("monitor", Vector3(x, 1.0, dd * 0.28), Vector3(0.56, 0.34, 0.025))
-	_bm("display", Vector3(x, 1.0, dd * 0.28 - 0.014), Vector3(0.52, 0.3, 0.004))
-	_bm("monitor", Vector3(x, 0.83, dd * 0.3), Vector3(0.04, 0.16, 0.04))
-	_bm("monitor", Vector3(x, 0.765, dd * 0.3), Vector3(0.2, 0.012, 0.14))
-	_bm("keyboard", Vector3(x, 0.765, -dd * 0.12), Vector3(0.42, 0.015, 0.14))
+	# glTF monitor, keyboard and mouse; the kit's models face +z, so they are turned to face the seat
+	_swap = {"metal": "display", "metalDark": "monitor"}
+	_model("computerScreen", Vector3(x, 0.755, dd * 0.28), 0.56, 0.15, 0.42, PI)
+	_swap = {"metal": "keyboard", "metalDark": "monitor"}
+	_model("computerKeyboard", Vector3(x - 0.03, 0.755, -dd * 0.12), 0.44, 0.16, 0.025, PI)
+	_model("computerMouse", Vector3(x + 0.27, 0.755, -dd * 0.12), 0.06, 0.1, 0.035, PI)
+	_swap = {}
 
 
 func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
@@ -158,38 +240,26 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 		"column":
 			_b("concrete", Vector3(0, h / 2, 0), Vector3(1, h, 1))
 		"chair":
-			_b("chair", Vector3(0, 0.45, 0.02), Vector3(0.9, 0.05, 0.85))
-			_b("cushion", Vector3(0, 0.485, 0.04), Vector3(0.8, 0.03, 0.72))
-			_b("chair", Vector3(0, 0.72, -0.42), Vector3(0.9, 0.5, 0.08))
-			for sx in [-0.38, 0.38]:
-				for sz in [-0.36, 0.36]:
-					_b("metal", Vector3(sx, 0.22, sz), Vector3(0.07, 0.44, 0.07), "cyl")
+			# meeting / training chair: cushioned seat and back on a wooden frame
+			_swap = {"carpet": "chair"}
+			_model("chairCushion", Vector3.ZERO, w * 0.95, d * 0.95)
+			_swap = {}
 		"task_chair":
-			_b("fabric", Vector3(0, 0.47, 0.05), Vector3(0.85, 0.08, 0.8))
-			_b("fabric", Vector3(0, 0.8, -0.42), Vector3(0.8, 0.52, 0.09))
-			for sx in [-0.46, 0.46]:  # armrests
-				_b("dark", Vector3(sx, 0.62, 0.0), Vector3(0.07, 0.04, 0.55))
-				_b("dark", Vector3(sx, 0.55, -0.05), Vector3(0.05, 0.14, 0.05))
-			_bm("metal", Vector3(0, 0.25, 0), Vector3(0.05, 0.42, 0.05), "cyl")
-			for i in 5:  # five-star base on casters
-				var a := TAU * i / 5.0
-				var leg := Basis(Vector3.UP, a) * Basis.from_scale(Vector3(0.04, 0.03, 0.3))
-				_emit("box", "dark", _ir * Transform3D(leg, Vector3(sin(a) * 0.15, 0.06, cos(a) * 0.15)))
-				_bm("dark", Vector3(sin(a) * 0.29, 0.025, cos(a) * 0.29), Vector3(0.05, 0.05, 0.05), "sphere")
+			# office chair on a five-star base with casters and armrests
+			_swap = {"carpet": "fabric", "metalMedium": "dark"}
+			_model("chairDesk", Vector3.ZERO, w, d)
+			_swap = {}
 		"table":
-			_b("wood", Vector3(0, 0.73, 0), Vector3(1, 0.04, 1))
-			for sx in [-1, 1]:
-				for sz in [-1, 1]:
-					_bm("metal", Vector3(sx * (w / 2 - 0.06), 0.36, sz * (d / 2 - 0.06)), Vector3(0.05, 0.71, 0.05), "cyl")
+			_swap = {"wood": "desk_top"}
+			_model("table", Vector3.ZERO, w, d, 0.75)
+			_swap = {}
 		"round_table":
-			_b("wood", Vector3(0, 0.73, 0), Vector3(1, 0.04, 1), "cyl")
-			_bm("metal", Vector3(0, 0.36, 0), Vector3(0.07, 0.7, 0.07), "cyl")
-			_bm("dark", Vector3(0, 0.02, 0), Vector3(minf(w, 0.5), 0.03, minf(d, 0.5)), "cyl")
+			_model("tableRound", Vector3.ZERO, w, d, 0.75)
 		"desk":
-			_b("desk_top", Vector3(0, 0.74, 0), Vector3(1, 0.035, 1))
-			for sx in [-1, 1]:
-				_bm("desk_frame", Vector3(sx * (w / 2 - 0.02), 0.37, 0), Vector3(0.04, 0.72, d * 0.9))
-			_bm("desk_frame", Vector3(0, 0.45, d / 2 - 0.02), Vector3(w * 0.9, 0.4, 0.02))
+			# the kit's desk has its drawers and knee space on +z; ours seats the user on -z
+			_swap = {"wood": "desk_top", "metal": "desk_frame"}
+			_model("desk", Vector3.ZERO, w, d, 0.75, PI)
+			_swap = {}
 			var seats := maxi(1, roundi(w / 0.66))
 			for i in seats:
 				_setup(-w / 2 + w * (i + 0.5) / seats, d)
@@ -215,29 +285,32 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_it = it
 			_ir = ir
 		"sofa", "armchair":
-			_b("sofa", Vector3(0, 0.22, 0.05), Vector3(1, 0.36, 0.9))
-			_b("sofa", Vector3(0, 0.55, -0.38), Vector3(1, 0.42, 0.24))
-			for sx in [-0.45, 0.45]:
-				_b("sofa", Vector3(sx, 0.4, 0.05), Vector3(0.1, 0.32, 0.9))
-			var nc := maxi(1, roundi((w - 0.3) / 0.6))
-			for i in nc:  # seat and back cushions
-				var cx := -0.4 + 0.8 * (i + 0.5) / nc
-				_b("cushion", Vector3(cx, 0.39, 0.08), Vector3(0.78 / nc, 0.1, 0.72))
-				_b("cushion", Vector3(cx, 0.62, -0.24), Vector3(0.76 / nc, 0.34, 0.08))
+			_swap = {"carpet": "sofa", "wood": "wood_dark"}
+			if kind == "armchair" or w < 1.2:
+				_model("loungeChair", Vector3.ZERO, w, d, minf(w, d) * 0.95)
+			else:
+				_model("loungeSofaLong" if w > 2.6 else "loungeSofa", Vector3.ZERO, w, d, 0.82)
+			_swap = {}
 		"bed":
-			_b("wood", Vector3(0, 0.18, 0), Vector3(1, 0.3, 1))
-			_b("linen", Vector3(0, 0.39, 0.02), Vector3(0.96, 0.14, 0.94))
-			_b("white", Vector3(0, 0.5, -0.38), Vector3(0.6, 0.08, 0.16))
+			_swap = {"carpet": "linen", "carpetWhite": "white", "wood": "wood"}
+			# the model's length runs along its z; turn it when the plan's bed is longer across than deep
+			_model("bedSingle", Vector3.ZERO, w, d, 0.6, PI / 2 if w > d else 0.0)
+			_swap = {}
 		"cabinet":
-			_b("wood", Vector3(0, minf(h, 1.1) / 2, 0), Vector3(1, minf(h, 1.1), 1))
+			_swap = {"metal": "stone", "woodDark": "wood_dark"}
+			_model("kitchenCabinet", Vector3.ZERO, w, d, minf(h, 0.9))
+			_swap = {}
 		"shelf":
-			var sh := minf(h, 1.1)
-			for sx in [-0.48, 0.48]:
-				_b("metal", Vector3(sx, sh / 2, 0), Vector3(0.04, sh, 1))
-			for y in [0.08, 0.42, 0.76, sh - 0.02]:
-				_b("wood", Vector3(0, y, 0), Vector3(1, 0.03, 1))
-				if y < sh - 0.1:
-					_b("goods", Vector3(0, y + 0.13, 0), Vector3(0.85, 0.22, 0.7))
+			var sh := minf(h - 0.2, 1.8)
+			var turn := PI / 2 if d > w * 1.5 else 0.0  # a run of shelving traced deeper than wide
+			_model("bookcaseOpen", Vector3.ZERO, w, d, sh, turn)
+			var run := maxf(w, d)
+			var deep := minf(w, d)
+			for r in 3:  # books on the lower three shelves
+				var off := Vector3(-run * 0.15, 0.06 + r * sh / 4.0, 0)
+				if turn != 0.0:
+					off = Vector3(0, off.y, -run * 0.15)
+				_model("books", off, run * 0.5 if turn == 0.0 else deep * 0.7, deep * 0.7 if turn == 0.0 else run * 0.5, 0.24, turn)
 		"rack":
 			_b("dark", Vector3(0, minf(h, 1.1) / 2, 0), Vector3(1, minf(h, 1.1), 1))
 			for y in [0.3, 0.55, 0.8]:
@@ -246,16 +319,17 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_b("counter", Vector3(0, 0.43, 0), Vector3(1, 0.86, 1))
 			_b("stone", Vector3(0, 0.88, 0), Vector3(1.02, 0.04, 1.05))
 		"sink":
-			_b("white", Vector3(0, 0.88, 0), Vector3(1, 0.12, 1), "cyl")
-			_bm("metal", Vector3(0, 0.98, -d * 0.45), Vector3(0.03, 0.16, 0.03), "cyl")
-			_bm("metal", Vector3(0, 1.05, -d * 0.3), Vector3(0.025, 0.025, 0.14))
-			_bm("mirror", Vector3(0, 1.08, -d * 0.62), Vector3(w * 0.9, 0.12, 0.01))
+			_swap = {"carpetWhite": "porcelain", "metal": "chrome", "metalLight": "porcelain"}
+			_model("bathroomSink", Vector3.ZERO, w, d)
+			_swap = {}
+			_bm("mirror", Vector3(0, 1.35, -d * 0.48), Vector3(w * 0.9, 0.7, 0.02))
+			_bm("frame", Vector3(0, 1.35, -d * 0.49), Vector3(w * 0.94, 0.74, 0.01))
 		"toilet":
 			for sx in [-1, 1]:  # cubicle side panels
 				_bm("partition2", Vector3(sx * 0.6, 0.62, 0.15), Vector3(0.03, 1.0, 1.35))
-			_b("white", Vector3(0, 0.2, 0.1), Vector3(0.8, 0.4, 0.7), "cyl")
-			_b("white", Vector3(0, 0.42, 0.1), Vector3(0.85, 0.04, 0.75), "cyl")
-			_b("white", Vector3(0, 0.55, -0.38), Vector3(0.9, 0.45, 0.24))
+			_swap = {"carpetWhite": "porcelain", "metalLight": "porcelain", "metalDark": "chrome"}
+			_model("toilet", Vector3.ZERO, w * 0.9, d * 0.9)
+			_swap = {}
 		"stair":
 			# real step count for the run length; rises towards +z (the facing direction)
 			var n := maxi(3, roundi(d / 0.28))
@@ -304,14 +378,9 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			for i in n:
 				_bm("dark", Vector3(-w / 2 + w * (i + 0.5) / n, 0.65, 0), Vector3(0.12, 0.13, minf(0.32, d * 0.9)), "cyl")
 		"plant":
-			_b("pot", Vector3(0, 0.2, 0), Vector3(0.6, 0.4, 0.6), "cyl")
-			_bm("wood", Vector3(0, 0.55, 0), Vector3(0.03, 0.5, 0.03), "cyl")
-			var ps := minf(w, 1.0) * 1.3
-			for k in 5:
-				var a := TAU * k / 5.0
-				var r := 0.18 * minf(w, 1.0)
-				_bm("leaf" if k % 2 == 0 else "plant", Vector3(cos(a) * r, 0.75 + 0.08 * (k % 3), sin(a) * r), Vector3(0.32, 0.26, 0.32) * ps, "sphere")
-			_bm("plant", Vector3(0, 0.95, 0), Vector3(0.3, 0.3, 0.3) * ps, "sphere")
+			_swap = {"wood": "pot", "woodDark": "soil"}
+			_model("pottedPlant", Vector3.ZERO, w, d, maxf(0.9, w * 2.2))
+			_swap = {}
 		"door":
 			# frame jambs, one or two leaves standing open 70 degrees towards +z, handle, and the swing drawn on the floor
 			var lh := minf(h, 2.05) - 0.02

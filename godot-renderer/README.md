@@ -43,7 +43,8 @@ scripts/main.gd       builds the scene and routes Bus signals
 scripts/floor_builder.gd   rooms, cut-away walls, labels, room status tint
 scripts/device_node.gd     device body, health ring, highlight beam, click area
 scripts/detail_view.gd     opened device: x-ray shell + exploded parts with live values + internal flows
-scripts/interior.gd        interiors from the plan (columns, seating, desks, pods, sanitary, stairs, gym…), GPU-instanced
+scripts/interior.gd        interiors from the plan: modelled glTF furniture (Kenney CC0, assets/furniture) fitted to each
+                           footprint and recoloured, plus procedural columns, stairs, doors, pods, gym kit; GPU-instanced
 scripts/twin_part.gd       39 component models (coil, fans, compressor, valves, pump, drum, PCB, sensors…) animated from readings
 scripts/tube.gd            shared pipe builder (floor piping and internal flows)
 scripts/plan_geo.gd        room polygons, shared wall network, shortest path along walls
