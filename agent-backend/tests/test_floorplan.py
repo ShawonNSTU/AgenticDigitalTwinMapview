@@ -32,3 +32,12 @@ def test_photo_corners_passed_through():
     out = parse_json('{"rooms": [], "outdoor": null, "photo_corners": [[0.1, 0.05], [0.95, 0.07], [0.97, 0.9], [0.12, 0.85]]}')
     assert out["photo_corners"][2] == [0.97, 0.9]
     assert parse_json('{"rooms": [], "photo_corners": [[0, 0]]}')["photo_corners"] is None
+
+
+def test_furniture_cleaned_and_rotation_in_radians():
+    out = parse_json('{"rooms": [], "photo_corners": [[0,0],[1,0],[1,1],[0,1]], "furniture": ['
+                     '{"kind": "chair", "x": 0.3, "y": 0.4, "w": 0.01, "d": 0.01, "rot": 180},'
+                     '{"kind": "spaceship", "x": 0.3, "y": 0.4, "w": 0.01, "d": 0.01},'
+                     '{"kind": "table", "x": 0.3, "y": 0.4, "w": 0.9, "d": 0.01}]}')
+    assert len(out["furniture"]) == 1 and out["furniture"][0]["kind"] == "chair"
+    assert abs(out["furniture"][0]["rot"] - 3.1416) < 1e-3

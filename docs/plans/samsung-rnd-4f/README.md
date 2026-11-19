@@ -19,3 +19,7 @@ How it was traced: homography from four straight wall lines; scale from the 1917
 (28.0 mm/px, cross-checked against the 1800 mm corridor at 1.88 m); cameras found as red symbols by colour detection,
 with counts checked against the sheet's legend. Devices not on the sheet (ACs, lights, sensors) are an assumed fit-out
 and are named "(position assumed)".
+
+Interiors (428 items) come from the drawing: 23 columns and 207 cafeteria + 6 small-cafeteria seats detected
+automatically (the facility table says 208 and 6), tables derived from seat-row spacing, the 56 + 32 classroom seats
+and desks from the drawn grid, and the gym, pods, sanitary ware, stairs and room furniture read off the sheet.

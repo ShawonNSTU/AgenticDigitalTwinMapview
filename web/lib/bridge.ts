@@ -9,7 +9,7 @@ export type ToRenderer =
   | { type: 'closeDevice' }
   | { type: 'focusPart'; id: string; part: string }
   | { type: 'trace'; from: string }
-  | { type: 'setLayer'; layer: 'devices' | 'piping' | 'names' | 'ids' | 'temperature' | 'exploded'; on: boolean }
+  | { type: 'setLayer'; layer: 'devices' | 'piping' | 'names' | 'ids' | 'temperature' | 'exploded' | 'furniture'; on: boolean }
   | { type: 'setTime'; t: number }
   | { type: 'setScenario'; key: string }
   | { type: 'resetView' };

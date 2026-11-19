@@ -18,7 +18,7 @@ Search without the model: `{ query, understood: {types, rooms, health, ids}, cou
 
 ## POST /floorplan/parse
 Body `{ image: dataURL }` (PNG, JPEG, WebP, GIF). Claude vision detects rooms.
-200 `{ rooms: [{name, points: [[x, y], ...]}], outdoor: {x, y} | null, photo_corners: [[x, y] ×4] | null }`: photo_corners (TL, TR, BR, BL) is set when the image is a skewed photo and should be straightened first; each room is a polygon (any shape), coordinates as fractions of the image (y down).
+200 `{ rooms: [{name, points: [[x, y], ...]}], outdoor: {x, y} | null, photo_corners: [[x, y] ×4] | null, furniture: [{kind, fx, fy, fw, fd, rot}] }`: photo_corners (TL, TR, BR, BL) is set when the image is a skewed photo and should be straightened first; each room is a polygon (any shape), coordinates as fractions of the image (y down).
 422 `{ error }` when there is no API key, the model returns no rooms, or the image is not a data URL.
 
 ## GET /health

@@ -2,8 +2,9 @@
 
 Proof of concept with three features:
 
-1. **Floor plan to 3D map.** Upload a floor plan image, let AI detect the rooms (or draw them), place
-   SmartThings devices (or auto-place typical ones), and render it as a 3D map view in Godot.
+1. **Floor plan to 3D map.** Upload a floor plan image (a phone photo of a printed sheet is straightened first), let AI
+   detect the rooms and the interiors drawn on it (or draw them), place SmartThings devices, and render it as a 3D map
+   view in Godot with walls, columns, furniture, stairs and sanitary ware.
 2. **Device digital twin.** Click any device: it opens in place into its internal components, with the
    internal flows (refrigerant, air, water, power, signal), the piping to the rest of the system and live data per part.
 3. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what

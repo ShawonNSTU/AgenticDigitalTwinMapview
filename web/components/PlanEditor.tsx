@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react';
 import { straighten } from '@/lib/homography';
 import { useRouter } from 'next/navigation';
-import { DEVICE_TYPES, PREFIX, autoPlace, interior, nextId, rect, roomAt, roomColor, roomKey, toBuilding, type PlanDevice, type PlanRoom, type Pt } from '@/lib/layout';
+import { DEVICE_TYPES, PREFIX, autoPlace, interior, nextId, rect, roomAt, roomColor, roomKey, toBuilding, type PlanDevice, type PlanFurniture, type PlanRoom, type Pt } from '@/lib/layout';
 
 type Img = { url: string; w: number; h: number };
 const PAD = 0.08;
@@ -34,6 +34,7 @@ export default function PlanEditor() {
   const [img, setImg] = useState<Img | null>(null);
   const [rooms, setRooms] = useState<PlanRoom[]>([]);
   const [devices, setDevices] = useState<PlanDevice[]>([]);
+  const [furniture, setFurniture] = useState<PlanFurniture[]>([]);
   const [outdoor, setOutdoor] = useState<{ x: number; y: number } | null>(null);
   const [mode, setMode] = useState<'rooms' | 'devices' | 'straighten'>('rooms');
   const [quad, setQuad] = useState<Pt[]>([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]); // TL TR BR BL, image fractions
@@ -63,7 +64,7 @@ export default function PlanEditor() {
     const im = new Image(); im.src = img.url; await im.decode();
     const c = straighten(im, quad.map(([x, y]) => [x * img.w, y * img.h] as [number, number]));
     setImg({ url: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height });
-    setRooms([]); setDevices([]); setMode('rooms');
+    setRooms([]); setDevices([]); setFurniture([]); setMode('rooms');
     setMsg('Photo straightened. Now detect or draw the rooms.');
   }
 
@@ -132,20 +133,21 @@ export default function PlanEditor() {
       const taken = new Set<string>();
       setRooms(j.rooms.map((x: { name: string; points: Pt[] }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { name: x.name, pts: x.points, key, color: roomColor(i) }; }));
       setOutdoor(j.outdoor);
+      setFurniture((j.furniture ?? []) as PlanFurniture[]);
       if (j.photo_corners) {
         // The AI sees a skewed photo: straighten first, then detect again on the flat image.
         setQuad(j.photo_corners); setMode('straighten'); setRooms([]);
         setMsg('This looks like a photo taken at an angle. Check the four corners of the drawing, press "Straighten", then detect rooms again.');
         return;
       }
-      setMsg(`Found ${j.rooms.length} rooms. Check them, rename or redraw any that are off.`);
+      setMsg(`Found ${j.rooms.length} rooms${j.furniture?.length ? ` and ${j.furniture.length} interior items` : ''}. Check them, rename or redraw any that are off.`);
     } catch { setMsg('Room detection failed. Draw the rooms by hand.'); } finally { setBusy(false); }
   }
 
   async function build() {
     if (!img || !rooms.length) return;
     setBusy(true); setMsg('Building the 3D map…');
-    const body = toBuilding(rooms, devices, widthM, ar, img.url);
+    const body = toBuilding(rooms, devices, widthM, ar, img.url, furniture);
     const r = await fetch('/api/building', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     setBusy(false);
     if (r.ok) router.push('/'); else setMsg((await r.json()).error ?? 'Could not save the layout');
@@ -161,13 +163,14 @@ export default function PlanEditor() {
   async function loadTraced() {
     const res = await fetch('/presets/samsung-rnd-4f.json');
     if (!res.ok) { setMsg('Reference floor files are not installed (web/public/presets/). See docs/plans/samsung-rnd-4f/README.md.'); return; }
-    const rnd4f: { title: string; image: string; widthM: number; rooms: { name: string; pts: number[][] }[]; devices: { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean }[] } = await res.json();
+    const rnd4f: { title: string; image: string; widthM: number; rooms: { name: string; pts: number[][] }[]; devices: { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean }[]; furniture?: PlanFurniture[] } = await res.json();
     setImg(await loadUrl(rnd4f.image));
     const taken = new Set<string>();
     setRooms(rnd4f.rooms.map((r, i) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts as Pt[], color: roomColor(i) }; }));
     setDevices(rnd4f.devices.map(d => ({ id: d.id, type: d.type, fx: d.fx, fy: d.fy, name: d.name, assumed: d.assumed })));
+    setFurniture(rnd4f.furniture ?? []);
     setWidthM(rnd4f.widthM); setMode('rooms');
-    setMsg(`${rnd4f.title}: ${rnd4f.rooms.length} rooms, ${rnd4f.devices.length} devices. The 22 cameras come from the sheet; other devices are an assumed fit-out. Review, then render.`);
+    setMsg(`${rnd4f.title}: ${rnd4f.rooms.length} rooms, ${(rnd4f.furniture ?? []).length} interior items, ${rnd4f.devices.length} devices. Interiors and the 22 cameras come from the sheet; other devices are an assumed fit-out. Review, then render.`);
   }
 
   /** The original photo, with straightening corners on four building walls, to try the straighten step. */
@@ -200,6 +203,16 @@ export default function PlanEditor() {
             <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={mode}>
               <rect x={-PAD} y={-PAD} width={1 + 2 * PAD} height={ar + 2 * PAD} fill="#1a2028" />
               <image href={img.url} x={0} y={0} width={1} height={ar} preserveAspectRatio="none" />
+              {furniture.length > 0 && (
+                <g pointerEvents="none" opacity={0.7}>
+                  {furniture.map((f, i) => {
+                    // footprint rectangle rotated to its facing direction (rot 0 faces down the image)
+                    const w = f.fw, d = f.fd, c = Math.cos(f.rot), s = Math.sin(f.rot);
+                    const pts = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([lx, lz]) => `${f.fx + lx * c + lz * s},${f.fy * ar - lx * s + lz * c}`).join(' ');
+                    return <polygon key={i} points={pts} fill={f.kind === 'column' ? '#555' : '#ffb020'} fillOpacity={0.35} stroke="#b26b00" strokeWidth={0.0012} />;
+                  })}
+                </g>
+              )}
               {rooms.map((r, k) => { const c = interior(r.pts); return (
                 <g key={r.key}>
                   <polygon points={r.pts.map(([x, y]) => `${x},${y * ar}`).join(' ')} fill={r.color} fillOpacity={0.35} stroke={r.color} strokeWidth={0.003} />
@@ -253,6 +266,7 @@ export default function PlanEditor() {
             <div className="row"><button disabled={!rooms.length} onClick={() => { setDevices(ds => autoPlace(rooms, ds, outdoor)); setMode('devices'); }}>Auto-place typical devices</button><button disabled={!img} className={mode === 'devices' ? 'on' : ''} onClick={() => setMode('devices')}>Place by hand</button></div>
             {mode === 'devices' && <div className="row"><select value={type} onChange={e => setType(e.target.value)}>{DEVICE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label} ({PREFIX[t.key]})</option>)}</select><span className="muted">click to place · shift-click to remove</span></div>}
             <div className="muted">{devices.length} devices{devices.length ? `: ${devices.map(d => d.id).join(', ')}` : ''}</div>
+            {furniture.length > 0 && <div className="row"><span className="muted">{furniture.length} interior items from the plan (shown in orange)</span><button onClick={() => setFurniture([])}>Remove</button></div>}
             {devices.length > 0 && <button onClick={() => setDevices([])}>Remove all devices</button>}
             <b>4. Build</b>
             <label className="row">Plan width <input type="number" min={4} max={200} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} style={{ width: 80 }} /> m</label>

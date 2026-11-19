@@ -4,6 +4,7 @@ Returns each room as a polygon (its outline, any shape) in 0..1 image coordinate
 in the web editor before the 3D map is built, so mistakes here are cheap.
 """
 import json
+import math
 import re
 
 from .config import ANTHROPIC_API_KEY, AGENT_MODEL
@@ -19,8 +20,17 @@ If the plan shows where the outdoor AC unit or the back yard is, give a point fo
 If the image is a photo of a printed plan taken at an angle (the drawing's straight walls or frame are visibly skewed),
 also give "photo_corners": the four corners of the drawing frame (or, if not visible, of the building outline) in the order
 top-left, top-right, bottom-right, bottom-left. Otherwise give null.
+Also list the interior items drawn on the plan as "furniture": structural columns, chairs, tables, desks, workstation pods,
+sofas, beds, cabinets, shelves, racks, counters, sinks, toilets, stairs, screens, railings and gym equipment. For each give
+kind (one of: column, chair, task_chair, table, round_table, desk, workstation, sofa, armchair, bed, cabinet, shelf, rack,
+counter, sink, toilet, stair, screen, railing, treadmill, bike, weight_rack, plant), its centre x, y (fractions of image
+width and height), its size w (across) and d (front to back) as fractions of the image WIDTH, and rot: the direction it faces
+in degrees, 0 = towards the bottom of the image, 90 = towards the right, 180 = up, -90 = left (a chair faces its table, a desk
+faces its user's back, a stair faces upwards along its run). List every seat individually; if there are more than 600 items,
+list the largest 600.
 Reply with JSON only:
-{"rooms": [{"name": "Kitchen", "points": [[0.1, 0.2], [0.4, 0.2], [0.4, 0.5], [0.1, 0.5]]}], "outdoor": {"x": 0.5, "y": 1.05}, "photo_corners": null}"""
+{"rooms": [{"name": "Kitchen", "points": [[0.1, 0.2], [0.4, 0.2], [0.4, 0.5], [0.1, 0.5]]}], "outdoor": {"x": 0.5, "y": 1.05}, "photo_corners": null,
+ "furniture": [{"kind": "table", "x": 0.25, "y": 0.35, "w": 0.04, "d": 0.015, "rot": 0}]}"""
 
 
 class ParseError(RuntimeError):
@@ -72,7 +82,19 @@ def _clean(data: dict) -> dict:
             corners = [[round(float(p[0]), 4), round(float(p[1]), 4)] for p in pc]
         except (TypeError, ValueError, IndexError):
             corners = None
-    return {"rooms": rooms[:60], "outdoor": outdoor, "photo_corners": corners}
+    kinds = {"column", "chair", "task_chair", "table", "round_table", "desk", "workstation", "sofa", "armchair", "bed", "cabinet", "shelf",
+             "rack", "counter", "sink", "toilet", "stair", "screen", "railing", "treadmill", "bike", "weight_rack", "plant", "door"}
+    furniture = []
+    for f in data.get("furniture") or []:
+        try:
+            k = str(f["kind"])
+            x, y, w, d = (float(f[a]) for a in ("x", "y", "w", "d"))
+            rot = math.radians(float(f.get("rot", 0) or 0))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if k in kinds and -0.2 <= x <= 1.2 and -0.2 <= y <= 1.2 and 0 < w < 0.5 and 0 < d < 0.5:
+            furniture.append({"kind": k, "fx": round(x, 5), "fy": round(y, 5), "fw": round(w, 5), "fd": round(d, 5), "rot": round(rot, 4)})
+    return {"rooms": rooms[:60], "outdoor": outdoor, "photo_corners": corners, "furniture": furniture[:3000]}
 
 
 def parse_json(text: str) -> dict:
@@ -96,7 +118,7 @@ async def detect_rooms(data_url: str) -> dict:
     client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     resp = await client.messages.create(
         model=AGENT_MODEL,
-        max_tokens=2000,
+        max_tokens=16000,
         messages=[{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": m.group(1), "data": m.group(2)}},
             {"type": "text", "text": PROMPT},

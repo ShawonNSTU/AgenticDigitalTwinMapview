@@ -5,6 +5,7 @@ extends Node
 const HEALTH_COLORS := {"ok": Color("3fb950"), "watch": Color("d29922"), "fault": Color("f85149")}
 
 var rooms: Array = []
+var furniture: Array = []   # interiors from the plan: {kind, x, z, w, d, rot}
 var devices: Array = []
 var by_id: Dictionary = {}
 var types: Dictionary = {}
@@ -208,6 +209,7 @@ func _finish_layout(tex: Texture2D) -> void:
 	plan_texture = tex
 	var plan = b.get("plan")
 	plan_bounds = Rect2(plan.x0, plan.z0, plan.x1 - plan.x0, plan.z1 - plan.z0) if plan is Dictionary else Rect2()
+	furniture = b.get("furniture", [])
 	_apply_layout(b.get("rooms", []), b.get("devices", []), b.get("outdoorPad", {}), float(b.get("wallHeight", wall_height)))
 	layout_version = int(b.get("version", 0))
 	_announced = true

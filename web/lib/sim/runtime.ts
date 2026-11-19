@@ -13,9 +13,11 @@ interface Runtime {
   overrides: Record<string, Override>; // per-device values set by commands
   log: { at: number; deviceId: string; command: string; args: unknown; by: string }[];
   plan: { bytes: Buffer; mime: string; x0: number; x1: number; z0: number; z1: number } | null; // uploaded floor plan image
+  furniture: { kind: string; x: number; z: number; w: number; d: number; rot?: number; h?: number }[]; // interiors from the plan
 }
 const g = globalThis as unknown as { __twin?: Runtime };
-export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [], plan: null });
+export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [], plan: null, furniture: [] });
+rt.furniture ??= [];
 
 /** Advance the clock if playing. Called by every request and by the event stream. */
 export function tick(): number {
@@ -116,11 +118,13 @@ export function buildingState() {
     outdoorPad: LAYOUT.outdoorPad,
     rooms: ROOMS,
     devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 })),
+    furniture: rt.furniture,
     plan: rt.plan ? { url: `/api/building/plan?v=${LAYOUT.version}`, x0: rt.plan.x0, x1: rt.plan.x1, z0: rt.plan.z0, z1: rt.plan.z1 } : null,
   };
 }
 
-export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null) {
+export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null, furniture: Runtime['furniture'] = []) {
+  rt.furniture = furniture;
   const pad = outdoorPad ?? (() => { const o = devices.find(d => d.type === 'odu'); return o ? { x: o.position[0], z: o.position[2] } : LAYOUT.outdoorPad; })();
   setLayout(rooms, devices, { outdoorPad: pad, custom: true });
   if (!scenarioAvailable(engineState.scen)) engineState.scen = 'normal';
@@ -137,6 +141,7 @@ export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan:
 export function resetBuilding() {
   setLayout(building.rooms, sampleDevices, { outdoorPad: building.outdoorPad, custom: false });
   rt.plan = null;
+  rt.furniture = [];
   rt.overrides = {};
   return buildingState();
 }

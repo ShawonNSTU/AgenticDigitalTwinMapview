@@ -4,6 +4,7 @@ extends Node3D
 var rig: CameraRig
 var floor_builder: FloorBuilder
 var piping: Piping
+var interior: Interior
 var detail: DetailView
 var sun: DirectionalLight3D
 var hud: Label
@@ -49,6 +50,10 @@ func _ready() -> void:
 	Bus.scenario_changed.connect(_on_scenario)
 	_on_time(Store.t)
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--rooms="):
+			var rs := Node.new()
+			rs.set_script(load("res://tests/room_shots.gd"))
+			add_child(rs)
 		if a.begins_with("--gallery="):
 			var g := Node.new()
 			g.set_script(load("res://tests/twin_gallery.gd"))
@@ -76,6 +81,10 @@ func _build_world(animate: bool) -> void:
 	world.add_child(floor_builder)
 	floor_builder.build()
 	DeviceNode.dense = Store.devices.size() > 40
+	interior = Interior.new()
+	interior.name = "Interior"
+	world.add_child(interior)
+	interior.build(Store.furniture)
 	var holder := Node3D.new()
 	holder.name = "Devices"
 	world.add_child(holder)
@@ -102,6 +111,9 @@ func _build_world(animate: bool) -> void:
 func _play_plan_to_3d() -> void:
 	rig.jump(rig.home_target, rig.home_distance, deg_to_rad(-88.0), 0.0)
 	floor_builder.play_build_up()
+	# interiors grow out of the floor once the walls are up
+	interior.scale = Vector3(1, 0.01, 1)
+	create_tween().tween_property(interior, "scale", Vector3.ONE, 0.7).set_delay(1.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	piping.visible = false
 	var i := 0
 	for id in devices:
@@ -269,6 +281,7 @@ func _on_layer(layer: String, on: bool) -> void:
 			for id in devices:
 				devices[id].show_label(on)
 		"temperature": floor_builder.tint_rooms(on)
+		"furniture": interior.visible = on
 		"exploded": detail.set_exploded(on)
 
 

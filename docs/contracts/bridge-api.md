@@ -16,7 +16,7 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `closeDevice` | | close and return to the floor view |
 | `focusPart` | `id`, `part` | opens the device if needed, zooms to the part |
 | `trace` | `from` (AC id) | brightens that AC's refrigerant circuit, dims the rest |
-| `setLayer` | `layer: devices \| piping \| names \| ids \| temperature \| exploded`, `on` | toggle a layer; `exploded` switches the open device between exploded and assembled (parts where they sit in the real unit) |
+| `setLayer` | `layer: devices \| piping \| names \| ids \| temperature \| exploded \| furniture`, `on` | toggle a layer; `exploded` switches the open device between exploded and assembled (parts where they sit in the real unit) |
 | `setTime` | `t` (hours, 6–22) | scene clock (sun, HUD, time-driven effects) |
 | `setScenario` | `key: normal \| filter \| refrig \| washer` | closes any open device, refreshes flow |
 | `resetView` | | close, clear, camera home |

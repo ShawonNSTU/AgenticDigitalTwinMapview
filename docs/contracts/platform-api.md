@@ -54,11 +54,11 @@ POST body (all optional): `{ scenario, t, playing, speed, fix }`. Changing scena
 - `event: layout` after a floor plan upload or reset, data = `{version}`
 
 ## GET /api/building
-`{ version, custom, wallHeight, outdoorPad: {x, z}, rooms: [...], devices: [{id, type, room, name, position, rotationY}], plan: null | {url, x0, x1, z0, z1} }`
-`plan` bounds are the image's extent in metres on the floor (x, z).
+`{ version, custom, wallHeight, outdoorPad: {x, z}, rooms: [...], devices: [{id, type, room, name, position, rotationY}], furniture: [...], plan: null | {url, x0, x1, z0, z1} }`
+`plan` bounds are the image's extent in metres on the floor (x, z). `furniture` lists the interiors (metres; w across, d front to back, rot = facing in radians, 0 faces +z). Kinds: column, chair, task_chair, table, round_table, desk, workstation, sofa, armchair, bed, cabinet, shelf, rack, counter, sink, toilet, stair, screen, railing, treadmill, bike, weight_rack, plant, door.
 
 ## POST /api/building
-Body: `{ rooms: [{key, name, x:[x0,x1], z:[z0,z1], poly?: [[x,z]...], color}], devices: [{id, type, room, name, position:[x,y,z], rotationY?}], outdoorPad?, plan?: {dataUrl, x0, x1, z0, z1} }`.
+Body: `{ rooms: [{key, name, x:[x0,x1], z:[z0,z1], poly?: [[x,z]...], color}], furniture?: [{kind, x, z, w, d, rot?, h?}], devices: [{id, type, room, name, position:[x,y,z], rotationY?}], outdoorPad?, plan?: {dataUrl, x0, x1, z0, z1} }`.
 Replaces the layout, clears command overrides and the fix time, bumps `version`. 400 with a message on invalid input (unknown type, duplicate id, bad image).
 
 ## DELETE /api/building

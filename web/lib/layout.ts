@@ -13,6 +13,10 @@ const COLORS = ['#8fb4f2', '#a8d8a0', '#c7b7ef', '#f2dc8f', '#8fd8d0', '#f2b8c6'
 /** A room is a polygon in image fractions (x right, y down). Rectangles are just 4-point polygons. */
 export type Pt = [number, number];
 export type PlanRoom = { key: string; name: string; pts: Pt[]; color: string };
+/** Interior item: centre in image fractions, size (w across, d front-to-back) as fractions of image width, rot = facing in radians (0 faces down the image). */
+export type PlanFurniture = { kind: string; fx: number; fy: number; fw: number; fd: number; rot: number };
+export const FURNITURE_KINDS = ['column', 'chair', 'task_chair', 'table', 'round_table', 'desk', 'workstation', 'sofa', 'armchair', 'bed', 'cabinet', 'shelf', 'rack', 'counter', 'sink', 'toilet', 'stair', 'screen', 'railing', 'treadmill', 'bike', 'weight_rack', 'door', 'plant'] as const;
+
 export type PlanDevice = { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean };
 
 export const roomColor = (i: number) => COLORS[i % COLORS.length];
@@ -114,7 +118,7 @@ export function autoPlace(rooms: PlanRoom[], keep: PlanDevice[], outdoor: { x: n
 }
 
 /** Convert the editor state to the POST /api/building body. widthM is the real width of the image in metres. */
-export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: number, aspect: number, dataUrl: string) {
+export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: number, aspect: number, dataUrl: string, furniture: PlanFurniture[] = []) {
   const W = widthM, H = widthM * aspect;
   const X = (f: number) => +((f - 0.5) * W).toFixed(3), Z = (f: number) => +((f - 0.5) * H).toFixed(3);
   return {
@@ -128,6 +132,8 @@ export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: num
       const label = DEVICE_TYPES.find(t => t.key === d.type)?.label ?? d.type;
       return { id: d.id, type: d.type, room: r?.key ?? 'out', name: `${d.name ?? label} · ${r?.name ?? 'Outside'}${d.assumed ? ' (position assumed)' : ''}`, position: [x, MOUNT[d.type] ?? 1, z], rotationY: +rot.toFixed(4) };
     }),
+    // rot in the image: 0 faces down = +z in the scene, so it carries over unchanged
+    furniture: furniture.map(f => ({ kind: f.kind, x: X(f.fx), z: Z(f.fy), w: +(f.fw * W).toFixed(3), d: +(f.fd * W).toFixed(3), rot: +f.rot.toFixed(4) })),
     plan: { dataUrl, x0: -W / 2, x1: W / 2, z0: -H / 2, z1: H / 2 },
   };
 }
