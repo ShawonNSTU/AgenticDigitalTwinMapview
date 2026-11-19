@@ -17,6 +17,7 @@ func build() -> void:
 		mat.albedo_color = Color(r.color).lerp(Color("d9dde3"), 0.55)
 		mat.roughness = 0.9
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_finish(mat, str(r.name).to_lower())
 		_slabs[r.key] = mat
 		_slab(poly, mat)
 		var label := Label3D.new()
@@ -33,13 +34,30 @@ func build() -> void:
 	wall_mat.albedo_color = Color("f2f3f5")
 	wall_mat.roughness = 0.8
 	var h: float = Store.wall_height
-	# Walls follow every room edge (any angle); shared walls are built once.
+	# Walls follow every room edge (any angle); shared walls are built once; door openings are left open.
+	var doors: Array = Store.furniture.filter(func(f): return f.get("kind", "") == "door")
 	for s in PlanGeo.wall_segments(Store.rooms):
 		var a: Vector2 = s[0]
 		var b: Vector2 = s[1]
-		var w := _box(Vector3((a.x + b.x) / 2, h / 2, (a.y + b.y) / 2), Vector3(a.distance_to(b) + WALL, h, WALL), wall_mat)
-		w.rotation.y = -atan2(b.y - a.y, b.x - a.x)
-		_walls.append(w)
+		var length := a.distance_to(b)
+		var u := (b - a) / length
+		var gaps: Array = []
+		for dr in doors:
+			var p := Vector2(float(dr.x), float(dr.z))
+			var t := (p - a).dot(u)
+			var across := Vector2(cos(float(dr.get("rot", 0.0))), -sin(float(dr.get("rot", 0.0))))
+			if t > 0.0 and t < length and p.distance_to(a + u * t) < 0.25 and absf(across.dot(u)) > 0.9:
+				gaps.append([t - float(dr.w) / 2, t + float(dr.w) / 2])
+		gaps.sort_custom(func(g1, g2): return g1[0] < g2[0])
+		var start := -WALL / 2
+		for g in gaps + [[length + WALL / 2, length + WALL / 2]]:
+			var end: float = g[0]
+			if end - start > 0.02:
+				var mid := a + u * ((start + end) / 2)
+				var w := _box(Vector3(mid.x, h / 2, mid.y), Vector3(end - start, h, WALL), wall_mat)
+				w.rotation.y = -atan2(u.y, u.x)
+				_walls.append(w)
+			start = maxf(start, g[1])
 	if Store.outdoor_pad.has("x"):
 		var pad := StandardMaterial3D.new()
 		pad.albedo_color = Color("9aa3ad")
@@ -62,6 +80,52 @@ func build() -> void:
 		plane.material_override = _plan_mat
 		plane.position = Vector3(pb.get_center().x, 0.006, pb.get_center().y)
 		add_child(plane)
+
+
+## Floor finish from the room's name: tiles in wet rooms, carpet where people sit or pray, plain screed elsewhere.
+static var _tile_tex: Texture2D
+static var _carpet_tex: Texture2D
+
+func _finish(mat: StandardMaterial3D, name: String) -> void:
+	var wet := ["toilet", "bath", "ablution", "wash", "kitchen", "laundry", "utility", "a/c", "outdoor", "stair"]
+	var soft := ["pray", "training", "class", "bed", "maternity", "workspace", "zone d", "media", "living", "office", "experience"]
+	for k in wet:
+		if name.contains(k):
+			if _tile_tex == null:
+				var img := Image.create(64, 64, false, Image.FORMAT_RGB8)
+				img.fill(Color(1, 1, 1))
+				for i in 64:
+					for j in [0, 1]:
+						img.set_pixel(i, j, Color(0.72, 0.74, 0.77))
+						img.set_pixel(j, i, Color(0.72, 0.74, 0.77))
+				img.generate_mipmaps()
+				_tile_tex = ImageTexture.create_from_image(img)
+			mat.albedo_texture = _tile_tex
+			mat.uv1_triplanar = true
+			mat.uv1_world_triplanar = true
+			mat.uv1_scale = Vector3.ONE / 0.6  # 600 mm tiles
+			mat.roughness = 0.35
+			return
+	for k in soft:
+		if name.contains(k):
+			if _carpet_tex == null:
+				var n := FastNoiseLite.new()
+				n.frequency = 0.35
+				var nt := NoiseTexture2D.new()
+				nt.noise = n
+				nt.width = 128
+				nt.height = 128
+				nt.seamless = true
+				nt.color_ramp = Gradient.new()
+				nt.color_ramp.set_color(0, Color(0.82, 0.82, 0.84))
+				nt.color_ramp.set_color(1, Color(1, 1, 1))
+				_carpet_tex = nt
+			mat.albedo_texture = _carpet_tex
+			mat.uv1_triplanar = true
+			mat.uv1_world_triplanar = true
+			mat.uv1_scale = Vector3.ONE / 1.5
+			mat.roughness = 1.0
+			return
 
 
 ## While a device twin is open, walls turn to glass so they never hide it.

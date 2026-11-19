@@ -12,7 +12,7 @@ signal part_selected(pos: Vector3, size: float)
 signal legend_changed(text: String)
 
 const TWIN := 1.1          # metres across the largest side of the twin
-const SPREAD := 2.6        # exploded: part positions spread over SPREAD × TWIN on every axis
+const SPREAD := 2.0        # exploded: part positions spread over SPREAD × TWIN on every axis
 const BODY_PORT := Vector3(-0.55, -0.35, -0.45)  # where '@body' flows enter/leave, in body fractions
 const MEDIA_NAMES := {"refrigerant_liquid": "refrigerant (liquid)", "refrigerant_gas": "refrigerant (gas)", "air": "air", "water": "water", "drain": "drain water", "power": "power", "signal": "signal", "heat": "heat", "light": "light"}
 static var _flow_defs: Dictionary = {}
@@ -191,6 +191,35 @@ func close() -> void:
 	legend_changed.emit("")
 
 
+## Orthogonal route from a to b in the twin's local axes: up/down to a lane height, across, along, down.
+func _route(a: Vector3, b: Vector3, lane: int) -> Array:
+	var la := twin.to_local(a)
+	var lb := twin.to_local(b)
+	var k := scale_factor()
+	var ly := (la.y + lb.y) / 2.0 + (lane % 5 - 2) * 0.03 / k
+	var raw: Array = [la, Vector3(la.x, ly, la.z), Vector3(lb.x, ly, la.z), Vector3(lb.x, ly, lb.z), lb]
+	var out: Array = []
+	for p in raw:
+		if out.is_empty() or (p as Vector3).distance_to(out[-1]) > 0.004 / k:
+			out.append(p)
+	return out.map(func(p): return twin.to_global(p))
+
+
+const UNITS := {"hz": " Hz", "air": " % airflow", "fan": " fan", "amps": " A", "pump": " A pump", "eev": " steps", "lv": " % light",
+	"vol": " volume", "w": " W", "motor": " rpm", "pos": " %", "pm": " µg/m³", "bin": " % full", "evIn": " °C", "dis": " °C"}
+
+
+func _tag_text(reading: String) -> String:
+	if not _readings.has(reading):
+		return reading
+	var v = _readings[reading]
+	if typeof(v) == TYPE_FLOAT:
+		v = snappedf(v, 0.01 if absf(v) < 10 else 1.0)
+	if typeof(v) == TYPE_BOOL:
+		return "%s: %s" % [reading, "on" if v else "off"]
+	return "%s%s" % [str(v), UNITS.get(reading, "")] if UNITS.has(reading) else "%s: %s" % [reading, str(v)]
+
+
 func _port() -> Vector3:
 	return twin.to_global(BODY_PORT * _body)
 
@@ -204,8 +233,8 @@ func _build_flows() -> void:
 		return
 	var media: Dictionary = _flow_defs.get("_media", {})
 	var used := {}
-	var c := centre()
-	var k := scale_factor()
+	var lane := 0
+	var tagged := {}
 	for f in _flow_defs.get(device.data.type, []):
 		if (f.from != "@body" and not _parts.has(f.from)) or (f.to != "@body" and not _parts.has(f.to)):
 			continue
@@ -213,18 +242,49 @@ func _build_flows() -> void:
 		var b := _part_pos(f.to)
 		if a.distance_to(b) < 0.01:
 			continue
-		# Bend outward from the twin centre so lines don't cut through other parts.
-		var mid := (a + b) / 2
-		var bend := (mid - c)
-		var amount := (0.12 if exploded else 0.04) * minf(1.0, a.distance_to(b) * 2.0)
-		var ctrl := mid + (bend.normalized() * amount if bend.length() > 0.01 else Vector3.UP * amount)
+		# Route like real internal piping: orthogonal runs in the device's own axes with elbow joints,
+		# each flow on its own lane so parallel lines don't overlap.
 		var color := Color(media.get(f.medium, "#ffffff"))
 		var thick: bool = f.medium.begins_with("refrigerant") or f.medium in ["water", "drain", "air", "heat"]
 		var radius := (0.014 if thick else 0.007) * (1.0 if exploded else 0.7)
+		var pts := _route(a, b, lane)
+		lane += 1
 		var holder := Node3D.new()
 		_flow_root.add_child(holder)
-		var mats := Tube.build(holder, Tube.arc(a, b, ctrl), color, radius, 0.1)
-		_flows.append({"mats": mats, "from": f.from, "to": f.to, "color": color, "rate": f.get("rate", {})})
+		var mats := Tube.build(holder, pts, color, radius, 0.1)
+		var joint := StandardMaterial3D.new()
+		joint.albedo_color = color.darkened(0.25)
+		joint.metallic = 0.8
+		joint.roughness = 0.3
+		for k in range(1, pts.size() - 1):
+			var j := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = radius * 1.35
+			sm.height = radius * 2.7
+			sm.radial_segments = 10
+			sm.rings = 5
+			j.mesh = sm
+			j.material_override = joint
+			holder.add_child(j)
+			j.global_position = pts[k]
+		var beads := Beads.new().setup(color, radius * 1.5)
+		holder.add_child(beads)
+		beads.add_line(pts, 0.11 if exploded else 0.06)
+		var tag: Label3D = null
+		var rule: Dictionary = f.get("rate", {})
+		if not rule.is_empty() and not tagged.has(rule.reading):
+			tagged[rule.reading] = true
+			tag = Label3D.new()
+			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			tag.no_depth_test = true
+			tag.fixed_size = true
+			tag.font_size = 20
+			tag.pixel_size = 0.0005
+			tag.outline_size = 6
+			tag.modulate = color.lightened(0.45)
+			holder.add_child(tag)
+			tag.global_position = pts[pts.size() / 2] + Vector3(0, 0.05, 0)
+		_flows.append({"mats": mats, "from": f.from, "to": f.to, "color": color, "rate": rule, "beads": beads, "tag": tag})
 		used[f.medium] = true
 	var names: Array = []
 	for m in used:
@@ -260,6 +320,11 @@ func _refresh_flows() -> void:
 			m.set_shader_parameter("speed", speed)
 			m.set_shader_parameter("base_color", col)
 			m.set_shader_parameter("glow", 1.0 if speed > 0.001 else 0.45)
+		if f.beads:
+			f.beads.set_speed(0, speed * 0.7)
+		if f.tag:
+			f.tag.text = _tag_text(f.rate.reading)
+			f.tag.modulate = col.lightened(0.45)
 
 
 func focus_part(key: String) -> void:

@@ -242,6 +242,7 @@ func _on_open(id: String, part: String) -> void:
 		devices[other].visible = other == id
 	dev.set_highlight(false, false)
 	piping.visible = false
+	interior.visible = false  # furniture and columns step back so nothing hides the twin
 	floor_builder.set_walls_faded(true)
 	detail.open(dev)
 	# Look at the front of the device (rotationY 0 faces +z), slightly from above.
@@ -249,7 +250,7 @@ func _on_open(id: String, part: String) -> void:
 	rig.fly_to(detail.centre(), DetailView.TWIN * 2.0, deg_to_rad(-24.0), dev.rotation.y + deg_to_rad(35.0))
 	get_tree().create_timer(0.9).timeout.connect(func():
 		if detail.device == dev:
-			rig.fly_to(detail.centre(), DetailView.TWIN * 4.2, NAN, NAN, 0.7))
+			rig.fly_to(detail.centre(), DetailView.TWIN * 3.6, NAN, NAN, 0.7))
 	if part != "":
 		get_tree().create_timer(0.6).timeout.connect(func(): detail.focus_part(part))
 
@@ -263,6 +264,7 @@ func _on_close() -> void:
 	for other in devices:
 		devices[other].visible = true
 	piping.visible = true
+	interior.visible = true
 	floor_builder.set_walls_faded(false)
 	Store.open_id = ""
 	Bus.device_closed.emit()

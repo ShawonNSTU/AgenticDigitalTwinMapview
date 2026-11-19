@@ -190,7 +190,7 @@ export default function PlanEditor() {
     <main className="setup">
       <header className="row between">
         <b>Floor plan → 3D map</b>
-        <span className="row"><button onClick={loadTraced}>4F plan (traced)</button><button onClick={loadPhoto}>4F photo (straighten)</button><button onClick={sample}>Use the sample home</button><a href="/"><button>Back to map</button></a></span>
+        <span className="row"><button onClick={loadTraced}>4F plan (traced)</button><button onClick={loadPhoto}>4F photo (straighten)</button><button onClick={sample}>Use the default floor</button><a href="/"><button>Back to map</button></a></span>
       </header>
       <div className="setup-body">
         <section className="plan">

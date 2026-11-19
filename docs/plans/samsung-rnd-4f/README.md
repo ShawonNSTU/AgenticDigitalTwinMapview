@@ -4,6 +4,8 @@ The pipeline is verified end to end on a real floor: a phone photo of the printe
 traced into 25 rooms (including a slanted outer wall) with the CCTV cameras at their marked positions, rendered,
 opened as device twins and queried through the agent.
 
+With these files in place the web app starts on this floor by default (no upload needed).
+
 The drawing shows CCTV camera positions and IDs and staff names, so its files are **not committed** to this public
 repository. To use them, copy the private bundle into place:
 

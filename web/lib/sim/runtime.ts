@@ -3,6 +3,9 @@
 import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, scenarioName, scenarioAvailable } from './engine';
 import building from './data/building.json';
 import sampleDevices from './data/devices.json';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { roomColor, roomKey, toBuilding, type PlanRoom, type Pt } from '@/lib/layout';
 
 type Override = Record<string, unknown>;
 interface Runtime {
@@ -138,10 +141,53 @@ export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan:
   return buildingState();
 }
 
+/**
+ * Default floor. If a preset is installed in public/presets (the private reference floor), the platform starts with it,
+ * so the map shows a real floor without an upload; otherwise it uses the small built-in sample home.
+ */
+const PRESET = 'samsung-rnd-4f';
+export function defaultPreset() {
+  const dir = path.join(process.cwd(), 'public', 'presets');
+  const json = path.join(dir, `${PRESET}.json`);
+  if (!existsSync(json)) return null;
+  const pre = JSON.parse(readFileSync(json, 'utf8'));
+  const img = path.join(process.cwd(), 'public', pre.image);
+  if (!existsSync(img)) return null;
+  const taken = new Set<string>();
+  const rooms: PlanRoom[] = pre.rooms.map((r: { name: string; pts: Pt[] }, i: number) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts, color: roomColor(i) }; });
+  const size = jpegSize(readFileSync(img));
+  const mime = pre.image.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  return toBuilding(rooms, pre.devices, pre.widthM, size ? size[1] / size[0] : 1400 / 1930, `data:${mime};base64,${readFileSync(img).toString('base64')}`, pre.furniture ?? []);
+}
+
+/** Width and height of a JPEG from its SOF marker (no image library needed). */
+function jpegSize(b: Buffer): [number, number] | null {
+  let i = 2;
+  while (i < b.length - 9) {
+    if (b[i] !== 0xff) { i++; continue; }
+    const m = b[i + 1];
+    if (m >= 0xc0 && m <= 0xc3) return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
+    i += 2 + b.readUInt16BE(i + 2);
+  }
+  return null;
+}
+
 export function resetBuilding() {
+  const pre = defaultPreset();
+  if (pre) {
+    const out = setBuilding(pre.rooms, pre.devices, undefined, pre.plan, pre.furniture);
+    LAYOUT.custom = false;
+    return { ...out, custom: false };
+  }
   setLayout(building.rooms, sampleDevices, { outdoorPad: building.outdoorPad, custom: false });
   rt.plan = null;
   rt.furniture = [];
   rt.overrides = {};
   return buildingState();
+}
+
+// Start on the default floor (once per server process).
+if (!(globalThis as { __twinBooted?: boolean }).__twinBooted) {
+  (globalThis as { __twinBooted?: boolean }).__twinBooted = true;
+  try { if (defaultPreset()) resetBuilding(); } catch (e) { console.warn('default floor not loaded:', (e as Error).message); }
 }

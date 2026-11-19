@@ -123,7 +123,7 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
 The pipeline is verified on a real floor: the Samsung Bangladesh R&D Center 4th floor, from a phone photo of the printed
 sheet (25 rooms incl. a slanted outer wall, the CCTV cameras at their marked positions, two AC rooms, scale from a
 dimension line). Its files are private (camera positions, staff names) and not in the public repo; see
-`docs/plans/samsung-rnd-4f/README.md`. Every change to the pipeline must keep this floor working end to end:
+`docs/plans/samsung-rnd-4f/README.md`. When its files are installed the platform starts on this floor by default. Every change to the pipeline must keep this floor working end to end:
 photo → straighten → rooms → devices → 3D → twins → agent.
 
 ## 4b. Accuracy rules for rendering, piping and the device twin

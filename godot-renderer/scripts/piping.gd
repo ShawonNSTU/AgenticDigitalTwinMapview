@@ -18,7 +18,9 @@ const LIQUID := Color("4c8dff")
 const GAS := Color("ff8a3d")
 
 var _runs := {}  # ac id -> {"liquid": [mats], "gas": [mats], "length": metres}
-var traced := ""
+var traced := ""  # AC id whose circuit is traced; "" = none
+var _beads_liquid: Beads
+var _beads_gas: Beads
 var odu_id := ""
 
 
@@ -31,6 +33,10 @@ func build() -> void:
 	if odus.is_empty():
 		return
 	odu_id = odus[0].id
+	_beads_liquid = Beads.new().setup(LIQUID, 0.03)
+	_beads_gas = Beads.new().setup(GAS, 0.03)
+	add_child(_beads_liquid)
+	add_child(_beads_gas)
 	var acs: Array = Store.devices.filter(func(d): return d.type == "ac")
 	var base := PlanGeo.wall_segments(Store.rooms)
 	# Each indoor unit is piped to the nearest outdoor unit (one circuit per indoor unit).
@@ -69,6 +75,7 @@ func build() -> void:
 			pts.append(Vector3(ac.x, ac.y + 0.14, ac.z))
 			var mats := Tube.build(self, pts, GAS if side == "gas" else LIQUID, RADIUS)
 			run[side] = mats
+			run[side + "_bead"] = (_beads_gas if side == "gas" else _beads_liquid).add_line(pts, 0.6)
 			if side == "liquid":
 				for k in pts.size() - 1:
 					run.length += (pts[k] as Vector3).distance_to(pts[k + 1])
@@ -95,6 +102,8 @@ func refresh() -> void:
 		var trace_k := 1.0 if traced == "" else (2.2 if id == traced else 0.25)
 		var liquid_glow := clampf(1.0 - (sh - 5.0) / 12.0, 0.3, 1.0) * trace_k
 		var gas_glow := clampf(dis / 74.0, 0.5, 1.8) * trace_k
+		_beads_liquid.set_speed(_runs[id].liquid_bead, speed)
+		_beads_gas.set_speed(_runs[id].gas_bead, -speed)  # gas returns to the outdoor unit
 		for m in _runs[id].liquid:
 			m.set_shader_parameter("speed", speed)
 			m.set_shader_parameter("glow", liquid_glow)
