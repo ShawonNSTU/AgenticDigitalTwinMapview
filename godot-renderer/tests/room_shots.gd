@@ -26,7 +26,7 @@ func _ready() -> void:
 					box = box.expand(v)
 				main.rig.jump(Vector3(c.x, 0.4, c.y), clampf(box.size.length() * 0.7, 5.0, 26.0), deg_to_rad(-42.0), deg_to_rad(-30.0))
 				await get_tree().create_timer(0.6).timeout
-				_shot("%s/%d_%s.png" % [out, i, n.to_snake_case()])
+				_shot("%s/%d_%s.png" % [out, i, n.to_snake_case().replace("/", "")])
 				i += 1
 	print("ROOM SHOTS OK")
 	get_tree().quit(0)
