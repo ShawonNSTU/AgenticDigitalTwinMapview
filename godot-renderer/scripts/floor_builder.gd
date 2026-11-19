@@ -16,7 +16,7 @@ func build() -> void:
 	for r in Store.rooms:
 		var poly := PlanGeo.room_poly(r)
 		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(r.color).lerp(Color("d9dde3"), 0.55)
+		mat.albedo_color = Color(r.color).lerp(Color("d9dde3"), 0.3)  # keep the room's tint visible in daylight
 		mat.roughness = 0.9
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		_finish(mat, str(r.name).to_lower())
@@ -58,7 +58,8 @@ func build() -> void:
 		pad.albedo_color = Color("9aa3ad")
 		_box(Vector3(Store.outdoor_pad.x, -0.02, Store.outdoor_pad.z), Vector3(1.6, 0.04, 1.2), pad)
 	var ground := StandardMaterial3D.new()
-	ground.albedo_color = Color("7d8796")  # shows as a soft grey under the scene lighting, a step darker than the floor
+	ground.albedo_color = Color("cfd6e0")  # soft grey around the building, the same at any light level
+	ground.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	var fr: Rect2 = Store.floor_rect()
 	_box(Vector3(fr.get_center().x, -SLAB - 0.03, fr.get_center().y), Vector3(fr.size.x + 60, 0.02, fr.size.y + 60), ground)
 	if Store.plan_texture:

@@ -1,6 +1,7 @@
 extends Node3D
 ## Builds the scene from data and wires Bus signals to the floor, devices, piping, detail view and camera.
 
+const SUN := 0.7  # daylight strength: enough for shading without washing light floors out to white
 var rig: CameraRig
 var floor_builder: FloorBuilder
 var piping: Piping
@@ -209,7 +210,7 @@ func _environment() -> void:
 	env.background_color = Color("dfe5ed")  # light theme, close to the page's stage
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("aab4c3")
-	env.ambient_light_energy = 0.55
+	env.ambient_light_energy = 0.4
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
 	env.glow_intensity = 0.3
@@ -220,7 +221,7 @@ func _environment() -> void:
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
-	sun.light_energy = 1.1
+	sun.light_energy = SUN
 	add_child(sun)
 
 
@@ -253,7 +254,7 @@ func _hud() -> void:
 func _on_time(t: float) -> void:
 	var day := clampf((t - 6.0) / 14.0, 0.0, 1.0)
 	sun.rotation = Vector3(-lerpf(0.15, PI - 0.15, day) if t < 20.0 else -0.05, deg_to_rad(-35.0), 0)
-	sun.light_energy = 1.1 if t < 19.0 else lerpf(1.1, 0.15, clampf((t - 19.0) / 2.0, 0.0, 1.0))
+	sun.light_energy = SUN if t < 19.0 else lerpf(SUN, 0.15, clampf((t - 19.0) / 2.0, 0.0, 1.0))
 	hud.text = "%02d:%02d   ·   scenario: %s" % [int(t), int((t - floorf(t)) * 60.0), Store.scenario]
 
 
