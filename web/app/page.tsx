@@ -27,6 +27,10 @@ export default function Home() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // the "no devices yet" hint can be closed; remembered in this browser
+  const [hintClosed, setHintClosed] = useState(false);
+  useEffect(() => { try { setHintClosed(localStorage.getItem('twin.hintClosed') === '1'); } catch { /* storage unavailable */ } }, []);
+  const closeHint = () => { setHintClosed(true); try { localStorage.setItem('twin.hintClosed', '1'); } catch { /* storage unavailable */ } };
   const stage = useRef<HTMLElement>(null);
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'ok') => {
@@ -111,8 +115,9 @@ export default function Home() {
         <TwinView onEvent={onEvent} />
         <DevicePalette stage={stage} hover={hover} counts={counts} />
         <MapToolbar />
-        {ready && devices.length === 0 && (
+        {ready && devices.length === 0 && !hintClosed && (
           <div className="empty-hint glass">
+            <button className="hint-close" aria-label="Close" title="Close" onClick={closeHint}>✕</button>
             <b>This floor has no SmartThings devices yet</b>
             <span>Drag devices from the palette onto any room. Wall units snap to the nearest wall, locks go beside a door, lights on the ceiling.</span>
           </div>
