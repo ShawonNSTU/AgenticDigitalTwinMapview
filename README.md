@@ -23,7 +23,7 @@ All device data is simulated.
 |---|---|---|
 | [`agent-backend/`](agent-backend) | AI agent: device search, insights, control (with confirmation), map actions | Python, FastAPI, Claude tool use |
 | [`godot-renderer/`](godot-renderer) | 3D renderer: floor, devices, piping, opened-device internals | Godot 4.7, GDScript |
-| [`web/`](web) | Product UI (3D view, side panel, chat, timeline) + simulated device platform API | Next.js, TypeScript |
+| [`web/`](web) | Product UI (3D view, device palette, side panel, chat) + simulated device platform API | Next.js, TypeScript |
 | [`docs/`](docs) | Build brief ([PROMPT.md](docs/PROMPT.md)) and contracts between the parts | |
 
 ```
@@ -61,7 +61,7 @@ godot --headless --path godot-renderer --export-release "Web"   # writes web/pub
 ```
 
 Open http://localhost:3000. Without the Godot web export the page shows a placeholder in place of the 3D view;
-the device list, side panel, timeline and chat still work. `next start` only serves files that existed when it
+the device list, side panel and chat still work. `next start` only serves files that existed when it
 started, so restart it after exporting.
 
 To use your own plan: open http://localhost:3000/setup (or "Upload floor plan" in the header), upload the image and
@@ -87,7 +87,7 @@ devices), stored in `web/lib/presets/samsung-rnd-4f.json` without the drawing. W
 editor's "4F plan (traced)" and "4F photo" samples work. "Default floor" in the editor returns to it.
 
 Try in the chat: "which air conditioners have a problem?", "what's wrong with ODU-01", "set AC-01 to 24 degrees",
-"unlock the front door" (the agent asks for confirmation first). Pick a scenario in the timeline bar.
+"unlock the front door" (the agent asks for confirmation first).
 
 ## Tests
 

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TwinView from '@/components/TwinView';
 import DevicePanel from '@/components/DevicePanel';
 import ChatPanel from '@/components/ChatPanel';
-import Timeline from '@/components/Timeline';
 import DevicePalette, { DeviceIcon, type Hover } from '@/components/DevicePalette';
 import MapToolbar from '@/components/MapToolbar';
 import { send, type FromRenderer } from '@/lib/bridge';
@@ -147,7 +146,6 @@ export default function Home() {
           </>
         )}
       </aside>
-      <footer><Timeline sim={sim} /></footer>
     </main>
   );
 }
