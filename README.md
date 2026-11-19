@@ -43,14 +43,17 @@ pip install -e ".[dev]"
 cp .env.example .env        # add ANTHROPIC_API_KEY, or leave empty for demo mode
 uvicorn app.main:app --reload --port 8000
 
-# 3. Renderer: desktop (Forward+), reads the same platform
+# 3. Renderer
+#    desktop showcase (Forward+), reads the same platform:
 godot --path godot-renderer
-#    or export the web build into web/public/godot/ (needs 4.7 export templates)
-godot --headless --path godot-renderer --export-release "Web"
+#    web build shown inside the page (install the web templates once, then export, then restart the web app):
+godot-renderer/tools/install_web_templates.sh
+godot --headless --path godot-renderer --export-release "Web"   # writes web/public/godot/
 ```
 
 Open http://localhost:3000. Without the Godot web export the page shows a placeholder in place of the 3D view;
-the device list, side panel, timeline and chat still work.
+the device list, side panel, timeline and chat still work. `next start` only serves files that existed when it
+started, so restart it after exporting.
 
 To use your own plan: open http://localhost:3000/setup (or "Upload floor plan" in the header).
 Room detection needs `ANTHROPIC_API_KEY`; without it, draw the rooms by dragging on the plan.
@@ -68,6 +71,8 @@ cd godot-renderer && godot --headless --path . -- --smoke   # drives every bridg
 
 ## Status
 
-Phase 1 scaffold: all three parts run together end to end. Device bodies and parts in Godot are primitives;
-the rendering showcase (modelled parts, GI, section plane, thermal mode, tour) is phases 2–9 in
-[docs/PROMPT.md](docs/PROMPT.md).
+All three parts run together end to end, verified with the Godot web build inside the page (WebGL 2) and the
+desktop build on Forward+ (Vulkan). Rooms can be any polygon; piping routes along walls; the device twin shows
+parts where they sit in the real unit, with internal flows driven by live readings. See "Accuracy rules" in
+[docs/PROMPT.md](docs/PROMPT.md). Part shapes are still primitives; modelled parts, GI, section plane, thermal
+mode and the guided tour are phases 2–9.

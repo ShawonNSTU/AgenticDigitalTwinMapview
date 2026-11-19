@@ -11,19 +11,14 @@ var _plan_mat: StandardMaterial3D
 
 
 func build() -> void:
-	var walls := {}
 	for r in Store.rooms:
-		var x0: float = r.x[0]
-		var x1: float = r.x[1]
-		var z0: float = r.z[0]
-		var z1: float = r.z[1]
+		var poly := PlanGeo.room_poly(r)
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(r.color).lerp(Color("d9dde3"), 0.55)
 		mat.roughness = 0.9
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		_slabs[r.key] = mat
-		_box(Vector3((x0 + x1) / 2, -SLAB / 2, (z0 + z1) / 2), Vector3(x1 - x0 - 0.02, SLAB, z1 - z0 - 0.02), mat)
-		for e in [[x0, z0, x1, z0], [x0, z1, x1, z1], [x0, z0, x0, z1], [x1, z0, x1, z1]]:
-			walls["%.2f,%.2f,%.2f,%.2f" % e] = e  # shared edges are built once
+		_slab(poly, mat)
 		var label := Label3D.new()
 		label.text = r.name
 		label.font_size = 48
@@ -31,17 +26,20 @@ func build() -> void:
 		label.modulate = Color(0.15, 0.18, 0.22, 0.75)
 		label.outline_size = 0
 		label.rotation = Vector3(-PI / 2, 0, 0)
-		label.position = Vector3((x0 + x1) / 2, 0.01, (z0 + z1) / 2)
+		var c := PlanGeo.interior_point(poly)
+		label.position = Vector3(c.x, 0.012, c.y)
 		add_child(label)
 	var wall_mat := StandardMaterial3D.new()
 	wall_mat.albedo_color = Color("f2f3f5")
 	wall_mat.roughness = 0.8
 	var h: float = Store.wall_height
-	for e in walls.values():
-		var a := Vector3(e[0], 0, e[1])
-		var b := Vector3(e[2], 0, e[3])
-		var size := Vector3(maxf(absf(b.x - a.x), WALL), h, maxf(absf(b.z - a.z), WALL))
-		_walls.append(_box((a + b) / 2 + Vector3(0, h / 2, 0), size, wall_mat))
+	# Walls follow every room edge (any angle); shared walls are built once.
+	for s in PlanGeo.wall_segments(Store.rooms):
+		var a: Vector2 = s[0]
+		var b: Vector2 = s[1]
+		var w := _box(Vector3((a.x + b.x) / 2, h / 2, (a.y + b.y) / 2), Vector3(a.distance_to(b) + WALL, h, WALL), wall_mat)
+		w.rotation.y = -atan2(b.y - a.y, b.x - a.x)
+		_walls.append(w)
 	if Store.outdoor_pad.has("x"):
 		var pad := StandardMaterial3D.new()
 		pad.albedo_color = Color("9aa3ad")
@@ -64,6 +62,30 @@ func build() -> void:
 		plane.material_override = _plan_mat
 		plane.position = Vector3(pb.get_center().x, 0.006, pb.get_center().y)
 		add_child(plane)
+
+
+## Floor slab for any simple polygon: triangulated top face plus side faces.
+func _slab(poly: PackedVector2Array, mat: Material) -> void:
+	var tris := Geometry2D.triangulate_polygon(poly)
+	if tris.is_empty():
+		poly = Geometry2D.convex_hull(poly)  # self-intersecting outline: fall back to its hull
+		tris = Geometry2D.triangulate_polygon(poly)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	for i in tris:
+		st.add_vertex(Vector3(poly[i].x, 0, poly[i].y))
+	for k in poly.size():
+		var a := poly[k]
+		var b := poly[(k + 1) % poly.size()]
+		var n := Vector3(b.y - a.y, 0, -(b.x - a.x)).normalized()
+		st.set_normal(n)
+		for v in [Vector3(a.x, 0, a.y), Vector3(b.x, 0, b.y), Vector3(b.x, -SLAB, b.y), Vector3(a.x, 0, a.y), Vector3(b.x, -SLAB, b.y), Vector3(a.x, -SLAB, a.y)]:
+			st.add_vertex(v)
+	var m := MeshInstance3D.new()
+	m.mesh = st.commit()
+	m.material_override = mat
+	add_child(m)
 
 
 ## Tint rooms by the worst device health inside them (the "temperature" layer stand-in).

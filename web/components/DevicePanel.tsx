@@ -10,6 +10,7 @@ type Device = { id: string; label: string; name: string; health: string; parts: 
 export default function DevicePanel({ id, t, onClose, onSelect }: { id: string; t: number; onClose: () => void; onSelect: (id: string) => void }) {
   const [d, setD] = useState<Device | null>(null);
   const [step, setStep] = useState(0);
+  const [exploded, setExploded] = useState(true);
   useEffect(() => { setStep(0); }, [id]);
   useEffect(() => { let on = true; fetch(`/api/devices/${id}`).then(r => r.json()).then(x => on && setD(x)); return () => { on = false; }; }, [id, t]);
   if (!d) return <div className="panel">Loading…</div>;
@@ -18,7 +19,7 @@ export default function DevicePanel({ id, t, onClose, onSelect }: { id: string; 
   return (
     <div className="panel">
       <div className="row between"><div><b>{d.id} · {d.label}</b><div className="muted">{d.name}</div></div><span className={`badge ${d.health}`}>{d.health}</span></div>
-      <div className="row"><button onClick={() => send({ type: 'openDevice', id })}>Open in place</button><button onClick={() => { send({ type: 'closeDevice' }); onClose(); }}>Back to floor</button></div>
+      <div className="row"><button onClick={() => { send({ type: 'openDevice', id }); setExploded(true); }}>Open in place</button><button onClick={() => { send({ type: 'setLayer', layer: 'exploded', on: !exploded }); setExploded(!exploded); }}>{exploded ? 'Assembled view' : 'Exploded view'}</button><button onClick={() => { send({ type: 'closeDevice' }); onClose(); }}>Back to floor</button></div>
       {f && (
         <div className={`finding ${f.lvl}`}>
           <b>{f.title}</b><div className="muted">{f.conf}</div>

@@ -50,13 +50,20 @@ export function device(id: string, t = tick()) {
   return { ...s, overrides: o };
 }
 
+/** Readings the floor view needs for every refrigerant circuit, sent with each /api/floor poll. */
+const LIVE: Record<string, string[]> = { ac: ['on', 'fan', 'air', 'evIn', 'evOut', 'sh', 'room', 'set'], odu: ['hz', 'dis', 'suc', 'lp', 'hp', 'fan'] };
+function live(id: string, t: number) {
+  const d = device(id, t)!;
+  return Object.fromEntries(LIVE[d.type].map(k => [k, (d.readings as Record<string, unknown>)[k]]));
+}
+
 export function floor(t = tick()) {
   return {
     time: t,
     scenario: engineState.scen,
     layoutVersion: LAYOUT.version,
     rooms: ROOMS,
-    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h] }; }),
+    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h], ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
   };
 }
 

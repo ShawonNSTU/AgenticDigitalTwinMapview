@@ -24,13 +24,13 @@ P toggles piping, Esc goes back. Drag to orbit, right-drag to pan, wheel or pinc
 
 ## Export to the web app
 
-Install export templates for 4.7.x once (Editor → Manage Export Templates), then:
+Install the web export templates once (`tools/install_web_templates.sh`, or Editor → Manage Export Templates), then:
 
 ```
 godot --headless --path godot-renderer --export-release "Web"
 ```
 
-This writes `web/public/godot/index.html` (+ .wasm/.pck/.js). Reload the web app.
+This writes `web/public/godot/index.html` (+ .wasm/.pck/.js). Restart the web app (`next start` serves only files present at start).
 The preset turns thread support off, so no COOP/COEP headers are needed.
 
 ## Structure
@@ -44,12 +44,15 @@ scripts/floor_builder.gd   rooms, cut-away walls, labels, room status tint
 scripts/device_node.gd     device body, health ring, highlight beam, click area
 scripts/detail_view.gd     opened device: x-ray shell + exploded parts with live values + internal flows
 scripts/tube.gd            shared pipe builder (floor piping and internal flows)
+scripts/plan_geo.gd        room polygons, shared wall network, shortest path along walls
 scripts/piping.gd          liquid/gas lines ODU → each AC, flow speed by health, trace
 scripts/camera_rig.gd      orbit/pan/zoom, touch, fly_to
 shaders/pipe_flow.gdshader animated refrigerant dashes (works on WebGL 2)
 shaders/ghost.gdshader     fresnel x-ray shell
 data/*.json                sample home (same files as web/lib/sim/data); used until the platform sends a layout
-data/internal_flows.json   per device type: flows between parts (refrigerant, air, water, drain, power, signal…)
+data/internal_flows.json   per device type: flows between parts, medium, and the live reading that sets the speed
+data/part_layout.json      per device type: where each part sits inside the real unit (fractions of the body)
+tools/install_web_templates.sh  installs only the web export templates
 tests/smoke.gd             drives every bridge command; `godot --path . -- --smoke [--shot=out.png]`
 tests/demo_shots.gd        screenshots of the upload flow against a running platform:
                            `godot --path . -- --demo-shots=/tmp/out --open=AC-03 --part=filter`

@@ -108,13 +108,25 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
 ## 4a. Floor plan upload (web/app/setup, agent-backend/app/floorplan.py)
 
 1. **Upload:** PNG, JPEG or WebP. The browser downscales to at most 2000 px and sends a data URL.
-2. **Detect rooms:** `POST /api/floorplan/parse` → agent `POST /floorplan/parse`. Claude vision returns axis-aligned room rectangles in 0..1 image coordinates plus an optional outdoor point. Clean and clamp the result; never trust it blindly. Without an API key, explain and fall back to drawing.
-3. **Review:** rooms are drawn over the image; the user renames, deletes or redraws (drag to draw). L-shaped rooms are two rectangles with the same name.
+2. **Detect rooms:** `POST /api/floorplan/parse` → agent `POST /floorplan/parse`. Claude vision traces each room as a polygon (any shape: L-shapes, angled walls, notches) in 0..1 image coordinates, plus an optional outdoor point. Clean and clamp the result; never trust it blindly. Without an API key, explain and fall back to drawing.
+3. **Review:** room polygons are drawn over the image; the user renames, deletes, drags corners, or draws new rooms (drag for a rectangle, click corner by corner for any other shape).
 4. **Devices:** auto-place typical devices from room names (kitchen → AC, light, fridge, oven; laundry → washer, dryer, leak sensor; and so on) plus one outdoor unit outside the plan, or place by hand from a type list. Ids follow the type prefix (AC-01, LT-01, ODU-01).
 5. **Scale:** the user enters the real width of the plan in metres. Image fractions map to metres with the origin at the image centre.
 6. **Build:** `POST /api/building` replaces the layout in the platform. The simulator picks the devices each scenario acts on from the new layout (bedroom AC for blocked airflow, the two ACs farthest from the outdoor unit for the refrigerant leak, the leak sensor nearest the washer), so every scenario works on any plan.
 7. **Render:** the platform bumps `layoutVersion`; Godot sees it in `/api/floor`, loads `/api/building` and the plan image, rebuilds the scene and plays the plan-to-3D animation. The web page gets a `layout` SSE event and refreshes its lists.
-8. Later phases: walls and door gaps traced from the image (not only room rectangles), non-rectangular rooms, multiple floors, and importing real device lists instead of placing them.
+8. Later phases: door gaps and wall thickness traced from the image, curved walls, multiple floors, and importing real device lists instead of placing them.
+
+## 4b. Accuracy rules for rendering, piping and the device twin
+
+"Accurate" here means the picture never shows anything the data does not say. Concretely:
+
+- **Geometry:** rooms render from their exact polygons (triangulated slabs, walls along every edge at any angle, shared walls built once). Device positions and orientations come from the layout in metres; nothing is placed by eye.
+- **Piping routes:** refrigerant lines rise from the outdoor unit into the ceiling void, join the nearest wall and follow the shortest path along walls (Dijkstra over the wall network) to the wall the AC hangs on. They never cross a room. Circuits sharing a run stack like a pipe rack. Run lengths are computed and available.
+- **Pipe flow:** speed = 0.6 × compressor Hz / 58 (nominal), zero when the AC is off; liquid-line brightness falls as superheat rises above 5 K; gas-line brightness follows discharge temperature. All from `/api/floor` `live` readings, refreshed every second.
+- **Internal flows:** every flow names its medium and, where a reading exists, a rate rule (`{reading, max}`, `{reading, equals}` or boolean) in `internal_flows.json`. A part in fault stops every flow touching it and turns it red. Values on labels are the platform's values, unmodified.
+- **Part placement:** each part sits where it is inside the real unit (`part_layout.json`); exploded view moves parts outward but keeps their relative order on every axis.
+- **What is illustrative:** part shapes are primitives until the modelled glTF parts land (phase 5), and readings are simulated. Say so on screen ("Prototype · simulated data").
+- **Tests:** a headless smoke test drives every bridge command; screenshot tests render plan → 3D, top-down piping, assembled and exploded twins in both Compatibility (web) and Forward+ (Vulkan).
 
 ## 5. Visual direction
 
@@ -227,7 +239,7 @@ This is the core of the PoC. Each item must be visible during the tour and liste
 ### 7.4 Procedural geometry
 
 1. Generate walls, floors and door gaps from a `building.json` floor description using `SurfaceTool` / `ArrayMesh` (not hand-placed meshes).
-2. Generate the refrigerant pipe network (trunk plus branches to each AC) from the device list: route up from the outdoor unit, along a ceiling trunk, and drop to each unit. Build tubes with proper bends and joint spheres.
+2. Generate the refrigerant pipe network from the device list and the wall network: route up from the outdoor unit, along walls in the ceiling void by shortest path, and drop to each unit (section 4b). Build tubes with proper bends and joint spheres.
 3. Generate the 2D floor plan image at runtime from the same `building.json` into a `SubViewport` texture (walls, door gaps, room names, areas, grid), used for tour step 1.
 
 ### 7.5 4D (time) rendering
@@ -250,8 +262,9 @@ This is the core of the PoC. Each item must be visible during the tour and liste
 2. All other devices are hidden. A distance fog (or depth-based desaturation) pushes the room into the background.
 3. The shell goes to the ghost shader. Parts animate from their assembled positions to exploded positions. An explode/assemble toggle is available.
 4. Each part gets a floating label: name, live value, health colour. Clicking a part focuses the camera on it and charts its history.
-5. **Internal flows** (`godot-renderer/data/internal_flows.json`): each type lists flows between part keys, or between a part and `@body` (the device's own pipe or cable connection), with a medium: refrigerant liquid/gas, air, water, drain, power, signal, heat, light. Draw them as curved tubes with the flow shader. Speed and colour follow the health of the parts at both ends: normal flows, watch slows, fault stops and turns red. Show a legend of the media in view. While a device is open, other devices and the floor piping are hidden.
-6. Fans spin at their live speed. The AC louver opens to its live angle. The filter texture gets visibly dirtier as airflow drops. The coil turns frosty white below 3 °C.
+5. **Twin:** the device is shown at a readable size (about 1.1 m across, same orientation as installed) inside an x-ray shell, first **assembled** (each part where it sits in the real unit, `part_layout.json`), then **exploded**. The side panel toggles between the two.
+6. **Internal flows** (`godot-renderer/data/internal_flows.json`): each type lists flows between part keys, or between a part and `@body` (the device's own pipe or cable connection), with a medium: refrigerant liquid/gas, air, water, drain, power, signal, heat, light. Draw them as curved tubes with the flow shader. Speed comes from the live reading named in the flow's rate rule; a part in fault stops its flows and turns them red. Show a legend of the media in view. While a device is open, other devices and the floor piping are hidden.
+7. Fans spin at their live speed. The AC louver opens to its live angle. The filter texture gets visibly dirtier as airflow drops. The coil turns frosty white below 3 °C.
 
 ### 8.3 Side panel and chat (web/)
 

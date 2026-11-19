@@ -124,8 +124,9 @@ func show_label(on: bool) -> void:
 	label.visible = on
 
 
-func set_ghost(on: bool, ghost_mat: Material) -> void:
-	body.material_override = ghost_mat if on else body_mat
+## While the twin is open the real-size body hides; the twin shows the device instead.
+func set_ghost(on: bool, _ghost_mat: Material) -> void:
+	body.visible = not on
 	ring.visible = not on
 	label.visible = not on and _labels_on
 

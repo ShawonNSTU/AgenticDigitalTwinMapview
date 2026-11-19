@@ -18,7 +18,7 @@ Search without the model: `{ query, understood: {types, rooms, health, ids}, cou
 
 ## POST /floorplan/parse
 Body `{ image: dataURL }` (PNG, JPEG, WebP, GIF). Claude vision detects rooms.
-200 `{ rooms: [{name, x0, y0, x1, y1}], outdoor: {x, y} | null }` with coordinates as fractions of the image (y down).
+200 `{ rooms: [{name, points: [[x, y], ...]}], outdoor: {x, y} | null }`: each room is a polygon (any shape), coordinates as fractions of the image (y down).
 422 `{ error }` when there is no API key, the model returns no rooms, or the image is not a data URL.
 
 ## GET /health

@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DEVICE_TYPES, PREFIX, autoPlace, nextId, roomAt, roomColor, roomKey, toBuilding, type PlanDevice, type PlanRoom } from '@/lib/layout';
+import { DEVICE_TYPES, PREFIX, autoPlace, interior, nextId, rect, roomAt, roomColor, roomKey, toBuilding, type PlanDevice, type PlanRoom, type Pt } from '@/lib/layout';
 
 type Img = { url: string; w: number; h: number };
 const PAD = 0.08;
@@ -38,6 +38,9 @@ export default function PlanEditor() {
   const [type, setType] = useState('ac');
   const [widthM, setWidthM] = useState(20);
   const [drag, setDrag] = useState<{ x: number; y: number; x2: number; y2: number } | null>(null);
+  const [draft, setDraft] = useState<Pt[]>([]);          // polygon being drawn, click by click
+  const [hover, setHover] = useState<Pt | null>(null);
+  const [vtx, setVtx] = useState<{ room: number; i: number; at: Pt; moved: boolean } | null>(null); // corner pressed: click adds it, drag moves it
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const ar = img ? img.h / img.w : 0.6;
@@ -47,19 +50,57 @@ export default function PlanEditor() {
     const q = p.matrixTransform(s.getScreenCTM()!.inverse());
     return { x: q.x, y: q.y / ar }; // fractions of image width / height
   };
+  const addRoom = (pts: Pt[]) => setRooms(rs => { const name = `Room ${rs.length + 1}`; return [...rs, { key: roomKey(name, new Set(rs.map(r => r.key))), name, pts, color: roomColor(rs.length) }]; });
+  const near = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], (a[1] - b[1]) * ar) < 0.012;
+  function closeDraft() { if (draft.length >= 3) addRoom(draft); setDraft([]); }
+
+  // Rooms mode: drag = rectangle; click = add a corner (click the first corner, double-click or Enter to close).
   function down(e: React.PointerEvent) {
     if (!img) return;
     const p = pt(e);
-    if (mode === 'rooms') { (e.target as Element).setPointerCapture?.(e.pointerId); setDrag({ x: p.x, y: p.y, x2: p.x, y2: p.y }); }
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    if (mode === 'rooms') setDrag({ x: p.x, y: p.y, x2: p.x, y2: p.y });
     else setDevices(ds => [...ds, { id: nextId(type, ds), type, fx: p.x, fy: p.y }]);
   }
-  function move(e: React.PointerEvent) { if (drag) { const p = pt(e); setDrag({ ...drag, x2: p.x, y2: p.y }); } }
+  function move(e: React.PointerEvent) {
+    const p = pt(e);
+    setHover([p.x, p.y]);
+    if (vtx) {
+      const moved = vtx.moved || Math.hypot(p.x - vtx.at[0], (p.y - vtx.at[1]) * ar) > 0.006;
+      if (moved) {
+        // Move this corner in every room that shares it, so shared walls stay joined.
+        const [ox, oy] = vtx.at;
+        setRooms(rs => rs.map(r => ({ ...r, pts: r.pts.map(q => Math.abs(q[0] - ox) < 1e-6 && Math.abs(q[1] - oy) < 1e-6 ? [p.x, p.y] as Pt : q) })));
+        setVtx({ ...vtx, at: [p.x, p.y], moved: true });
+      }
+    }
+    else if (drag) setDrag({ ...drag, x2: p.x, y2: p.y });
+  }
+  /** Snap to an existing corner within a few pixels, so neighbouring rooms share exact wall lines. */
+  const snap = (p: Pt): Pt => {
+    for (const r of rooms) for (const q of r.pts) if (near(p, q)) return q;
+    return p;
+  };
+  function addCorner(p: Pt) {
+    if (draft.length >= 3 && near(p, draft[0])) closeDraft();
+    else setDraft(ds => [...ds, snap(p)]);
+  }
   function up() {
+    if (vtx) { const v = vtx; setVtx(null); if (!v.moved) addCorner(v.at); return; }
     if (!drag) return;
-    const [x0, x1] = [drag.x, drag.x2].sort((a, b) => a - b), [y0, y1] = [drag.y, drag.y2].sort((a, b) => a - b);
-    setDrag(null);
-    if (x1 - x0 < 0.02 || y1 - y0 < 0.02) return;
-    setRooms(rs => { const name = `Room ${rs.length + 1}`; return [...rs, { key: roomKey(name, new Set(rs.map(r => r.key))), name, x0, y0, x1, y1, color: roomColor(rs.length) }]; });
+    const d = drag; setDrag(null);
+    const moved = Math.hypot(d.x2 - d.x, (d.y2 - d.y) * ar) > 0.015;
+    if (moved && !draft.length) {
+      const [x0, x1] = [d.x, d.x2].sort((a, b) => a - b), [y0, y1] = [d.y, d.y2].sort((a, b) => a - b);
+      if (x1 - x0 > 0.02 && y1 - y0 > 0.02) addRoom(rect(x0, y0, x1, y1));
+      return;
+    }
+    addCorner([d.x, d.y]);
+  }
+  function key(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') closeDraft();
+    else if (e.key === 'Escape') setDraft([]);
+    else if (e.key === 'Backspace') setDraft(ds => ds.slice(0, -1));
   }
 
   async function detect() {
@@ -70,7 +111,7 @@ export default function PlanEditor() {
       const j = await r.json();
       if (!r.ok) { setMsg(j.error ?? j.detail ?? 'Room detection failed'); return; }
       const taken = new Set<string>();
-      setRooms(j.rooms.map((x: { name: string; x0: number; y0: number; x1: number; y1: number }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { ...x, key, color: roomColor(i) }; }));
+      setRooms(j.rooms.map((x: { name: string; points: Pt[] }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { name: x.name, pts: x.points, key, color: roomColor(i) }; }));
       setOutdoor(j.outdoor);
       setMsg(`Found ${j.rooms.length} rooms. Check them, rename or redraw any that are off.`);
     } catch { setMsg('Room detection failed. Draw the rooms by hand.'); } finally { setBusy(false); }
@@ -99,18 +140,27 @@ export default function PlanEditor() {
           {!img ? (
             <label className="drop">
               <b>1. Upload a floor plan image</b><span className="muted">PNG, JPEG or WebP. A clean architectural plan works best.</span>
-              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => { const f = e.target.files?.[0]; if (f) { try { setImg(await loadImage(f)); setRooms([]); setDevices([]); setMsg('Detect rooms with AI, or drag on the plan to draw each room.'); } catch (err) { setMsg((err as Error).message); } } }} />
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => { const f = e.target.files?.[0]; if (f) { try { setImg(await loadImage(f)); setRooms([]); setDevices([]); setMsg('Detect rooms with AI, or draw each room on the plan (any shape).'); } catch (err) { setMsg((err as Error).message); } } }} />
             </label>
           ) : (
-            <svg ref={svg} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} className={mode}>
+            <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={mode}>
               <rect x={-PAD} y={-PAD} width={1 + 2 * PAD} height={ar + 2 * PAD} fill="#1a2028" />
               <image href={img.url} x={0} y={0} width={1} height={ar} preserveAspectRatio="none" />
-              {rooms.map(r => (
+              {rooms.map((r, k) => { const c = interior(r.pts); return (
                 <g key={r.key}>
-                  <rect x={r.x0} y={r.y0 * ar} width={r.x1 - r.x0} height={(r.y1 - r.y0) * ar} fill={r.color} fillOpacity={0.35} stroke={r.color} strokeWidth={0.003} />
-                  <text x={(r.x0 + r.x1) / 2} y={(r.y0 + r.y1) / 2 * ar} fontSize={fs} textAnchor="middle" fill="#111">{r.name}</text>
+                  <polygon points={r.pts.map(([x, y]) => `${x},${y * ar}`).join(' ')} fill={r.color} fillOpacity={0.35} stroke={r.color} strokeWidth={0.003} />
+                  <text x={c[0]} y={c[1] * ar} fontSize={fs} textAnchor="middle" fill="#111">{r.name}</text>
+                  {mode === 'rooms' && r.pts.map(([x, y], i) => (
+                    <circle key={i} cx={x} cy={y * ar} r={0.006} fill="#fff" stroke={r.color} strokeWidth={0.003} style={{ cursor: 'move' }}
+                      onPointerDown={e => { e.stopPropagation(); (e.currentTarget.ownerSVGElement as Element).setPointerCapture?.(e.pointerId); setVtx({ room: k, i, at: [x, y], moved: false }); }} />
+                  ))}
+                </g>); })}
+              {draft.length > 0 && (
+                <g pointerEvents="none">
+                  <polyline points={[...draft, ...(hover ? [hover] : [])].map(([x, y]) => `${x},${y * ar}`).join(' ')} fill="#4c8dff" fillOpacity={0.15} stroke="#4c8dff" strokeWidth={0.003} />
+                  {draft.map(([x, y], i) => <circle key={i} cx={x} cy={y * ar} r={i === 0 ? 0.008 : 0.005} fill="#4c8dff" />)}
                 </g>
-              ))}
+              )}
               {drag && <rect x={Math.min(drag.x, drag.x2)} y={Math.min(drag.y, drag.y2) * ar} width={Math.abs(drag.x2 - drag.x)} height={Math.abs(drag.y2 - drag.y) * ar} fill="#4c8dff" fillOpacity={0.25} stroke="#4c8dff" strokeWidth={0.003} />}
               {devices.map(d => (
                 <g key={d.id} onPointerDown={e => { if (mode === 'devices' && e.shiftKey) { e.stopPropagation(); setDevices(ds => ds.filter(x => x.id !== d.id)); } }}>
@@ -126,6 +176,7 @@ export default function PlanEditor() {
             {msg && <div className="muted">{msg}</div>}
             <b>2. Rooms</b>
             <div className="row"><button className="pri" disabled={!img || busy} onClick={detect}>Detect rooms with AI</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
+            {mode === 'rooms' && img && <div className="muted">Drag for a rectangle. For any other shape click each corner, then click the first corner (or double-click, or Enter). Click an existing corner to reuse it; drag a white dot to move it (rooms sharing it move too). Backspace undoes a corner, Esc cancels.</div>}
             {rooms.map((r, i) => (
               <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input value={r.name} onChange={e => rename(i, e.target.value)} /><button onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
             ))}

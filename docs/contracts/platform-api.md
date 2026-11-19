@@ -4,7 +4,9 @@ Base URL: the Next.js app (`http://localhost:3000` in development). All response
 Time `t` is in hours (6.0 to 22.0). Health is `ok`, `watch` or `fault`.
 
 ## GET /api/floor
-`{ time, scenario, layoutVersion, rooms: [{key, name, x:[x0,x1], z:[z0,z1], color}], devices: [{id, type, label, room, name, position:[x,y,z], rotationY, health, healthLabel}] }`
+`{ time, scenario, layoutVersion, rooms: [{key, name, x:[x0,x1], z:[z0,z1], poly?: [[x,z]...], color}], devices: [{id, type, label, room, name, position:[x,y,z], rotationY, health, healthLabel, live?}] }`
+
+`poly` is the room outline (any shape); `x`/`z` are its bounding box. `live` is sent for refrigerant circuits only: ACs `{on, fan, air, evIn, evOut, sh, room, set}`, outdoor unit `{hz, dis, suc, lp, hp, fan}`. The renderer drives pipe flow from these.
 
 ## GET /api/devices?type=&room=&health=
 `{ count, devices: [...same items as floor.devices] }`
@@ -56,7 +58,7 @@ POST body (all optional): `{ scenario, t, playing, speed, fix }`. Changing scena
 `plan` bounds are the image's extent in metres on the floor (x, z).
 
 ## POST /api/building
-Body: `{ rooms: [{key, name, x:[x0,x1], z:[z0,z1], color}], devices: [{id, type, room, name, position:[x,y,z], rotationY?}], outdoorPad?, plan?: {dataUrl, x0, x1, z0, z1} }`.
+Body: `{ rooms: [{key, name, x:[x0,x1], z:[z0,z1], poly?: [[x,z]...], color}], devices: [{id, type, room, name, position:[x,y,z], rotationY?}], outdoorPad?, plan?: {dataUrl, x0, x1, z0, z1} }`.
 Replaces the layout, clears command overrides and the fix time, bumps `version`. 400 with a message on invalid input (unknown type, duplicate id, bad image).
 
 ## DELETE /api/building
@@ -66,7 +68,7 @@ Back to the sample home.
 The uploaded image (404 for the sample home).
 
 ## POST /api/floorplan/parse
-Body `{ image: dataURL }`. Proxied to the agent; returns `{ rooms: [{name, x0, y0, x1, y1}], outdoor: {x, y} | null }` in 0..1 image coordinates, or `{error}` (422 without an API key, 502 if the agent is down).
+Body `{ image: dataURL }`. Proxied to the agent; returns `{ rooms: [{name, points: [[x, y]...]}], outdoor: {x, y} | null }` (room polygons) in 0..1 image coordinates, or `{error}` (422 without an API key, 502 if the agent is down).
 
 ## POST /api/chat
 Proxy to the agent. See `agent-api.md`.

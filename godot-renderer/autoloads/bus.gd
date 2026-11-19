@@ -17,6 +17,7 @@ signal time_changed(t: float)
 signal scenario_changed(key: String)
 signal health_changed(id: String, health: String)
 signal device_data(id: String, data: Dictionary)
+signal live_updated  # Store.live refreshed from /api/floor (about once a second)
 signal layout_changed  # a floor plan was uploaded (or reset); rebuild the scene from Store
 
 # Events back to the host page

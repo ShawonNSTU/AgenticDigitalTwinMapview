@@ -16,6 +16,12 @@ func _ready() -> void:
 	_shot(out + "/1_plan.png")
 	await get_tree().create_timer(3.2).timeout
 	_shot(out + "/2_map.png")
+	var main = get_parent()
+	main.rig.jump(main.rig.home_target, main.rig.home_distance * 0.95, deg_to_rad(-89.0), 0.0)
+	await get_tree().create_timer(0.3).timeout
+	_shot(out + "/2b_top.png")
+	main.rig.reset(0.1)
+	await get_tree().create_timer(0.3).timeout
 	var bad: Array = []
 	for id in Store.health:
 		if Store.health[id] != "ok":
@@ -25,7 +31,9 @@ func _ready() -> void:
 	_shot(out + "/3_highlight.png")
 	if open_id != "":
 		Bridge.handle({"type": "openDevice", "id": open_id})
-		await get_tree().create_timer(3.0).timeout
+		await get_tree().create_timer(0.8).timeout
+		_shot(out + "/4_assembled.png")
+		await get_tree().create_timer(2.6).timeout
 		_shot(out + "/4_open.png")
 		if part != "":
 			Bridge.handle({"type": "focusPart", "id": open_id, "part": part})

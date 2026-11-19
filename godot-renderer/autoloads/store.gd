@@ -14,6 +14,7 @@ var wall_height := 1.15
 var t := 10.0
 var scenario := "normal"
 var health: Dictionary = {}       # id -> "ok" | "watch" | "fault"
+var live: Dictionary = {}         # id -> live readings for ACs and the outdoor unit (refrigerant circuits)
 var open_id := ""                 # device whose internals are open
 var platform_url := "http://localhost:3000"
 var layout_version := 0           # 0 = bundled sample home (same as the platform's sample)
@@ -46,6 +47,8 @@ func _ready() -> void:
 	_building_req = HTTPRequest.new()
 	_plan_req = HTTPRequest.new()
 	for r in [_floor_req, _dev_req, _building_req, _plan_req]:
+		# In the browser, fetch() already decompresses gzip responses; asking Godot to do it again fails.
+		r.accept_gzip = not OS.has_feature("web")
 		add_child(r)
 	_building_req.request_completed.connect(_on_building)
 	_plan_req.request_completed.connect(_on_plan)
@@ -56,6 +59,7 @@ func _ready() -> void:
 	timer.autostart = true
 	timer.timeout.connect(_poll)
 	add_child(timer)
+	_poll.call_deferred()  # ask for the current layout right away, not after the first second
 	Bus.open_requested.connect(func(id, _p): open_id = id; _poll_device())
 	Bus.close_requested.connect(func(): open_id = "")
 
@@ -106,9 +110,12 @@ func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteAr
 	set_time(float(data.get("time", t)))
 	set_scenario(str(data.get("scenario", scenario)))
 	for d in data.get("devices", []):
+		if d.has("live"):
+			live[d.id] = d.live
 		if health.get(d.id, "") != d.health:
 			health[d.id] = d.health
 			Bus.health_changed.emit(d.id, d.health)
+	Bus.live_updated.emit()
 
 
 func _on_device(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
@@ -139,6 +146,7 @@ func _apply_layout(new_rooms: Array, new_devices: Array, pad: Dictionary, wall_h
 	wall_height = wall_h
 	by_id.clear()
 	health.clear()
+	live.clear()
 	for d in devices:
 		by_id[d.id] = d
 		health[d.id] = "ok"

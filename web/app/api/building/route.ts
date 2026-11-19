@@ -5,7 +5,7 @@ import { TYPES } from '@/lib/sim/engine';
 
 export const dynamic = 'force-dynamic';
 
-const Room = z.object({ key: z.string().regex(/^[a-z0-9_-]+$/), name: z.string().min(1), x: z.tuple([z.number(), z.number()]), z: z.tuple([z.number(), z.number()]), color: z.string() });
+const Room = z.object({ key: z.string().regex(/^[a-z0-9_-]+$/), name: z.string().min(1), x: z.tuple([z.number(), z.number()]), z: z.tuple([z.number(), z.number()]), poly: z.array(z.tuple([z.number(), z.number()])).min(3).max(200).optional(), color: z.string() });
 const Device = z.object({ id: z.string().min(2), type: z.string().refine(t => t in TYPES, 'unknown device type'), room: z.string(), name: z.string(), position: z.tuple([z.number(), z.number(), z.number()]), rotationY: z.number().optional() });
 const Body = z.object({
   rooms: z.array(Room).min(1).max(60),

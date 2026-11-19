@@ -74,7 +74,7 @@ func _build_world(animate: bool) -> void:
 	piping.build()
 	detail = DetailView.new()
 	world.add_child(detail)
-	detail.part_selected.connect(func(pos): rig.fly_to(pos.lerp(detail.device.global_position, 0.35) if detail.device else pos, 1.9))
+	detail.part_selected.connect(func(pos, size): rig.fly_to(pos.lerp(detail.centre(), 0.3), clampf(size * 4.0, 1.2, 2.6)))
 	detail.legend_changed.connect(func(text): legend.text = text)
 	legend.text = ""
 	var fr: Rect2 = Store.floor_rect()
@@ -187,9 +187,13 @@ func _on_open(id: String, part: String) -> void:
 		devices[other].visible = other == id
 	dev.set_highlight(false, false)
 	piping.visible = false
-	detail.open(dev, rig.yaw)
-	var dist: float = Store.types.get(dev.data.type, {}).get("cameraDistance", 2.5)
-	rig.fly_to(dev.global_position + Vector3(0, 0.15, 0), dist + 0.4, deg_to_rad(-18.0))
+	detail.open(dev)
+	# Look at the front of the device (rotationY 0 faces +z), slightly from above.
+	# Three-quarter view of the front (rotationY 0 faces +z), so depth inside the unit reads on screen.
+	rig.fly_to(detail.centre(), DetailView.TWIN * 2.0, deg_to_rad(-24.0), dev.rotation.y + deg_to_rad(35.0))
+	get_tree().create_timer(0.9).timeout.connect(func():
+		if detail.device == dev:
+			rig.fly_to(detail.centre(), DetailView.TWIN * 4.2, NAN, NAN, 0.7))
 	if part != "":
 		get_tree().create_timer(0.6).timeout.connect(func(): detail.focus_part(part))
 
@@ -216,6 +220,7 @@ func _on_layer(layer: String, on: bool) -> void:
 			for id in devices:
 				devices[id].show_label(on)
 		"temperature": floor_builder.tint_rooms(on)
+		"exploded": detail.set_exploded(on)
 
 
 func _unhandled_input(e: InputEvent) -> void:
