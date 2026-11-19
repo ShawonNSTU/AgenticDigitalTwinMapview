@@ -14,7 +14,7 @@ const COLORS = ['#8fb4f2', '#a8d8a0', '#c7b7ef', '#f2dc8f', '#8fd8d0', '#f2b8c6'
 export type Pt = [number, number];
 export type PlanRoom = { key: string; name: string; pts: Pt[]; color: string; label?: string; labelAt?: Pt; zone?: string };
 /** Interior item: centre in image fractions, size (w across, d front-to-back) as fractions of image width, rot = facing in radians (0 faces down the image). */
-export type PlanFurniture = { kind: string; fx: number; fy: number; fw: number; fd: number; rot: number };
+export type PlanFurniture = { kind: string; fx: number; fy: number; fw: number; fd: number; rot: number; suggested?: boolean };
 export const FURNITURE_KINDS = ['column', 'chair', 'task_chair', 'table', 'round_table', 'desk', 'workstation', 'sofa', 'armchair', 'bed', 'cabinet', 'shelf', 'rack', 'counter', 'sink', 'toilet', 'shower', 'stair', 'screen', 'railing', 'treadmill', 'bike', 'weight_rack', 'door', 'plant', 'locker', 'bench', 'stool', 'dispenser', 'vending', 'elec_panel'] as const;
 export type PlanNote = { text: string; fx: number; fy: number; size?: number; rot?: number };
 
@@ -122,10 +122,11 @@ export function autoPlace(rooms: PlanRoom[], keep: PlanDevice[], outdoor: { x: n
 }
 
 /** Convert the editor state to the POST /api/building body. widthM is the real width of the image in metres. */
-export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: number, aspect: number, dataUrl: string, furniture: PlanFurniture[] = [], notes: PlanNote[] = []) {
+export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: number, aspect: number, dataUrl: string, furniture: PlanFurniture[] = [], notes: PlanNote[] = [], title?: string) {
   const W = widthM, H = widthM * aspect;
   const X = (f: number) => +((f - 0.5) * W).toFixed(3), Z = (f: number) => +((f - 0.5) * H).toFixed(3);
   return {
+    ...(title ? { title } : {}),
     rooms: rooms.map(r => { const b = bbox(r.pts); return { key: r.key, name: r.name, x: [X(b.x0), X(b.x1)], z: [Z(b.y0), Z(b.y1)], poly: r.pts.map(([x, y]) => [X(x), Z(y)]), color: r.color,
       ...(r.label ? { label: r.label } : {}), ...(r.labelAt ? { labelAt: [X(r.labelAt[0]), Z(r.labelAt[1])] } : {}), ...(r.zone ? { zone: r.zone } : {}) }; }),
     devices: devices.map(d => {

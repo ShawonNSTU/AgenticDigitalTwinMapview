@@ -22,10 +22,12 @@ def test_parse_json_rejects_prose():
         parse_json("I can't see a plan")
 
 
-def test_detect_without_key_explains(monkeypatch):
+def test_bad_image_is_a_parse_error(monkeypatch):
     monkeypatch.setattr(floorplan, "ANTHROPIC_API_KEY", "")
-    with pytest.raises(ParseError, match="Draw the rooms by hand"):
-        asyncio.run(floorplan.detect_rooms("data:image/png;base64,AAAA"))
+    with pytest.raises(ParseError):
+        asyncio.run(floorplan.analyze_plan("data:image/png;base64,AAAA"))
+    with pytest.raises(ParseError):
+        asyncio.run(floorplan.analyze_plan("not a data url"))
 
 
 def test_photo_corners_passed_through():

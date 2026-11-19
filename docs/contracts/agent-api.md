@@ -17,9 +17,16 @@ Response: `text/event-stream`. Events, in any order, ending with `done`:
 Search without the model: `{ query, understood: {types, rooms, health, ids}, count, devices: [{id, label, room, health}] }`.
 
 ## POST /floorplan/parse
-Body `{ image: dataURL }` (PNG, JPEG, WebP, GIF). Claude vision detects rooms.
-200 `{ rooms: [{name, points: [[x, y], ...]}], outdoor: {x, y} | null, photo_corners: [[x, y] ×4] | null, furniture: [{kind, fx, fy, fw, fd, rot}] }`: photo_corners (TL, TR, BR, BL) is set when the image is a skewed photo and should be straightened first; each room is a polygon (any shape), coordinates as fractions of the image (y down).
-422 `{ error }` when there is no API key, the model returns no rooms, or the image is not a data URL.
+Body `{ image: dataURL }` (PNG, JPEG, WebP, GIF). Reads any floor plan: image processing (`app/plan_cv.py`, always),
+merged with Claude vision when `ANTHROPIC_API_KEY` is set.
+200 `{ rooms: [{name, label?, points: [[x, y], ...], source?}], doors: [{kind: "door", fx, fy, fw, fd, rot}], furniture: [{kind, fx, fy, fw, fd, rot}], outdoor: {x, y} | null, photo_corners: [[x, y] ×4] | null, width_m: number | null, scale_note: string | null, method: string }`.
+- `photo_corners` (TL, TR, BR, BL) is set when the image is a photo of a sheet taken at an angle; straighten it and read again.
+- Each room is a polygon (any shape) on the wall centre lines; `label` is the text printed on the plan, `source: "vision"` marks a room only the vision model found.
+- Doors sit on wall lines: centre `fx, fy`, opening `fw` (fraction of the image width), `rot` such that `(cos rot, -sin rot)` runs along the wall.
+- `width_m` is the estimated real width of the image in metres (from door widths, else wall thickness); `scale_note` says which.
+- `furniture` comes from the vision model only (empty without a key).
+All coordinates are fractions of the image (x right, y down).
+422 `{ error }` when no rooms are found, or the image is not a readable data URL.
 
 ## GET /health
 `{ ok, mode: "claude" | "demo", model, platform }`

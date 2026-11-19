@@ -23,7 +23,7 @@ const PALETTE := {
 	"belt": [Color("141518"), 0.0, 0.9], "plant": [Color("4f8f4a"), 0.0, 0.8], "pot": [Color("8d6e63"), 0.0, 0.7],
 	"led": [Color("3fb950"), 0.0, 0.5], "console": [Color("3b82f6"), 0.0, 0.4], "door": [Color("b08d6b"), 0.0, 0.6],
 	"frame": [Color("6b7078"), 0.6, 0.35], "arc": [Color("7aa7ff"), 0.0, 1.0], "glass": [Color(0.75, 0.88, 0.95, 0.28), 0.1, 0.05],
-	"mirror": [Color("cfd8e3"), 1.0, 0.05], "monitor": [Color("1a1c20"), 0.3, 0.3], "display": [Color("5b8def"), 0.0, 0.3],
+	"mirror": [Color("c9d6e3"), 0.35, 0.12], "monitor": [Color("1a1c20"), 0.3, 0.3], "display": [Color("5b8def"), 0.0, 0.3],
 	"keyboard": [Color("30343b"), 0.1, 0.6], "cushion": [Color("a3876f"), 0.0, 0.9], "leaf": [Color("3f7f3b"), 0.0, 0.85],
 	"partition2": [Color("d6dbe1"), 0.0, 0.5], "slide": [Color("e9f1ff"), 0.0, 0.4],
 	"wood_dark": [Color("8a6446"), 0.0, 0.55], "porcelain": [Color("f7f8fa"), 0.05, 0.15], "chrome": [Color("d4d8dd"), 0.55, 0.3],
@@ -324,8 +324,9 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_swap = {"carpetWhite": "porcelain", "metal": "chrome", "metalLight": "porcelain"}
 			_model("bathroomSink", Vector3.ZERO, w, d)
 			_swap = {}
-			_bm("mirror", Vector3(0, 1.35, -d * 0.48), Vector3(w * 0.9, 0.7, 0.02))
-			_bm("frame", Vector3(0, 1.35, -d * 0.49), Vector3(w * 0.94, 0.74, 0.01))
+			if d < 0.55:  # a wash basin gets a mirror; a counter-depth kitchen or laundry sink does not
+				_bm("mirror", Vector3(0, 1.35, -d * 0.48), Vector3(w * 0.9, 0.7, 0.02))
+				_bm("frame", Vector3(0, 1.35, -d * 0.49), Vector3(w * 0.94, 0.74, 0.01))
 		"toilet":
 			for sx in [-1, 1]:  # cubicle side panels
 				_bm("partition2", Vector3(sx * 0.6, 0.62, 0.15), Vector3(0.03, 1.0, 1.35))

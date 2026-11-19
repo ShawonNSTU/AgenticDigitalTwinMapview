@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import agent
-from .floorplan import ParseError, detect_rooms
+from .floorplan import ParseError, analyze_plan
 from .config import ANTHROPIC_API_KEY, AGENT_MODEL, CORS_ORIGINS, PLATFORM_URL
 from .platform import Platform, PlatformError
 from .search import search
@@ -56,8 +56,10 @@ async def chat(body: ChatIn):
 
 @app.post("/floorplan/parse")
 async def floorplan_parse(body: PlanIn):
-    """Detect rooms on an uploaded floor plan. Returns {rooms: [{name, x0, y0, x1, y1}], outdoor} in 0..1 image coordinates."""
+    """Read an uploaded floor plan. Works without an API key (image processing); with one, Claude vision adds names and
+    interior items. Returns rooms as polygons, doors, furniture, a scale estimate (width_m) and photo_corners when
+    the image is a photo of a sheet taken at an angle. All coordinates are 0..1 image fractions."""
     try:
-        return await detect_rooms(body.image)
+        return await analyze_plan(body.image)
     except ParseError as e:
         return JSONResponse({"error": str(e)}, status_code=422)

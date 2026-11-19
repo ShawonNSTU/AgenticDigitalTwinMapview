@@ -1,8 +1,9 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { straighten } from '@/lib/homography';
 import { useRouter } from 'next/navigation';
-import { DEVICE_TYPES, PREFIX, autoPlace, interior, nextId, rect, roomAt, roomColor, roomKey, toBuilding, type PlanDevice, type PlanFurniture, type PlanRoom, type Pt } from '@/lib/layout';
+import { interior, rect, roomColor, roomKey, toBuilding, type PlanFurniture, type PlanNote, type PlanRoom, type Pt } from '@/lib/layout';
+import { furnish } from '@/lib/furnish';
 
 type Img = { url: string; w: number; h: number };
 const PAD = 0.08;
@@ -33,13 +34,15 @@ export default function PlanEditor() {
   const svg = useRef<SVGSVGElement>(null);
   const [img, setImg] = useState<Img | null>(null);
   const [rooms, setRooms] = useState<PlanRoom[]>([]);
-  const [devices, setDevices] = useState<PlanDevice[]>([]);
-  const [furniture, setFurniture] = useState<PlanFurniture[]>([]);
-  const [outdoor, setOutdoor] = useState<{ x: number; y: number } | null>(null);
-  const [mode, setMode] = useState<'rooms' | 'devices' | 'straighten'>('rooms');
+  const [furniture, setFurniture] = useState<PlanFurniture[]>([]);   // items read from the plan
+  const [doors, setDoors] = useState<PlanFurniture[]>([]);           // kind 'door', on wall lines
+  const [suggest, setSuggest] = useState(true);                      // add suggested interiors to rooms without items
+  const [scaleNote, setScaleNote] = useState('');
+  const [notes, setNotes] = useState<PlanNote[]>([]);
+  const [title, setTitle] = useState('Uploaded floor plan');            // plan text (zone tags, dimensions) for the traced sample
+  const [mode, setMode] = useState<'rooms' | 'doors' | 'straighten'>('rooms');
   const [quad, setQuad] = useState<Pt[]>([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]); // TL TR BR BL, image fractions
   const [qdrag, setQdrag] = useState<number | null>(null);
-  const [type, setType] = useState('ac');
   const [widthM, setWidthM] = useState(20);
   const [drag, setDrag] = useState<{ x: number; y: number; x2: number; y2: number } | null>(null);
   const [draft, setDraft] = useState<Pt[]>([]);          // polygon being drawn, click by click
@@ -48,6 +51,8 @@ export default function PlanEditor() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const ar = img ? img.h / img.w : 0.6;
+  // suggested interiors depend on the real size, so they follow the plan width
+  const suggested = useMemo(() => (suggest ? furnish(rooms, furniture, doors, widthM, ar) : []), [suggest, rooms, furniture, doors, widthM, ar]);
 
   const pt = (e: React.PointerEvent) => {
     const s = svg.current!; const p = s.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
@@ -64,7 +69,7 @@ export default function PlanEditor() {
     const im = new Image(); im.src = img.url; await im.decode();
     const c = straighten(im, quad.map(([x, y]) => [x * img.w, y * img.h] as [number, number]));
     setImg({ url: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height });
-    setRooms([]); setDevices([]); setFurniture([]); setMode('rooms');
+    setRooms([]); setDoors([]); setFurniture([]); setMode('rooms');
     setMsg('Photo straightened. Now detect or draw the rooms.');
   }
 
@@ -78,7 +83,7 @@ export default function PlanEditor() {
       return;
     }
     if (mode === 'rooms') setDrag({ x: p.x, y: p.y, x2: p.x, y2: p.y });
-    else setDevices(ds => [...ds, { id: nextId(type, ds), type, fx: p.x, fy: p.y }]);
+    else toggleDoor([p.x, p.y]);
   }
   function move(e: React.PointerEvent) {
     const p = pt(e);
@@ -123,6 +128,25 @@ export default function PlanEditor() {
     else if (e.key === 'Backspace') setDraft(ds => ds.slice(0, -1));
   }
 
+  /** Doors mode: click a door to remove it, or a wall to add a 0.9 m door there (snapped onto the nearest room edge). */
+  function toggleDoor(p: Pt) {
+    const hit = doors.findIndex(d => Math.hypot(d.fx - p[0], (d.fy - p[1]) * ar) < Math.max(0.012, d.fw / 2));
+    if (hit >= 0) { setDoors(ds => ds.filter((_, i) => i !== hit)); return; }
+    let best: { q: Pt; ux: number; uz: number; dist: number } | null = null;
+    for (const r of rooms) for (let i = 0; i < r.pts.length; i++) {
+      const a = r.pts[i], b = r.pts[(i + 1) % r.pts.length];
+      const dx = b[0] - a[0], dz = (b[1] - a[1]) * ar, L = Math.hypot(dx, dz);
+      if (L < 1e-6) continue;
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * ar * dz) / (L * L)));
+      const q: Pt = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+      const dist = Math.hypot(q[0] - p[0], (q[1] - p[1]) * ar);
+      if (!best || dist < best.dist) best = { q, ux: dx / L, uz: dz / L, dist };
+    }
+    if (!best || best.dist > 0.03) { setMsg('Click on a wall (a room edge) to add a door there.'); return; }
+    const fw = 0.9 / widthM;
+    setDoors(ds => [...ds, { kind: 'door', fx: best!.q[0], fy: best!.q[1], fw, fd: 0.15 / widthM, rot: -Math.atan2(best!.uz, best!.ux) }]);
+  }
+
   async function detect() {
     if (!img) return;
     setBusy(true); setMsg('Detecting rooms…');
@@ -131,23 +155,27 @@ export default function PlanEditor() {
       const j = await r.json();
       if (!r.ok) { setMsg(j.error ?? j.detail ?? 'Room detection failed'); return; }
       const taken = new Set<string>();
-      setRooms(j.rooms.map((x: { name: string; points: Pt[] }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { name: x.name, pts: x.points, key, color: roomColor(i) }; }));
-      setOutdoor(j.outdoor);
+      setRooms(j.rooms.map((x: { name: string; label?: string; points: Pt[] }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { name: x.name, ...(x.label ? { label: x.label } : {}), pts: x.points, key, color: roomColor(i) }; }));
       setFurniture((j.furniture ?? []) as PlanFurniture[]);
+      setDoors((j.doors ?? []) as PlanFurniture[]);
+      if (j.width_m) setWidthM(j.width_m);
+      setScaleNote(j.width_m ? `Estimated ${j.scale_note ?? ''}.` : '');
       if (j.photo_corners) {
         // The AI sees a skewed photo: straighten first, then detect again on the flat image.
         setQuad(j.photo_corners); setMode('straighten'); setRooms([]);
         setMsg('This looks like a photo taken at an angle. Check the four corners of the drawing, press "Straighten", then detect rooms again.');
         return;
       }
-      setMsg(`Found ${j.rooms.length} rooms${j.furniture?.length ? ` and ${j.furniture.length} interior items` : ''}. Check them, rename or redraw any that are off.`);
+      const named = j.rooms.filter((x: { name: string }) => !/^Room \d+$/.test(x.name)).length;
+      setMsg(`Read with ${j.method ?? 'image processing'}: ${j.rooms.length} rooms (${named} named from the plan), ${j.doors?.length ?? 0} doors${j.furniture?.length ? `, ${j.furniture.length} interior items` : ''}. Check them: rename, redraw or delete any that are off, and fix doors in the Doors mode.`);
     } catch { setMsg('Room detection failed. Draw the rooms by hand.'); } finally { setBusy(false); }
   }
 
   async function build() {
     if (!img || !rooms.length) return;
     setBusy(true); setMsg('Building the 3D map…');
-    const body = toBuilding(rooms, devices, widthM, ar, img.url, furniture);
+    // no devices: they are dragged onto the 3D map afterwards
+    const body = toBuilding(rooms, [], widthM, ar, img.url, [...furniture, ...suggested, ...doors], notes, title.trim() || 'Uploaded floor plan');
     const r = await fetch('/api/building', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     setBusy(false);
     if (r.ok) router.push('/'); else setMsg((await r.json()).error ?? 'Could not save the layout');
@@ -163,14 +191,17 @@ export default function PlanEditor() {
   async function loadTraced() {
     const res = await fetch('/presets/samsung-rnd-4f.json');
     if (!res.ok) { setMsg('Reference floor files are not installed (web/public/presets/). See docs/plans/samsung-rnd-4f/README.md.'); return; }
-    const rnd4f: { title: string; image: string; widthM: number; rooms: { name: string; pts: number[][] }[]; devices: { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean }[]; furniture?: PlanFurniture[] } = await res.json();
+    const rnd4f: { title: string; image: string; widthM: number; rooms: { name: string; pts: number[][]; label?: string; labelAt?: number[]; zone?: string }[]; notes?: PlanNote[]; devices: { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean }[]; furniture?: PlanFurniture[] } = await res.json();
     setImg(await loadUrl(rnd4f.image));
     const taken = new Set<string>();
-    setRooms(rnd4f.rooms.map((r, i) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts as Pt[], color: roomColor(i) }; }));
-    setDevices(rnd4f.devices.map(d => ({ id: d.id, type: d.type, fx: d.fx, fy: d.fy, name: d.name, assumed: d.assumed })));
-    setFurniture(rnd4f.furniture ?? []);
+    setRooms(rnd4f.rooms.map((r, i) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts as Pt[], color: roomColor(i), ...(r.label ? { label: r.label } : {}), ...(r.labelAt ? { labelAt: r.labelAt as Pt } : {}), ...(r.zone ? { zone: r.zone } : {}) }; }));
+    setNotes(rnd4f.notes ?? []);
+    setTitle(rnd4f.title.replace(/\s*\(.*\)\s*$/, ''));
+    setFurniture((rnd4f.furniture ?? []).filter(f => f.kind !== 'door'));
+    setDoors((rnd4f.furniture ?? []).filter(f => f.kind === 'door'));
+    setScaleNote('');
     setWidthM(rnd4f.widthM); setMode('rooms');
-    setMsg(`${rnd4f.title}: ${rnd4f.rooms.length} rooms, ${(rnd4f.furniture ?? []).length} interior items, ${rnd4f.devices.length} devices. Interiors and the 22 cameras come from the sheet; other devices are an assumed fit-out. Review, then render.`);
+    setMsg(`${rnd4f.title}: ${rnd4f.rooms.length} rooms and ${(rnd4f.furniture ?? []).length} interior items traced from the sheet. Review, then render.`);
   }
 
   /** The original photo, with straightening corners on four building walls, to try the straighten step. */
@@ -178,7 +209,7 @@ export default function PlanEditor() {
     const ok = (await fetch('/presets/samsung-rnd-4f-photo.jpg', { method: 'HEAD' })).ok;
     if (!ok) { setMsg('Reference floor files are not installed (web/public/presets/). See docs/plans/samsung-rnd-4f/README.md.'); return; }
     setImg(await loadUrl('/presets/samsung-rnd-4f-photo.jpg'));
-    setRooms([]); setDevices([]);
+    setRooms([]); setDoors([]); setFurniture([]);
     setQuad([[0.2005, 0.0947], [0.7773, 0.1017], [0.7837, 0.6046], [0.1868, 0.6046]]);
     setMode('straighten');
     setMsg('Original photo of the 4F sheet. The handles mark four wall corners that form a rectangle in the building; press Straighten.');
@@ -197,19 +228,19 @@ export default function PlanEditor() {
           {!img ? (
             <label className="drop">
               <b>1. Upload a floor plan image</b><span className="muted">PNG, JPEG or WebP. A clean architectural plan works best.</span>
-              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => { const f = e.target.files?.[0]; if (f) { try { setImg(await loadImage(f)); setRooms([]); setDevices([]); setMsg('Detect rooms with AI, or draw each room on the plan (any shape).'); } catch (err) { setMsg((err as Error).message); } } }} />
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => { const f = e.target.files?.[0]; if (f) { try { setImg(await loadImage(f)); setTitle(f.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 60) || 'Uploaded floor plan'); setRooms([]); setDoors([]); setFurniture([]); setNotes([]); setScaleNote(''); setMsg('Press "Read the plan" to find rooms, doors and the scale, or draw each room by hand.'); } catch (err) { setMsg((err as Error).message); } } }} />
             </label>
           ) : (
             <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={mode}>
               <rect x={-PAD} y={-PAD} width={1 + 2 * PAD} height={ar + 2 * PAD} fill="#1a2028" />
               <image href={img.url} x={0} y={0} width={1} height={ar} preserveAspectRatio="none" />
-              {furniture.length > 0 && (
+              {furniture.length + suggested.length > 0 && (
                 <g pointerEvents="none" opacity={0.7}>
-                  {furniture.map((f, i) => {
+                  {[...furniture, ...suggested].map((f, i) => {
                     // footprint rectangle rotated to its facing direction (rot 0 faces down the image)
                     const w = f.fw, d = f.fd, c = Math.cos(f.rot), s = Math.sin(f.rot);
                     const pts = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([lx, lz]) => `${f.fx + lx * c + lz * s},${f.fy * ar - lx * s + lz * c}`).join(' ');
-                    return <polygon key={i} points={pts} fill={f.kind === 'column' ? '#555' : '#ffb020'} fillOpacity={0.35} stroke="#b26b00" strokeWidth={0.0012} />;
+                    return <polygon key={i} points={pts} fill={f.kind === 'column' ? '#555' : f.suggested ? '#7aa7ff' : '#ffb020'} fillOpacity={0.35} stroke={f.suggested ? '#3d6fd6' : '#b26b00'} strokeWidth={0.0012} strokeDasharray={f.suggested ? '0.003 0.002' : undefined} />;
                   })}
                 </g>
               )}
@@ -241,12 +272,10 @@ export default function PlanEditor() {
                 </g>
               )}
               {drag && <rect x={Math.min(drag.x, drag.x2)} y={Math.min(drag.y, drag.y2) * ar} width={Math.abs(drag.x2 - drag.x)} height={Math.abs(drag.y2 - drag.y) * ar} fill="#4c8dff" fillOpacity={0.25} stroke="#4c8dff" strokeWidth={0.003} />}
-              {devices.map(d => (
-                <g key={d.id} onPointerDown={e => { if (mode === 'devices' && e.shiftKey) { e.stopPropagation(); setDevices(ds => ds.filter(x => x.id !== d.id)); } }}>
-                  <circle cx={d.fx} cy={d.fy * ar} r={0.009} fill={d.type === 'odu' ? '#ff8a3d' : '#4c8dff'} stroke="#fff" strokeWidth={0.002} />
-                  <text x={d.fx + 0.012} y={d.fy * ar + 0.005} fontSize={fs * 0.75} fill="#fff" stroke="#000" strokeWidth={0.002} paintOrder="stroke">{d.id}</text>
-                </g>
-              ))}
+              {doors.map((d, i) => {
+                const ux = Math.cos(d.rot), uz = -Math.sin(d.rot), h = d.fw / 2;
+                return <line key={i} x1={d.fx - ux * h} y1={d.fy * ar - uz * h} x2={d.fx + ux * h} y2={d.fy * ar + uz * h} stroke="#22c55e" strokeWidth={0.006} strokeLinecap="round" style={{ cursor: mode === 'doors' ? 'pointer' : undefined }} />;
+              })}
             </svg>
           )}
         </section>
@@ -257,21 +286,25 @@ export default function PlanEditor() {
             <div className="row"><button disabled={!img} className={mode === 'straighten' ? 'on' : ''} onClick={() => setMode('straighten')}>Straighten photo</button>{mode === 'straighten' && <button className="pri" onClick={applyStraighten}>Straighten</button>}</div>
             {mode === 'straighten' && <div className="muted">Drag the four orange handles onto four points that form a rectangle in reality: the corners of the drawing frame, or four outer corners of the building. Then press Straighten.</div>}
             <b>2. Rooms</b>
-            <div className="row"><button className="pri" disabled={!img || busy} onClick={detect}>Detect rooms with AI</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
+            <div className="muted">Reading finds walls, rooms, doors and printed room names. With an Anthropic key on the agent, Claude also names rooms and lists furniture.</div>
+            <div className="row"><button className="pri" disabled={!img || busy} onClick={detect}>{busy ? 'Reading…' : 'Read the plan'}</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
             {mode === 'rooms' && img && <div className="muted">Drag for a rectangle. For any other shape click each corner, then click the first corner (or double-click, or Enter). Click an existing corner to reuse it; drag a white dot to move it (rooms sharing it move too). Backspace undoes a corner, Esc cancels.</div>}
             {rooms.map((r, i) => (
               <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input value={r.name} onChange={e => rename(i, e.target.value)} /><button onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
             ))}
-            <b>3. SmartThings devices</b>
-            <div className="row"><button disabled={!rooms.length} onClick={() => { setDevices(ds => autoPlace(rooms, ds, outdoor)); setMode('devices'); }}>Auto-place typical devices</button><button disabled={!img} className={mode === 'devices' ? 'on' : ''} onClick={() => setMode('devices')}>Place by hand</button></div>
-            {mode === 'devices' && <div className="row"><select value={type} onChange={e => setType(e.target.value)}>{DEVICE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label} ({PREFIX[t.key]})</option>)}</select><span className="muted">click to place · shift-click to remove</span></div>}
-            <div className="muted">{devices.length} devices{devices.length ? `: ${devices.map(d => d.id).join(', ')}` : ''}</div>
-            {furniture.length > 0 && <div className="row"><span className="muted">{furniture.length} interior items from the plan (shown in orange)</span><button onClick={() => setFurniture([])}>Remove</button></div>}
-            {devices.length > 0 && <button onClick={() => setDevices([])}>Remove all devices</button>}
-            <b>4. Build</b>
-            <label className="row">Plan width <input type="number" min={4} max={200} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} style={{ width: 80 }} /> m</label>
+            <b>3. Doors</b>
+            <div className="row"><button disabled={!rooms.length} className={mode === 'doors' ? 'on' : ''} onClick={() => setMode('doors')}>Edit doors</button><span className="muted">{doors.length} doors (green)</span></div>
+            {mode === 'doors' && <div className="muted">Click a wall to add a door, click a door to remove it. Walls are built along room edges and doors leave openings.</div>}
+            <b>4. Interiors</b>
+            {furniture.length > 0 && <div className="row"><span className="muted">{furniture.length} items read from the plan (orange)</span><button onClick={() => setFurniture([])}>Remove</button></div>}
+            <label className="row"><input type="checkbox" checked={suggest} onChange={e => setSuggest(e.target.checked)} style={{ width: 'auto' }} /> Suggest furniture by room type <span className="muted">({suggested.length} items, blue)</span></label>
+            <div className="muted">Suggestions use the room names (bedroom, kitchen, office…) and are a starting fit-out, not read from the drawing. Rename a room to change its furniture.</div>
+            <div className="muted">SmartThings devices are added on the 3D map afterwards: drag them from the palette into a room.</div>
+            <b>5. Scale and build</b>
+            <label className="row">Floor name <input value={title} onChange={e => setTitle(e.target.value)} /></label>
+            <label className="row">Plan width <input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} style={{ width: 80 }} /> m</label>
+            {scaleNote && <div className="muted">{scaleNote} Correct it if you know a real dimension.</div>}
             <button className="pri" disabled={!img || !rooms.length || busy} onClick={build}>Render the 3D map</button>
-            {rooms.some(r => !devices.some(d => roomAt([r], d.fx, d.fy))) && devices.length > 0 && <div className="muted">Some rooms have no devices yet.</div>}
           </div>
         </aside>
       </div>

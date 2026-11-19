@@ -18,12 +18,14 @@ interface Runtime {
   plan: { bytes: Buffer; mime: string; x0: number; x1: number; z0: number; z1: number } | null; // uploaded floor plan image
   furniture: { kind: string; x: number; z: number; w: number; d: number; rot?: number; h?: number }[]; // interiors from the plan
   notes: Note[]; // other text printed on the plan (zone tags, SCREEN, UP/DN, dimensions)
+  title: string; // floor name shown in the header
 }
 export type Note = { text: string; x: number; z: number; size?: number; rot?: number };
 const g = globalThis as unknown as { __twin?: Runtime };
-export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [], plan: null, furniture: [], notes: [] });
+export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [], plan: null, furniture: [], notes: [], title: 'Sample home' });
 rt.furniture ??= [];
 rt.notes ??= [];
+rt.title ??= 'Sample home';
 
 /** Advance the clock if playing. Called by every request and by the event stream. */
 export function tick(): number {
@@ -174,12 +176,14 @@ export function buildingState() {
     devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 })),
     furniture: rt.furniture,
     notes: rt.notes,
+    title: rt.title,
     plan: rt.plan ? { url: `/api/building/plan?v=${LAYOUT.version}`, x0: rt.plan.x0, x1: rt.plan.x1, z0: rt.plan.z0, z1: rt.plan.z1 } : null,
   };
 }
 
-export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null, furniture: Runtime['furniture'] = [], notes: Note[] = []) {
+export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null, furniture: Runtime['furniture'] = [], notes: Note[] = [], title = 'Uploaded floor plan') {
   rt.furniture = furniture;
+  rt.title = title;
   rt.notes = notes;
   const pad = outdoorPad ?? (() => { const o = devices.find(d => d.type === 'odu'); return o ? { x: o.position[0], z: o.position[2] } : LAYOUT.outdoorPad; })();
   setLayout(rooms, devices, { outdoorPad: pad, custom: true });
@@ -210,7 +214,7 @@ export function defaultPreset() {
   const rooms: PlanRoom[] = pre.rooms.map((r: { name: string; pts: Pt[]; label?: string; labelAt?: Pt; zone?: string }, i: number) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts, color: roomColor(i), label: r.label, labelAt: r.labelAt, zone: r.zone }; });
   const size = jpegSize(readFileSync(img));
   const mime = pre.image.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  return toBuilding(rooms, pre.devices, pre.widthM, size ? size[1] / size[0] : 1400 / 1930, `data:${mime};base64,${readFileSync(img).toString('base64')}`, pre.furniture ?? [], pre.notes ?? []);
+  return { title: (pre.title as string).replace(/\s*\(.*\)\s*$/, ''), ...toBuilding(rooms, pre.devices, pre.widthM, size ? size[1] / size[0] : 1400 / 1930, `data:${mime};base64,${readFileSync(img).toString('base64')}`, pre.furniture ?? [], pre.notes ?? []) };
 }
 
 /** Width and height of a JPEG from its SOF marker (no image library needed). */
@@ -228,7 +232,7 @@ function jpegSize(b: Buffer): [number, number] | null {
 export function resetBuilding() {
   const pre = defaultPreset();
   if (pre) {
-    const out = setBuilding(pre.rooms, pre.devices, undefined, pre.plan, pre.furniture, pre.notes);
+    const out = setBuilding(pre.rooms, pre.devices, undefined, pre.plan, pre.furniture, pre.notes, pre.title);
     LAYOUT.custom = false;
     return { ...out, custom: false };
   }
@@ -236,6 +240,7 @@ export function resetBuilding() {
   rt.plan = null;
   rt.furniture = [];
   rt.notes = [];
+  rt.title = 'Sample home';
   rt.overrides = {};
   return buildingState();
 }

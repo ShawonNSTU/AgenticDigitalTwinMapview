@@ -20,6 +20,7 @@ export default function Home() {
   const [sim, setSim] = useState<Sim | null>(null);
   const [devices, setDevices] = useState<Row[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [floorTitle, setFloorTitle] = useState('');
   const [sel, setSel] = useState<string | null>(null);
   const [tab, setTab] = useState<'devices' | 'agent'>('devices');
   const [hover, setHover] = useState<Hover>(null);
@@ -34,7 +35,7 @@ export default function Home() {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3800);
   }, []);
   const loadDevices = useCallback(() => fetch('/api/devices').then(json).then(x => setDevices(x.devices)), []);
-  const loadRooms = useCallback(() => fetch('/api/building').then(json).then(b => setRooms(b.rooms)), []);
+  const loadRooms = useCallback(() => fetch('/api/building').then(json).then(b => { setRooms(b.rooms); setFloorTitle(b.title ?? ''); }), []);
 
   // Clock, health and device changes come from the simulated platform over SSE.
   useEffect(() => {
@@ -99,7 +100,7 @@ export default function Home() {
     <main className="app">
       <header className="topbar">
         <div className="brand"><span className="logo" /><div><b>Agentic Digital Twin</b><small>SmartThings · Map View</small></div></div>
-        <div className="floor-chip"><span className="live" />{rooms.length ? `${rooms.length} rooms · 4th floor` : 'Loading floor…'}</div>
+        <div className="floor-chip"><span className="live" />{rooms.length ? `${rooms.length} rooms${floorTitle ? ` · ${floorTitle}` : ''}` : 'Loading floor…'}</div>
         <div className="stats">
           <span className="stat"><b>{devices.length}</b> devices</span>
           <span className={`stat ${bad.length ? 'warn' : 'good'}`}><b>{bad.length}</b> {bad.length === 1 ? 'needs' : 'need'} attention</span>

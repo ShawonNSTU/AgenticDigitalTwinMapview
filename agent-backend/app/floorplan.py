@@ -1,11 +1,22 @@
-"""Room detection on an uploaded floor plan image with Claude vision.
+"""Floor plan analysis for any uploaded image.
 
-Returns each room as a polygon (its outline, any shape) in 0..1 image coordinates. The user reviews and edits them
-in the web editor before the 3D map is built, so mistakes here are cheap.
+Two readers work together:
+  * plan_cv (OpenCV, always available): walls, room outlines on wall centre lines, doors, scale, printed names.
+  * Claude vision (when ANTHROPIC_API_KEY is set): room names, interior items, the outdoor unit spot, and rooms the
+    image processing missed.
+The result is rooms as polygons in 0..1 image coordinates plus doors and furniture. The user reviews and edits
+everything in the web editor before the 3D map is built, so mistakes here are cheap.
 """
+import asyncio
+import base64
 import json
 import math
 import re
+
+import cv2
+import numpy as np
+
+from . import plan_cv
 
 from .config import ANTHROPIC_API_KEY, AGENT_MODEL
 
@@ -107,12 +118,17 @@ def parse_json(text: str) -> dict:
         raise ParseError(f"Bad JSON from the model: {e}") from e
 
 
-async def detect_rooms(data_url: str) -> dict:
-    if not ANTHROPIC_API_KEY:
-        raise ParseError("Room detection needs ANTHROPIC_API_KEY in agent-backend/.env. Draw the rooms by hand instead.")
+def _decode(data_url: str) -> tuple[str, bytes]:
     m = re.match(r"^data:(image/(?:png|jpeg|webp|gif));base64,(.+)$", data_url, re.S)
     if not m:
         raise ParseError("image must be a base64 data URL (PNG, JPEG, WebP or GIF)")
+    try:
+        return m.group(1), base64.b64decode(m.group(2))
+    except ValueError as e:
+        raise ParseError("image data is not valid base64") from e
+
+
+async def vision(media_type: str, data: bytes) -> dict:
     from anthropic import AsyncAnthropic
 
     client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
@@ -120,12 +136,87 @@ async def detect_rooms(data_url: str) -> dict:
         model=AGENT_MODEL,
         max_tokens=16000,
         messages=[{"role": "user", "content": [
-            {"type": "image", "source": {"type": "base64", "media_type": m.group(1), "data": m.group(2)}},
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": base64.b64encode(data).decode()}},
             {"type": "text", "text": PROMPT},
         ]}],
     )
-    text = "".join(b.text for b in resp.content if b.type == "text")
-    result = parse_json(text)
+    return parse_json("".join(b.text for b in resp.content if b.type == "text"))
+
+
+def _raster(points: list, S: int = 400) -> np.ndarray:
+    m = np.zeros((S, S), np.uint8)
+    cv2.fillPoly(m, [np.array([[x * S, y * S] for x, y in points], np.int32)], 1)
+    return m
+
+
+def merge(cvr: dict, ai: dict | None) -> dict:
+    """Combine the image-processing result with the vision model's. Geometry from plan_cv, names and items from both."""
+    rooms = [{k: v for k, v in r.items() if k != "id"} for r in cvr.get("rooms", [])]
+    out = {"rooms": rooms, "doors": cvr.get("doors", []), "furniture": [], "outdoor": None,
+           "photo_corners": cvr.get("photo_corners"), "width_m": cvr.get("width_m"), "scale_note": cvr.get("scale_note"),
+           "method": "image processing"}
+    if not ai:
+        return out
+    out["method"] = "image processing + Claude vision"
+    out["outdoor"] = ai.get("outdoor")
+    out["furniture"] = [f for f in ai.get("furniture", []) if f["kind"] != "door"]
+    if not out["photo_corners"] and ai.get("photo_corners"):
+        out["photo_corners"] = ai["photo_corners"]
+    if out["photo_corners"]:
+        return out
+    ai_rooms = ai.get("rooms", [])
+    if len(rooms) < 2:
+        # image processing found no usable walls: the vision model's outlines are the best we have
+        out["rooms"] = [dict(r) for r in ai_rooms]
+        out["method"] = "Claude vision"
+        return out
+    cm = [_raster(r["points"]).astype(np.int32) for r in rooms]
+    am = [_raster(r["points"]).astype(np.int32) for r in ai_rooms]
+    # name rooms that OCR could not read, from the vision room covering most of them
+    claimed: dict[int, list[int]] = {}
+    for i, c in enumerate(cm):
+        ca = c.sum()
+        if not ca:
+            continue
+        best = max(range(len(am)), key=lambda j: (c & am[j]).sum(), default=None)
+        if best is not None and (c & am[best]).sum() >= 0.5 * ca:
+            claimed.setdefault(best, []).append(i)
+    for j, idx in claimed.items():
+        idx.sort(key=lambda i: -cm[i].sum())
+        for n, i in enumerate(idx):
+            if re.fullmatch(r"Room \d+", rooms[i]["name"]):
+                rooms[i]["name"] = ai_rooms[j]["name"] if n == 0 else f"{ai_rooms[j]['name']} {n + 1}"
+    # rooms the image processing missed (no walls drawn, open areas): keep the vision outline
+    cover = np.zeros_like(cm[0]) if cm else None
+    for c in cm:
+        cover |= c
+    for j, a in enumerate(am):
+        if a.sum() and (a & cover).sum() < 0.4 * a.sum():
+            rooms.append({"name": ai_rooms[j]["name"], "points": ai_rooms[j]["points"], "source": "vision"})
+    return out
+
+
+async def analyze_plan(data_url: str) -> dict:
+    media_type, data = _decode(data_url)
+    try:
+        img = plan_cv.decode(data)
+    except ValueError as e:
+        raise ParseError("Could not read this image") from e
+    cv_task = asyncio.to_thread(plan_cv.analyze, img)
+    if ANTHROPIC_API_KEY:
+        cvr, ai = await asyncio.gather(cv_task, vision(media_type, data), return_exceptions=True)
+        if isinstance(ai, Exception):
+            ai = None
+        if isinstance(cvr, Exception):
+            cvr = {"rooms": []}
+    else:
+        cvr, ai = await cv_task, None
+    result = merge(cvr, ai)
     if not result["rooms"] and not result["photo_corners"]:
         raise ParseError("No rooms found on this image. Draw them by hand instead.")
     return result
+
+
+async def detect_rooms(data_url: str) -> dict:
+    """Kept for callers of the old name."""
+    return await analyze_plan(data_url)

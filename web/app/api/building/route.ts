@@ -15,6 +15,7 @@ const Body = z.object({
   furniture: z.array(Furniture).max(5000).optional(),
   notes: z.array(Note).max(300).optional(),
   outdoorPad: z.object({ x: z.number(), z: z.number() }).optional(),
+  title: z.string().min(1).max(80).optional(),
   plan: z.object({ dataUrl: z.string().max(12_000_000), x0: z.number(), x1: z.number(), z0: z.number(), z1: z.number() }).nullable().optional(),
 });
 
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!p.success) return NextResponse.json({ error: p.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') }, { status: 400 });
   const ids = new Set<string>();
   for (const d of p.data.devices) { if (ids.has(d.id)) return NextResponse.json({ error: `duplicate device id ${d.id}` }, { status: 400 }); ids.add(d.id); }
-  try { return NextResponse.json(setBuilding(p.data.rooms, p.data.devices, p.data.outdoorPad, p.data.plan ?? null, p.data.furniture ?? [], p.data.notes ?? [])); }
+  try { return NextResponse.json(setBuilding(p.data.rooms, p.data.devices, p.data.outdoorPad, p.data.plan ?? null, p.data.furniture ?? [], p.data.notes ?? [], p.data.title)); }
   catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
 }
 
