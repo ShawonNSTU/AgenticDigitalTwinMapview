@@ -37,3 +37,16 @@ def test_explicit_filters_override_words(floor):
 
 def test_no_match(floor):
     assert search("unicorn stable", floor)["count"] == 0
+
+
+def test_plan_style_camera_ids(floor):
+    floor["devices"].append({"id": "2FX1C07", "type": "camera", "label": "Camera", "room": "kitchen", "name": "Camera 2FX1C07", "health": "ok"})
+    assert ids(search("where is camera 2fx1c07?", floor)) == {"2FX1C07"}
+
+
+def test_room_base_name_and_nickname(floor):
+    floor["rooms"] += [{"key": "training-room-403-sajek", "name": "Training Room 403 (Sajek)"}, {"key": "training-room-402-saint-martin", "name": "Training Room 402 (Saint Martin)"}]
+    floor["devices"] += [{"id": "CAM-A", "type": "camera", "label": "Camera", "room": "training-room-403-sajek", "name": "a", "health": "ok"},
+                         {"id": "CAM-B", "type": "camera", "label": "Camera", "room": "training-room-402-saint-martin", "name": "b", "health": "ok"}]
+    assert ids(search("cameras in the training room", floor)) == {"CAM-A", "CAM-B"}
+    assert ids(search("camera in saint martin", floor)) == {"CAM-B"}

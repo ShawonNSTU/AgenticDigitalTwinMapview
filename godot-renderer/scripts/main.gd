@@ -19,8 +19,15 @@ func _ready() -> void:
 	rig = CameraRig.new()
 	add_child(rig)
 	_hud()
-	_build_world(false)
+	# Wait for the platform's layout so the bundled sample never flashes up first. Fall back to the
+	# bundled sample only when the platform can't be reached (offline desktop run) or after 20 s.
 	Bus.layout_changed.connect(func(): _build_world(true))
+	Store.platform_unreachable.connect(func():
+		if world == null:
+			_build_world(true))
+	get_tree().create_timer(20.0).timeout.connect(func():
+		if world == null:
+			_build_world(true))
 
 	Bus.health_changed.connect(_on_health)
 	Bus.highlight_requested.connect(_on_highlight)
@@ -29,17 +36,23 @@ func _ready() -> void:
 	Bus.open_requested.connect(_on_open)
 	Bus.close_requested.connect(_on_close)
 	Bus.part_focus_requested.connect(func(id, part):
+		if world == null:
+			return
 		if detail.device == null or detail.device.data.id != id:
 			_on_open(id, part)
 		else:
 			detail.focus_part(part))
-	Bus.trace_requested.connect(func(id): piping.trace(id); piping.visible = true)
+	Bus.trace_requested.connect(_on_trace)
 	Bus.layer_changed.connect(_on_layer)
-	Bus.reset_view_requested.connect(func(): _on_close(); piping.trace(""); rig.reset())
+	Bus.reset_view_requested.connect(_on_reset)
 	Bus.time_changed.connect(_on_time)
-	Bus.scenario_changed.connect(func(_k): _on_close(); piping.trace(""); _on_time(Store.t))
+	Bus.scenario_changed.connect(_on_scenario)
 	_on_time(Store.t)
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--gallery="):
+			var g := Node.new()
+			g.set_script(load("res://tests/twin_gallery.gd"))
+			add_child(g)
 		if a.begins_with("--demo-shots="):
 			var shots := Node.new()
 			shots.set_script(load("res://tests/demo_shots.gd"))
@@ -62,6 +75,7 @@ func _build_world(animate: bool) -> void:
 	floor_builder = FloorBuilder.new()
 	world.add_child(floor_builder)
 	floor_builder.build()
+	DeviceNode.dense = Store.devices.size() > 40
 	var holder := Node3D.new()
 	holder.name = "Devices"
 	world.add_child(holder)
@@ -79,6 +93,7 @@ func _build_world(animate: bool) -> void:
 	legend.text = ""
 	var fr: Rect2 = Store.floor_rect()
 	rig.set_home(Vector3(fr.get_center().x, 0, fr.get_center().y), clampf(fr.size.length() * 0.95, 8.0, 60.0))
+	_on_time(Store.t)
 	if animate:
 		_play_plan_to_3d()
 
@@ -96,11 +111,31 @@ func _play_plan_to_3d() -> void:
 		n.visible = false
 		var tw := create_tween()
 		tw.tween_interval(1.4 + 0.02 * i)
-		tw.tween_callback(func(): n.visible = true)
+		tw.tween_callback(func(): n.visible = detail.device == null or detail.device == n)
 		tw.tween_property(n, "position:y", y, 0.45).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 		i += 1
-	get_tree().create_timer(1.6 + 0.02 * i).timeout.connect(func(): piping.visible = true)
+	get_tree().create_timer(1.6 + 0.02 * i).timeout.connect(func(): piping.visible = detail.device == null)
 	get_tree().create_timer(1.0).timeout.connect(func(): rig.reset(1.8))
+
+
+func _on_trace(id: String) -> void:
+	if world:
+		piping.trace(id)
+		piping.visible = true
+
+
+func _on_reset() -> void:
+	if world:
+		_on_close()
+		piping.trace("")
+	rig.reset()
+
+
+func _on_scenario(_key: String) -> void:
+	if world:
+		_on_close()
+		piping.trace("")
+	_on_time(Store.t)  # refresh the HUD even before the scene exists
 
 
 func _environment() -> void:
@@ -153,12 +188,16 @@ func _on_time(t: float) -> void:
 
 
 func _on_health(id: String, h: String) -> void:
+	if world == null:
+		return
 	if devices.has(id):
 		devices[id].set_health(h)
 	piping.refresh()
 
 
 func _on_highlight(ids: Array, _reason: String) -> void:
+	if world == null:
+		return
 	_highlight = ids
 	for id in devices:
 		devices[id].set_highlight(ids.has(id), not ids.is_empty())
@@ -173,11 +212,15 @@ func _on_highlight(ids: Array, _reason: String) -> void:
 
 
 func _on_focus(id: String) -> void:
+	if world == null:
+		return
 	if devices.has(id):
 		rig.fly_to(devices[id].global_position, 4.0)
 
 
 func _on_open(id: String, part: String) -> void:
+	if world == null:
+		return
 	if not devices.has(id):
 		return
 	Store.open_id = id
@@ -187,6 +230,7 @@ func _on_open(id: String, part: String) -> void:
 		devices[other].visible = other == id
 	dev.set_highlight(false, false)
 	piping.visible = false
+	floor_builder.set_walls_faded(true)
 	detail.open(dev)
 	# Look at the front of the device (rotationY 0 faces +z), slightly from above.
 	# Three-quarter view of the front (rotationY 0 faces +z), so depth inside the unit reads on screen.
@@ -199,18 +243,23 @@ func _on_open(id: String, part: String) -> void:
 
 
 func _on_close() -> void:
+	if world == null:
+		return
 	if detail.device == null:
 		return
 	detail.close()
 	for other in devices:
 		devices[other].visible = true
 	piping.visible = true
+	floor_builder.set_walls_faded(false)
 	Store.open_id = ""
 	Bus.device_closed.emit()
 	rig.reset()
 
 
 func _on_layer(layer: String, on: bool) -> void:
+	if world == null:
+		return
 	match layer:
 		"piping": piping.visible = on
 		"devices":

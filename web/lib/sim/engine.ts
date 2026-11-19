@@ -10,7 +10,7 @@ import devices from './data/devices.json';
 const G = ((globalThis as any).__twinEngine ??= {
   ROOMS: [], DEV: [], byId: {}, init: false,
   LAYOUT: { outdoorPad: building.outdoorPad, wallHeight: building.wallHeight, version: 0, custom: false },
-  R: { odu: null, far: [], filterAc: null, washer: null, leak: null, lowBatt: null, farNames: '' },
+  R: { odu: null, far: [], circuit: [], filterAc: null, washer: null, leak: null, lowBatt: null, farNames: '' },
   state: { scen: 'normal', fixT: null },
   scenNames: {},
 });
@@ -20,7 +20,7 @@ export const byId: Record<string, any> = G.byId;
 export const LAYOUT: { outdoorPad: any; wallHeight: number; version: number; custom: boolean } = G.LAYOUT;
 
 /** Devices that each scenario acts on. Chosen from the layout, so scenarios work on any uploaded plan. */
-export const R: { odu: string | null; far: string[]; filterAc: string | null; washer: string | null; leak: string | null; lowBatt: string | null; farNames: string } = G.R;
+export const R: { odu: string | null; far: string[]; circuit: string[]; filterAc: string | null; washer: string | null; leak: string | null; lowBatt: string | null; farNames: string } = G.R;
 
 export function setLayout(rooms: any[], devices: any[], extra: { outdoorPad?: any; wallHeight?: number; custom?: boolean } = {}) {
   ROOMS.splice(0, ROOMS.length, ...rooms);
@@ -34,9 +34,13 @@ export function setLayout(rooms: any[], devices: any[], extra: { outdoorPad?: an
   LAYOUT.version++;
   const of = (type) => DEV.filter(d => d.type === type);
   const dist = (a, b) => Math.hypot(a.p[0] - b.p[0], a.p[2] - b.p[2]);
-  const odu = of('odu')[0], acs = of('ac'), washer = of('washer')[0];
+  const odus = of('odu'), odu = odus[0], acs = of('ac'), washer = of('washer')[0];
   R.odu = odu?.id ?? null;
-  R.far = (odu ? [...acs].sort((a, b) => dist(b, odu) - dist(a, odu)) : [...acs].reverse()).slice(0, 2).map(d => d.id).reverse();
+  // Same rule as the renderer's piping: each indoor unit is on the circuit of its nearest outdoor unit.
+  const nearest = (d) => odus.reduce((best, o) => (dist(d, o) < dist(d, best) ? o : best), odus[0]);
+  const circuit = odu ? acs.filter(d => nearest(d) === odu) : acs;
+  R.far = (odu ? [...circuit].sort((a, b) => dist(b, odu) - dist(a, odu)) : [...circuit].reverse()).slice(0, 2).map(d => d.id).reverse();
+  R.circuit = circuit.map(d => d.id);
   const roomName = (k) => ROOMS.find(r => r.key === k)?.name ?? k;
   const bed = acs.find(d => /bed/i.test(roomName(d.room)) && !/primary|master/i.test(roomName(d.room)));
   R.filterAc = (bed ?? acs.find(d => !R.far.includes(d.id)) ?? acs[0])?.id ?? null;
@@ -60,28 +64,28 @@ export const state: { scen: string; fixT: number | null } = G.state;
 function sev(t) { const s = SCEN[state.scen]; if (!s.onset) return 0; let v = clamp((t - s.onset) / s.ramp, 0, 1); if (state.fixT != null && t >= state.fixT) v *= clamp(1 - (t - state.fixT) / .5, 0, 1); return v; }
 const occ = (room, t) => ({ media: t > 19, living: (t > 9 && t < 12) || t > 17, kitchen: (t > 6.5 && t < 8.5) || (t > 17.5 && t < 20), primary: t < 7.5 || t > 21, bedroom: t < 7.5 || t > 10.5, dining: (t > 7 && t < 8.5) || (t > 18.5 && t < 20.5), bath: (t > 6.5 && t < 7.5) || t > 21.5, laundry: t > 13.5 && t < 16 }[room] ?? (t > 7 && t < 9 || t > 18 && t < 23));
 function acRead(d, t) {
-  const w = Math.sin(t * 1.3 + d.n) * .25;
-  const r = { on: true, set: 24, room: 24 + w * .6, evIn: 7 + w * .3, evOut: 12 + w * .3, fan: 55, air: 100, louver: 35, drain: 'Flowing', rssi: -52 - d.n * 3, err: null };
+  const w = Math.sin(t * 1.3 + (d.n % 6)) * .25;
+  const r = { on: true, set: 24, room: 24 + w * .6, evIn: 7 + w * .3, evOut: 12 + w * .3, fan: 55, air: 100, louver: 35, drain: 'Flowing', rssi: -52 - (d.n % 6) * 3, err: null };
   const s = sev(t);
   if (state.scen === 'filter' && d.id === R.filterAc) { r.air = 100 - 55 * s; r.fan = 55 + 45 * s; r.evIn = 7 - 6 * s; r.evOut = 12 - 8 * s; r.room += 3.5 * s; }
-  if (state.scen === 'refrig') { const f = R.far.includes(d.id) ? 1 : .3; r.evIn += 3 * s * f; r.evOut += 9 * s * f; r.room += 2.5 * s * f; r.fan += 20 * s * f; }
+  if (state.scen === 'refrig' && R.circuit.includes(d.id)) { const f = R.far.includes(d.id) ? 1 : .3; r.evIn += 3 * s * f; r.evOut += 9 * s * f; r.room += 2.5 * s * f; r.fan += 20 * s * f; }
   r.sh = r.evOut - r.evIn; r.amps = .18 + r.fan * .004; return r;
 }
-function oduRead(t) { const s = state.scen === 'refrig' ? sev(t) : 0; return { dis: 74 + 34 * s, suc: 12 + 7 * s, lp: 9.4 - 2.4 * s, hp: 26 - 3 * s, hz: 58 + 30 * s, fan: 26, eev: Math.round(300 + 180 * s) }; }
+/* Only the outdoor unit on the leaking circuit shows the shortage. */ function oduRead(t, id = R.odu) { const s = state.scen === 'refrig' && id === R.odu ? sev(t) : 0; return { dis: 74 + 34 * s, suc: 12 + 7 * s, lp: 9.4 - 2.4 * s, hp: 26 - 3 * s, hz: 58 + 30 * s, fan: 26, eev: Math.round(300 + 180 * s) }; }
 const LT_LEVEL = { media: 40, living: 80, kitchen: 90, primary: 50, bedroom: 60, dining: 75, bath: 85, laundry: 90 };
 function read(d, t) {
   const s = sev(t), o = occ(d.room, t);
   switch (d.type) {
     case 'ac': return acRead(d, t);
-    case 'odu': return oduRead(t);
-    case 'light': { const lv = o ? (LT_LEVEL[d.room] ?? 70) : 0; return { lv, ma: lv * 4.1, ledT: 28 + lv * .22, rssi: -55 - d.n * 2 }; }
+    case 'odu': return oduRead(t, d.id);
+    case 'light': { const lv = o ? (LT_LEVEL[d.room] ?? 70) : 0; return { lv, ma: lv * 4.1, ledT: 28 + lv * .22, rssi: -55 - (d.n % 6) * 2 }; }
     case 'tv': return { on: o && d.room === 'media' ? true : (o && t > 19), w: o ? 112 : 0.5, rssi: -48 };
-    case 'speaker': return { on: o, vol: o ? 30 : 0, rssi: -50 - d.n };
-    case 'blinds': return { pos: t > 7 && t < 19.5 ? 100 : 0, batt: 64 - d.n * 4, rssi: -62 };
+    case 'speaker': return { on: o, vol: o ? 30 : 0, rssi: -50 - (d.n % 6) };
+    case 'blinds': return { pos: t > 7 && t < 19.5 ? 100 : 0, batt: 64 - (d.n % 6) * 4, rssi: -62 };
     case 'fridge': return { fz: 3.1 + Math.sin(t * 3) * .3, fr: -18.2 + Math.sin(t * 2) * .4, comp: Math.sin(t * 6) > -.2 ? 'Running' : 'Idle', door: 'Closed', w: 95 };
     case 'oven': return { on: t > 18 && t < 19, temp: t > 18 && t < 19 ? 180 : 24 };
     case 'vacuum': return { batt: t > 10 && t < 11 ? Math.round(100 - (t - 10) * 60) : 100, state: t > 10 && t < 11 ? 'Cleaning' : 'Docked', bin: 35 };
-    case 'camera': return { on: true, rec: true, rssi: -58 - d.n * 4 };
+    case 'camera': return { on: true, rec: true, rssi: -58 - (d.n % 6) * 4 };
     case 'doorbell': return { batt: 71, rssi: -66, presses: Math.floor(Math.max(0, t - 9) / 4) };
     case 'lock': return { locked: !(t > 8.3 && t < 8.4), batt: 58, rssi: -64 };
     case 'washer': {
@@ -89,9 +93,9 @@ function read(d, t) {
       return { state: stuck && t > 14.1 ? 'Stopped · drain error' : run ? 'Washing' : 'Idle', motor: run && !(stuck && t > 14.1) ? 1200 : 0, pump: f > 0 ? 0 : (run ? .22 : 0), level: f > 0 ? 'High (not draining)' : run ? 'Normal' : 'Empty', lockd: run ? 'Locked' : 'Open', valve: run && !stuck ? 'Open' : 'Closed', err: stuck && t > 14.1 ? 'Drain error (mock code)' : null };
     }
     case 'dryer': return { state: t > 15.5 && t < 16.5 ? 'Drying' : 'Idle', heat: t > 15.5 && t < 16.5 ? 'On' : 'Off', lint: 'Clean', temp: t > 15.5 && t < 16.5 ? 62 : 25 };
-    case 'leak': { const wet = d.id === R.leak && state.scen === 'washer' && t > 14.3 && (state.fixT == null || t < state.fixT + .3); return { wet, batt: 88 - d.n * 5, rssi: -60 - d.n * 3 }; }
+    case 'leak': { const wet = d.id === R.leak && state.scen === 'washer' && t > 14.3 && (state.fixT == null || t < state.fixT + .3); return { wet, batt: 88 - (d.n % 6) * 5, rssi: -60 - (d.n % 6) * 3 }; }
     case 'temphum': return { temp: 24.5 + (occ('bath', t) ? 1.5 : 0), hum: occ('bath', t) ? 78 : 55, batt: 81, rssi: -63 };
-    case 'motion': return { motion: o && Math.sin(t * 9 + d.n) > 0, batt: d.id === R.lowBatt ? 12 : 74, rssi: -61 - d.n * 2 };
+    case 'motion': return { motion: o && Math.sin(t * 9 + d.n) > 0, batt: d.id === R.lowBatt ? 12 : 74, rssi: -61 - (d.n % 6) * 2 };
     case 'plug': return { on: true, w: o ? 42 : 3.2, kwh: ((t - 6) * .05).toFixed(2), rssi: -57 };
     case 'purifier': return { fan: o ? 3 : 1, pm: 8 + (o ? 4 : 0), hepa: 62 };
   }
@@ -240,6 +244,9 @@ export function partHistory(id: string, key: string, t0 = 6, t1 = 22, step = 0.1
 }
 
 if (!G.init) { setLayout(building.rooms, devices); LAYOUT.version = 0; G.init = true; }
+
+/** Whether the current layout has the devices a scenario needs. */
+export const scenarioAvailable = (key: string) => key === 'normal' || (key === 'filter' && !!R.filterAc) || (key === 'refrig' && !!R.odu && R.far.length > 0) || (key === 'washer' && !!R.washer);
 
 /** Scenario display name, adjusted to the current layout. */
 export const scenarioName = (key: string) => G.scenNames[key] ?? SCEN[key]?.name;

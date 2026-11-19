@@ -43,6 +43,7 @@ scripts/main.gd       builds the scene and routes Bus signals
 scripts/floor_builder.gd   rooms, cut-away walls, labels, room status tint
 scripts/device_node.gd     device body, health ring, highlight beam, click area
 scripts/detail_view.gd     opened device: x-ray shell + exploded parts with live values + internal flows
+scripts/twin_part.gd       39 component models (coil, fans, compressor, valves, pump, drum, PCB, sensors…) animated from readings
 scripts/tube.gd            shared pipe builder (floor piping and internal flows)
 scripts/plan_geo.gd        room polygons, shared wall network, shortest path along walls
 scripts/piping.gd          liquid/gas lines ODU → each AC, flow speed by health, trace
@@ -51,9 +52,10 @@ shaders/pipe_flow.gdshader animated refrigerant dashes (works on WebGL 2)
 shaders/ghost.gdshader     fresnel x-ray shell
 data/*.json                sample home (same files as web/lib/sim/data); used until the platform sends a layout
 data/internal_flows.json   per device type: flows between parts, medium, and the live reading that sets the speed
-data/part_layout.json      per device type: where each part sits inside the real unit (fractions of the body)
+data/part_layout.json      per device type: where each part sits, which component model draws it, and which readings drive its animation
 tools/install_web_templates.sh  installs only the web export templates
 tests/smoke.gd             drives every bridge command; `godot --path . -- --smoke [--shot=out.png]`
+tests/twin_gallery.gd      opens every device type and saves assembled + exploded screenshots: `-- --gallery=/tmp/gallery`
 tests/demo_shots.gd        screenshots of the upload flow against a running platform:
                            `godot --path . -- --demo-shots=/tmp/out --open=AC-03 --part=filter`
 ```

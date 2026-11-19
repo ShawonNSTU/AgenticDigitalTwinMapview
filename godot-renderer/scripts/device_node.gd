@@ -22,6 +22,9 @@ var label: Label3D
 var beam: MeshInstance3D
 var _pulse: Tween
 var _highlighted := false
+var _health := "ok"
+## On busy floors (many devices) only devices that need attention or are highlighted show their ID.
+static var dense := false
 
 
 func setup(d: Dictionary) -> DeviceNode:
@@ -94,10 +97,16 @@ func setup(d: Dictionary) -> DeviceNode:
 
 
 func set_health(h: String) -> void:
+	_health = h
 	var c := Store.color_for(h)
 	ring_mat.albedo_color = Color(c, 0.9 if h != "ok" else 0.45)
 	label.modulate = c.lightened(0.3) if h != "ok" else Color.WHITE
 	label.text = data.id if h == "ok" else "%s  ●" % data.id
+	_update_label()
+
+
+func _update_label() -> void:
+	label.visible = _labels_on and body.visible and (not dense or _health != "ok" or _highlighted)
 
 
 func set_highlight(on: bool, dim_others: bool) -> void:
@@ -113,7 +122,9 @@ func set_highlight(on: bool, dim_others: bool) -> void:
 	var a := 1.0 if on or not dim_others else 0.25
 	body_mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED if a >= 1.0 else BaseMaterial3D.TRANSPARENCY_ALPHA
 	body_mat.albedo_color.a = a
-	label.visible = a >= 1.0 and _labels_on
+	_update_label()
+	if a < 1.0:
+		label.visible = false
 
 
 var _labels_on := true
@@ -121,14 +132,14 @@ var _labels_on := true
 
 func show_label(on: bool) -> void:
 	_labels_on = on
-	label.visible = on
+	_update_label()
 
 
 ## While the twin is open the real-size body hides; the twin shows the device instead.
 func set_ghost(on: bool, _ghost_mat: Material) -> void:
 	body.visible = not on
 	ring.visible = not on
-	label.visible = not on and _labels_on
+	_update_label()
 
 
 func _on_input(_cam: Node, e: InputEvent, _pos: Vector3, _n: Vector3, _i: int) -> void:

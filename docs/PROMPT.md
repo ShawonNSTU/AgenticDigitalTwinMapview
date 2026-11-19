@@ -108,6 +108,7 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
 ## 4a. Floor plan upload (web/app/setup, agent-backend/app/floorplan.py)
 
 1. **Upload:** PNG, JPEG or WebP. The browser downscales to at most 2000 px and sends a data URL.
+1a. **Straighten photos:** a phone photo of a printed sheet is skewed. The user drags four handles onto points that form a rectangle in reality (the drawing frame or four building corners); the browser solves the homography and resamples the photo flat (`web/lib/homography.ts`, about 1 s for a 12 MP photo). When AI detection sees a skewed photo it returns `photo_corners` to pre-place the handles.
 2. **Detect rooms:** `POST /api/floorplan/parse` → agent `POST /floorplan/parse`. Claude vision traces each room as a polygon (any shape: L-shapes, angled walls, notches) in 0..1 image coordinates, plus an optional outdoor point. Clean and clamp the result; never trust it blindly. Without an API key, explain and fall back to drawing.
 3. **Review:** room polygons are drawn over the image; the user renames, deletes, drags corners, or draws new rooms (drag for a rectangle, click corner by corner for any other shape).
 4. **Devices:** auto-place typical devices from room names (kitchen → AC, light, fridge, oven; laundry → washer, dryer, leak sensor; and so on) plus one outdoor unit outside the plan, or place by hand from a type list. Ids follow the type prefix (AC-01, LT-01, ODU-01).
@@ -115,6 +116,14 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
 6. **Build:** `POST /api/building` replaces the layout in the platform. The simulator picks the devices each scenario acts on from the new layout (bedroom AC for blocked airflow, the two ACs farthest from the outdoor unit for the refrigerant leak, the leak sensor nearest the washer), so every scenario works on any plan.
 7. **Render:** the platform bumps `layoutVersion`; Godot sees it in `/api/floor`, loads `/api/building` and the plan image, rebuilds the scene and plays the plan-to-3D animation. The web page gets a `layout` SSE event and refreshes its lists.
 8. Later phases: door gaps and wall thickness traced from the image, curved walls, multiple floors, and importing real device lists instead of placing them.
+
+## 4a-ii. Reference floor
+
+The pipeline is verified on a real floor: the Samsung Bangladesh R&D Center 4th floor, from a phone photo of the printed
+sheet (25 rooms incl. a slanted outer wall, the CCTV cameras at their marked positions, two AC rooms, scale from a
+dimension line). Its files are private (camera positions, staff names) and not in the public repo; see
+`docs/plans/samsung-rnd-4f/README.md`. Every change to the pipeline must keep this floor working end to end:
+photo → straighten → rooms → devices → 3D → twins → agent.
 
 ## 4b. Accuracy rules for rendering, piping and the device twin
 
@@ -125,7 +134,9 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
 - **Pipe flow:** speed = 0.6 × compressor Hz / 58 (nominal), zero when the AC is off; liquid-line brightness falls as superheat rises above 5 K; gas-line brightness follows discharge temperature. All from `/api/floor` `live` readings, refreshed every second.
 - **Internal flows:** every flow names its medium and, where a reading exists, a rate rule (`{reading, max}`, `{reading, equals}` or boolean) in `internal_flows.json`. A part in fault stops every flow touching it and turns it red. Values on labels are the platform's values, unmodified.
 - **Part placement:** each part sits where it is inside the real unit (`part_layout.json`); exploded view moves parts outward but keeps their relative order on every axis.
-- **What is illustrative:** part shapes are primitives until the modelled glTF parts land (phase 5), and readings are simulated. Say so on screen ("Prototype · simulated data").
+- **Component models and animation:** every part is drawn by a component model (`scripts/twin_part.gd`, 39 kinds: finned coil with copper hairpins, cross-flow and axial fans, compressor shell with rotor, accumulator, gauges with needles, expansion and 4-way valves, PCBs with status LEDs, Wi-Fi modules with signal rings, drum, pump impeller, level tube, heater coil, battery cells, HEPA pleats, …). Each part lists `drives` that map live readings to animation: fan spin from fan %, coil colour and frost from refrigerant temperature, filter dirt from airflow, louver angle, gauge needle from pressure, valve stroke from EEV steps, compressor vibration and rotor speed from Hz, drum spin from rpm, water level from the level sensor, heater glow, battery fill and colour, motion pulse, plug power on its meter. All changes are eased.
+- **Circuits:** each indoor unit belongs to the circuit of its nearest outdoor unit, in the simulator and in the piping alike; a refrigerant fault affects only its own circuit and outdoor unit.
+- **What is illustrative:** component models are procedural (recognisable, not manufacturer CAD), readings are simulated, and on the reference floor only the cameras' positions come from the drawing. Say so on screen ("Prototype · simulated data").
 - **Tests:** a headless smoke test drives every bridge command; screenshot tests render plan → 3D, top-down piping, assembled and exploded twins in both Compatibility (web) and Forward+ (Vulkan).
 
 ## 5. Visual direction

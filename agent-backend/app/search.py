@@ -52,7 +52,13 @@ def parse(query: str, rooms: list[dict]) -> dict:
     for cat, members in CATEGORY.items():
         if _has(q, cat):
             types |= set(members)
-    room_keys = {r["key"] for r in rooms if _has(q, r["name"].lower()) or _has(q, r["key"].lower())}
+    def phrases(r: dict) -> set[str]:
+        name = r["name"].lower()
+        base = re.sub(r"\(.*?\)", "", name).strip()          # "training room 403 (sajek)" -> "training room 403"
+        out = {name, base, r["key"].lower().replace("-", " "), re.sub(r"\s*\d+$", "", base).strip()}
+        out |= {m.strip() for m in re.findall(r"\((.*?)\)", name)}  # nickname in brackets: "sajek"
+        return {x for x in out if len(x) >= 3}
+    room_keys = {r["key"] for r in rooms if any(_has(q, ph) for ph in phrases(r))}
     if _has(q, "bedroom") and not _has(q, "primary"):
         room_keys.discard("primary")
     health = None
@@ -67,8 +73,10 @@ def search(query: str, floor: dict, type: str | None = None, room: str | None = 
     """Match devices by explicit filters first, then by words in the query."""
     devices, rooms = floor["devices"], floor["rooms"]
     p = parse(query or "", rooms)
-    known = {d["id"] for d in devices}
-    explicit_ids = [i for i in p["ids"] if i in known]
+    known = {d["id"].upper(): d["id"] for d in devices}
+    # ids as written on a drawing (e.g. 2FX1C07, CAM-03) or in the AC-04 style
+    tokens = {t.upper() for t in re.findall(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)?", query or "")}
+    explicit_ids = [known[i] for i in dict.fromkeys(p["ids"] + sorted(tokens)) if i in known]
     types = [type] if type else p["types"]
     room_keys = [room] if room else p["rooms"]
     want = health or p["health"]

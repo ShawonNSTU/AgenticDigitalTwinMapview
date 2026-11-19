@@ -16,8 +16,11 @@ Neighbouring rooms should share their wall lines: give the same coordinates for 
 Use the room names printed on the plan when there are any; otherwise a short plain name such as "Bedroom 2". Include balconies and decks.
 Leave out furniture, door swings and dimension lines.
 If the plan shows where the outdoor AC unit or the back yard is, give a point for it, else null.
+If the image is a photo of a printed plan taken at an angle (the drawing's straight walls or frame are visibly skewed),
+also give "photo_corners": the four corners of the drawing frame (or, if not visible, of the building outline) in the order
+top-left, top-right, bottom-right, bottom-left. Otherwise give null.
 Reply with JSON only:
-{"rooms": [{"name": "Kitchen", "points": [[0.1, 0.2], [0.4, 0.2], [0.4, 0.5], [0.1, 0.5]]}], "outdoor": {"x": 0.5, "y": 1.05}}"""
+{"rooms": [{"name": "Kitchen", "points": [[0.1, 0.2], [0.4, 0.2], [0.4, 0.5], [0.1, 0.5]]}], "outdoor": {"x": 0.5, "y": 1.05}, "photo_corners": null}"""
 
 
 class ParseError(RuntimeError):
@@ -62,7 +65,14 @@ def _clean(data: dict) -> dict:
             rooms.append({"name": str(r.get("name") or "Room")[:40], "points": pts[:200]})
     out = data.get("outdoor")
     outdoor = {"x": float(out["x"]), "y": float(out["y"])} if isinstance(out, dict) and "x" in out and "y" in out else None
-    return {"rooms": rooms[:60], "outdoor": outdoor}
+    corners = None
+    pc = data.get("photo_corners")
+    if isinstance(pc, list) and len(pc) == 4:
+        try:
+            corners = [[round(float(p[0]), 4), round(float(p[1]), 4)] for p in pc]
+        except (TypeError, ValueError, IndexError):
+            corners = None
+    return {"rooms": rooms[:60], "outdoor": outdoor, "photo_corners": corners}
 
 
 def parse_json(text: str) -> dict:
@@ -94,6 +104,6 @@ async def detect_rooms(data_url: str) -> dict:
     )
     text = "".join(b.text for b in resp.content if b.type == "text")
     result = parse_json(text)
-    if not result["rooms"]:
+    if not result["rooms"] and not result["photo_corners"]:
         raise ParseError("No rooms found on this image. Draw them by hand instead.")
     return result

@@ -60,9 +60,9 @@ func open(dev: DeviceNode, explode_now := true) -> void:
 	var k := scale_factor()
 	twin = Node3D.new()
 	add_child(twin)
-	# Keep the twin above the floor however small or low the real device is.
+	# Lift the twin so even the exploded view clears the floor, however low the real device sits.
 	var c := dev.global_position
-	c.y = maxf(c.y, TWIN * 0.5 + 0.15)
+	c.y = maxf(c.y, TWIN * SPREAD * 0.5 + 0.1)
 	twin.global_transform = Transform3D(Basis(Vector3.UP, dev.rotation.y).scaled(Vector3.ONE * k), c)
 	var shell := MeshInstance3D.new()
 	var sm := BoxMesh.new()
@@ -79,7 +79,7 @@ func open(dev: DeviceNode, explode_now := true) -> void:
 		# Exploded position: the same fractional position, but spread evenly on every axis (a flat AC
 		# spreads as much in height and depth as in width), so parts keep their order and separate.
 		var spread := Vector3(l[0], l[1], l[2]) * (TWIN * SPREAD / k)
-		_parts[p.key] = _make_part(p, local, size, str(l[6]), spread - local)
+		_parts[p.key] = _make_part(p, local, size, l, spread - local)
 	_flow_root = Node3D.new()
 	add_child(_flow_root)
 	exploded = false
@@ -90,37 +90,19 @@ func open(dev: DeviceNode, explode_now := true) -> void:
 				set_exploded(true))
 
 
-func _make_part(p: Dictionary, local: Vector3, size: Vector3, shape: String, out: Vector3) -> Dictionary:
-	var node := MeshInstance3D.new()
-	if shape == "b":
-		var bm := BoxMesh.new()
-		bm.size = size
-		node.mesh = bm
-	else:
-		var cm := CylinderMesh.new()
-		var along := size.x if shape == "h" else size.y
-		var r := (size.y + size.z) / 4 if shape == "h" else (size.x + size.z) / 4
-		cm.top_radius = r
-		cm.bottom_radius = r
-		cm.height = along
-		node.mesh = cm
-		if shape == "h":
-			node.rotation.z = PI / 2
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Store.color_for("ok")
-	mat.emission_enabled = true
-	mat.emission = mat.albedo_color * 0.25
-	mat.roughness = 0.5
-	node.material_override = mat
-	node.position = local
+func _make_part(p: Dictionary, local: Vector3, size: Vector3, l: Array, out: Vector3) -> Dictionary:
+	var kind: String = str(l[7]) if l.size() > 7 else "box"
+	var node := TwinPart.new()
 	twin.add_child(node)
+	node.setup(kind, size)
+	node.position = local
 	var label := Label3D.new()
 	label.text = p.name + ("\n(inferred)" if p.get("inferred", false) else "")
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
 	label.font_size = 24
-	label.pixel_size = 0.0006
+	label.pixel_size = 0.0006 / scale_factor()  # labels sit in the scaled twin; keep one on-screen size for every device
 	label.outline_size = 8
 	label.visible = false  # labels show once exploded, to avoid a pile-up inside the shell
 	twin.add_child(label)
@@ -131,14 +113,42 @@ func _make_part(p: Dictionary, local: Vector3, size: Vector3, shape: String, out
 	sh.size = size.max(Vector3.ONE * 0.02 * _body.length())
 	cs.shape = sh
 	area.add_child(cs)
-	area.rotation = -node.rotation
 	var key: String = p.key
 	area.input_event.connect(func(_c, e, _p, _n, _i):
 		if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and not e.pressed and CameraRig.drag_px < 6.0:
 			Bus.part_clicked.emit(device.data.id, key)
 			focus_part(key))
 	node.add_child(area)
-	return {"node": node, "mat": mat, "label": label, "name": p.name, "local": local, "out": out, "size": size, "lab": _label_offset(local + out, size)}
+	var drives: Array = l[8] if l.size() > 8 else []
+	# Exploded parts are enlarged to at least ~0.28 m so small components stay readable.
+	var world := maxf(size.x, maxf(size.y, size.z)) * scale_factor()
+	var zoom := clampf(0.28 / maxf(world, 0.001), 1.0, 3.0)
+	return {"node": node, "label": label, "name": p.name, "local": local, "out": out, "size": size * zoom, "zoom": zoom, "lab": _label_offset(local + out, size * zoom), "drives": drives}
+
+
+## Animation params for one part from the device's readings (see data/part_layout.json _doc).
+static func drive_params(drives: Array, readings: Dictionary) -> Dictionary:
+	var out := {}
+	for d in drives:
+		if not readings.has(d[1]) or readings[d[1]] == null:
+			continue
+		var v = readings[d[1]]
+		var val := 0.0
+		if d[2] is String and str(d[2]).begins_with("="):
+			val = float(d[3]) if str(v) == str(d[2]).substr(1) else 0.0
+		else:
+			var num := 0.0
+			if typeof(v) == TYPE_BOOL:
+				num = 1.0 if v else 0.0
+			elif typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT:
+				num = float(v)
+			elif str(v).is_valid_float():
+				num = float(str(v))
+			else:
+				continue
+			val = num * float(d[2]) + float(d[3])
+		out[d[0]] = maxf(out.get(d[0], -INF), val)
+	return out
 
 
 ## Labels sit on the outside of each part (away from the twin centre), not on top of neighbours.
@@ -159,6 +169,7 @@ func set_exploded(on: bool) -> void:
 		var e: Dictionary = _parts[k]
 		var to: Vector3 = e.local + (e.out if on else Vector3.ZERO)
 		tw.tween_property(e.node, "position", to, 0.6)
+		tw.tween_property(e.node, "scale", Vector3.ONE * (e.zoom if on else 1.0), 0.6)
 		tw.tween_property(e.label, "position", to + (e.lab if on else Vector3(0, e.size.y * 0.5, 0)), 0.6)
 		e.label.visible = on
 	tw.chain().tween_callback(_build_flows)
@@ -255,12 +266,12 @@ func focus_part(key: String) -> void:
 	if not _parts.has(key):
 		return
 	if _focus != "" and _parts.has(_focus):
-		_parts[_focus].node.scale = Vector3.ONE
+		_parts[_focus].node.scale = Vector3.ONE * (_parts[_focus].zoom if exploded else 1.0)
 	_focus = key
 	var e: Dictionary = _parts[key]
 	if not exploded:
 		set_exploded(true)
-	create_tween().tween_property(e.node, "scale", Vector3.ONE * 1.35, 0.25)
+	create_tween().tween_property(e.node, "scale", Vector3.ONE * e.zoom * 1.25, 0.25)
 	await get_tree().create_timer(0.65).timeout
 	if twin and _parts.has(key):
 		part_selected.emit(twin.to_global(e.node.position), maxf(e.size.length() * scale_factor(), 0.25))
@@ -275,9 +286,8 @@ func _on_data(id: String, data: Dictionary) -> void:
 		if not _parts.has(p.key):
 			continue
 		var e: Dictionary = _parts[p.key]
+		(e.node as TwinPart).apply(drive_params(e.drives, _readings), p.health, str(p.value))
 		var c := Store.color_for(p.health)
-		e.mat.albedo_color = c
-		e.mat.emission = c * (0.9 if p.health != "ok" else 0.25)
 		e.label.text = "%s\n%s" % [e.name, p.value]
 		e.label.modulate = c.lightened(0.4) if p.health != "ok" else Color.WHITE
 	_refresh_flows()

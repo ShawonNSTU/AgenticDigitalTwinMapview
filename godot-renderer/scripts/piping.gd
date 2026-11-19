@@ -1,6 +1,6 @@
 class_name Piping
 extends Node3D
-## Refrigerant piping from the outdoor unit to every indoor AC: a liquid line and a gas line per circuit.
+## Refrigerant piping from the nearest outdoor unit to every indoor AC: a liquid line and a gas line per circuit.
 ## Routing: up from the outdoor unit to the ceiling void, to the nearest wall, then the shortest way along
 ## the walls (never across a room) to the wall the AC hangs on, then down into the AC. Circuits sharing a
 ## wall run are stacked like a pipe rack.
@@ -27,27 +27,40 @@ func _ready() -> void:
 
 
 func build() -> void:
-	var odu := _first("odu")
-	if odu.is_empty():
+	var odus: Array = Store.devices.filter(func(d): return d.type == "odu")
+	if odus.is_empty():
 		return
-	odu_id = odu.id
-	var o2 := Vector2(odu.position[0], odu.position[2])
+	odu_id = odus[0].id
 	var acs: Array = Store.devices.filter(func(d): return d.type == "ac")
-	# Wall network, split at the points where pipes join it.
 	var base := PlanGeo.wall_segments(Store.rooms)
-	var entry := PlanGeo.nearest_on_walls(base, o2)
-	var joins: Array = [entry]
+	# Each indoor unit is piped to the nearest outdoor unit (one circuit per indoor unit).
+	var entries := {}
+	var joins: Array = []
+	for o in odus:
+		entries[o.id] = PlanGeo.nearest_on_walls(base, Vector2(o.position[0], o.position[2]))
+		joins.append(entries[o.id])
+	var ac_join := {}
 	for d in acs:
-		joins.append(PlanGeo.nearest_on_walls(base, Vector2(d.position[0], d.position[2])))
+		ac_join[d.id] = PlanGeo.nearest_on_walls(base, Vector2(d.position[0], d.position[2]))
+		joins.append(ac_join[d.id])
 	var segs := PlanGeo.wall_segments(Store.rooms, joins)
-	for i in acs.size():
-		var d: Dictionary = acs[i]
-		var a2: Vector2 = joins[i + 1]
-		var route: Array = PlanGeo.path_along(segs, entry, a2)
+	var lane := {}
+	for d in acs:
+		var a2 := Vector2(d.position[0], d.position[2])
+		var odu: Dictionary = odus[0]
+		for o in odus:
+			if a2.distance_to(Vector2(o.position[0], o.position[2])) < a2.distance_to(Vector2(odu.position[0], odu.position[2])):
+				odu = o
+		var o2 := Vector2(odu.position[0], odu.position[2])
+		var entry: Vector2 = entries[odu.id]
+		var j2: Vector2 = ac_join[d.id]
+		var route: Array = PlanGeo.path_along(segs, entry, j2)
 		if route.is_empty():
-			route = [entry, Vector2(a2.x, entry.y), a2]  # disconnected plan: fall back to an L-shaped run
+			route = [entry, Vector2(j2.x, entry.y), j2]  # disconnected plan: fall back to an L-shaped run
+		var i: int = lane.get(odu.id, 0)
+		lane[odu.id] = i + 1
 		var ac := Vector3(d.position[0], d.position[1], d.position[2])
-		var run := {"length": 0.0}
+		var run := {"length": 0.0, "odu": odu.id}
 		for side in ["liquid", "gas"]:
 			var y := CEILING + LANE * i + (0.045 if side == "gas" else 0.0)
 			var pts: Array = [Vector3(o2.x, 0.45, o2.y), Vector3(o2.x, y, o2.y)]
@@ -55,8 +68,6 @@ func build() -> void:
 				pts.append(Vector3(p.x, y, p.y))
 			pts.append(Vector3(ac.x, ac.y + 0.14, ac.z))
 			var mats := Tube.build(self, pts, GAS if side == "gas" else LIQUID, RADIUS)
-			for m in mats:
-				m.set_meta("reverse", side == "gas")  # liquid flows to the AC, gas returns to the outdoor unit
 			run[side] = mats
 			if side == "liquid":
 				for k in pts.size() - 1:
@@ -73,10 +84,10 @@ func _first(type: String) -> Dictionary:
 
 
 func refresh() -> void:
-	var o: Dictionary = Store.live.get(odu_id, {})
-	var hz: float = float(o.get("hz", 58.0))
-	var dis: float = float(o.get("dis", 74.0))
 	for id in _runs:
+		var o: Dictionary = Store.live.get(_runs[id].odu, {})
+		var hz: float = float(o.get("hz", 58.0))
+		var dis: float = float(o.get("dis", 74.0))
 		var a: Dictionary = Store.live.get(id, {})
 		var on := bool(a.get("on", true))
 		var speed := 0.6 * hz / 58.0 * (1.0 if on else 0.0)

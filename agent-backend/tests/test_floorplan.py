@@ -26,3 +26,9 @@ def test_detect_without_key_explains(monkeypatch):
     monkeypatch.setattr(floorplan, "ANTHROPIC_API_KEY", "")
     with pytest.raises(ParseError, match="Draw the rooms by hand"):
         asyncio.run(floorplan.detect_rooms("data:image/png;base64,AAAA"))
+
+
+def test_photo_corners_passed_through():
+    out = parse_json('{"rooms": [], "outdoor": null, "photo_corners": [[0.1, 0.05], [0.95, 0.07], [0.97, 0.9], [0.12, 0.85]]}')
+    assert out["photo_corners"][2] == [0.97, 0.9]
+    assert parse_json('{"rooms": [], "photo_corners": [[0, 0]]}')["photo_corners"] is None

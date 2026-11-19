@@ -1,5 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
+import { straighten } from '@/lib/homography';
 import { useRouter } from 'next/navigation';
 import { DEVICE_TYPES, PREFIX, autoPlace, interior, nextId, rect, roomAt, roomColor, roomKey, toBuilding, type PlanDevice, type PlanRoom, type Pt } from '@/lib/layout';
 
@@ -34,7 +35,9 @@ export default function PlanEditor() {
   const [rooms, setRooms] = useState<PlanRoom[]>([]);
   const [devices, setDevices] = useState<PlanDevice[]>([]);
   const [outdoor, setOutdoor] = useState<{ x: number; y: number } | null>(null);
-  const [mode, setMode] = useState<'rooms' | 'devices'>('rooms');
+  const [mode, setMode] = useState<'rooms' | 'devices' | 'straighten'>('rooms');
+  const [quad, setQuad] = useState<Pt[]>([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]); // TL TR BR BL, image fractions
+  const [qdrag, setQdrag] = useState<number | null>(null);
   const [type, setType] = useState('ac');
   const [widthM, setWidthM] = useState(20);
   const [drag, setDrag] = useState<{ x: number; y: number; x2: number; y2: number } | null>(null);
@@ -55,16 +58,31 @@ export default function PlanEditor() {
   function closeDraft() { if (draft.length >= 3) addRoom(draft); setDraft([]); }
 
   // Rooms mode: drag = rectangle; click = add a corner (click the first corner, double-click or Enter to close).
+  async function applyStraighten() {
+    if (!img) return;
+    const im = new Image(); im.src = img.url; await im.decode();
+    const c = straighten(im, quad.map(([x, y]) => [x * img.w, y * img.h] as [number, number]));
+    setImg({ url: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height });
+    setRooms([]); setDevices([]); setMode('rooms');
+    setMsg('Photo straightened. Now detect or draw the rooms.');
+  }
+
   function down(e: React.PointerEvent) {
     if (!img) return;
     const p = pt(e);
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    if (mode === 'straighten') {
+      const k = quad.findIndex(q => near([p.x, p.y], q) || Math.hypot(q[0] - p.x, (q[1] - p.y) * ar) < 0.03);
+      setQdrag(k >= 0 ? k : null);
+      return;
+    }
     if (mode === 'rooms') setDrag({ x: p.x, y: p.y, x2: p.x, y2: p.y });
     else setDevices(ds => [...ds, { id: nextId(type, ds), type, fx: p.x, fy: p.y }]);
   }
   function move(e: React.PointerEvent) {
     const p = pt(e);
     setHover([p.x, p.y]);
+    if (mode === 'straighten') { if (qdrag !== null) setQuad(q => q.map((v, i) => i === qdrag ? [p.x, p.y] as Pt : v)); return; }
     if (vtx) {
       const moved = vtx.moved || Math.hypot(p.x - vtx.at[0], (p.y - vtx.at[1]) * ar) > 0.006;
       if (moved) {
@@ -86,6 +104,7 @@ export default function PlanEditor() {
     else setDraft(ds => [...ds, snap(p)]);
   }
   function up() {
+    if (mode === 'straighten') { setQdrag(null); return; }
     if (vtx) { const v = vtx; setVtx(null); if (!v.moved) addCorner(v.at); return; }
     if (!drag) return;
     const d = drag; setDrag(null);
@@ -113,6 +132,12 @@ export default function PlanEditor() {
       const taken = new Set<string>();
       setRooms(j.rooms.map((x: { name: string; points: Pt[] }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { name: x.name, pts: x.points, key, color: roomColor(i) }; }));
       setOutdoor(j.outdoor);
+      if (j.photo_corners) {
+        // The AI sees a skewed photo: straighten first, then detect again on the flat image.
+        setQuad(j.photo_corners); setMode('straighten'); setRooms([]);
+        setMsg('This looks like a photo taken at an angle. Check the four corners of the drawing, press "Straighten", then detect rooms again.');
+        return;
+      }
       setMsg(`Found ${j.rooms.length} rooms. Check them, rename or redraw any that are off.`);
     } catch { setMsg('Room detection failed. Draw the rooms by hand.'); } finally { setBusy(false); }
   }
@@ -126,6 +151,35 @@ export default function PlanEditor() {
     if (r.ok) router.push('/'); else setMsg((await r.json()).error ?? 'Could not save the layout');
   }
   async function sample() { await fetch('/api/building', { method: 'DELETE' }); router.push('/'); }
+
+  const loadUrl = (url: string) => new Promise<Img>((res, rej) => { const im = new Image(); im.onload = () => res({ url: toData(im), w: im.width, h: im.height }); im.onerror = rej; im.src = url; });
+  const toData = (im: HTMLImageElement) => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d')!.drawImage(im, 0, 0); return c.toDataURL('image/jpeg', 0.9); };
+
+  /** The traced 4th-floor layout: straightened photo, room outlines, the 22 cameras from the sheet and an assumed fit-out. */
+  // The reference floor's files are private (camera positions, staff names) and are not in the public repo.
+  // Put them in web/public/presets/ to enable these two buttons (see docs/plans/samsung-rnd-4f/README.md).
+  async function loadTraced() {
+    const res = await fetch('/presets/samsung-rnd-4f.json');
+    if (!res.ok) { setMsg('Reference floor files are not installed (web/public/presets/). See docs/plans/samsung-rnd-4f/README.md.'); return; }
+    const rnd4f: { title: string; image: string; widthM: number; rooms: { name: string; pts: number[][] }[]; devices: { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean }[] } = await res.json();
+    setImg(await loadUrl(rnd4f.image));
+    const taken = new Set<string>();
+    setRooms(rnd4f.rooms.map((r, i) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts as Pt[], color: roomColor(i) }; }));
+    setDevices(rnd4f.devices.map(d => ({ id: d.id, type: d.type, fx: d.fx, fy: d.fy, name: d.name, assumed: d.assumed })));
+    setWidthM(rnd4f.widthM); setMode('rooms');
+    setMsg(`${rnd4f.title}: ${rnd4f.rooms.length} rooms, ${rnd4f.devices.length} devices. The 22 cameras come from the sheet; other devices are an assumed fit-out. Review, then render.`);
+  }
+
+  /** The original photo, with straightening corners on four building walls, to try the straighten step. */
+  async function loadPhoto() {
+    const ok = (await fetch('/presets/samsung-rnd-4f-photo.jpg', { method: 'HEAD' })).ok;
+    if (!ok) { setMsg('Reference floor files are not installed (web/public/presets/). See docs/plans/samsung-rnd-4f/README.md.'); return; }
+    setImg(await loadUrl('/presets/samsung-rnd-4f-photo.jpg'));
+    setRooms([]); setDevices([]);
+    setQuad([[0.2005, 0.0947], [0.7773, 0.1017], [0.7837, 0.6046], [0.1868, 0.6046]]);
+    setMode('straighten');
+    setMsg('Original photo of the 4F sheet. The handles mark four wall corners that form a rectangle in the building; press Straighten.');
+  }
   const rename = (i: number, name: string) => setRooms(rs => rs.map((r, j) => j === i ? { ...r, name } : r));
   const fs = 0.016;
 
@@ -133,7 +187,7 @@ export default function PlanEditor() {
     <main className="setup">
       <header className="row between">
         <b>Floor plan → 3D map</b>
-        <span className="row"><button onClick={sample}>Use the sample home</button><a href="/"><button>Back to map</button></a></span>
+        <span className="row"><button onClick={loadTraced}>4F plan (traced)</button><button onClick={loadPhoto}>4F photo (straighten)</button><button onClick={sample}>Use the sample home</button><a href="/"><button>Back to map</button></a></span>
       </header>
       <div className="setup-body">
         <section className="plan">
@@ -155,6 +209,18 @@ export default function PlanEditor() {
                       onPointerDown={e => { e.stopPropagation(); (e.currentTarget.ownerSVGElement as Element).setPointerCapture?.(e.pointerId); setVtx({ room: k, i, at: [x, y], moved: false }); }} />
                   ))}
                 </g>); })}
+              {mode === 'straighten' && (
+                <g>
+                  <polygon points={quad.map(([x, y]) => `${x},${y * ar}`).join(' ')} fill="#4c8dff" fillOpacity={0.08} stroke="#ffb020" strokeWidth={0.003} strokeDasharray="0.01 0.006" />
+                  {quad.map(([x, y], i) => (
+                    <g key={i}>
+                      <circle cx={x} cy={y * ar} r={0.012} fill="#ffb020" fillOpacity={0.35} stroke="#ffb020" strokeWidth={0.003} style={{ cursor: 'move' }} />
+                      <circle cx={x} cy={y * ar} r={0.0025} fill="#000" />
+                      <text x={x + 0.015} y={y * ar - 0.012} fontSize={fs} fill="#ffb020" stroke="#000" strokeWidth={0.002} paintOrder="stroke">{['top-left', 'top-right', 'bottom-right', 'bottom-left'][i]}</text>
+                    </g>
+                  ))}
+                </g>
+              )}
               {draft.length > 0 && (
                 <g pointerEvents="none">
                   <polyline points={[...draft, ...(hover ? [hover] : [])].map(([x, y]) => `${x},${y * ar}`).join(' ')} fill="#4c8dff" fillOpacity={0.15} stroke="#4c8dff" strokeWidth={0.003} />
@@ -174,6 +240,9 @@ export default function PlanEditor() {
         <aside className="side setup-side">
           <div className="panel">
             {msg && <div className="muted">{msg}</div>}
+            <b>1b. Photo taken at an angle?</b>
+            <div className="row"><button disabled={!img} className={mode === 'straighten' ? 'on' : ''} onClick={() => setMode('straighten')}>Straighten photo</button>{mode === 'straighten' && <button className="pri" onClick={applyStraighten}>Straighten</button>}</div>
+            {mode === 'straighten' && <div className="muted">Drag the four orange handles onto four points that form a rectangle in reality: the corners of the drawing frame, or four outer corners of the building. Then press Straighten.</div>}
             <b>2. Rooms</b>
             <div className="row"><button className="pri" disabled={!img || busy} onClick={detect}>Detect rooms with AI</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
             {mode === 'rooms' && img && <div className="muted">Drag for a rectangle. For any other shape click each corner, then click the first corner (or double-click, or Enter). Click an existing corner to reuse it; drag a white dot to move it (rooms sharing it move too). Backspace undoes a corner, Esc cancels.</div>}

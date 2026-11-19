@@ -13,7 +13,7 @@ const COLORS = ['#8fb4f2', '#a8d8a0', '#c7b7ef', '#f2dc8f', '#8fd8d0', '#f2b8c6'
 /** A room is a polygon in image fractions (x right, y down). Rectangles are just 4-point polygons. */
 export type Pt = [number, number];
 export type PlanRoom = { key: string; name: string; pts: Pt[]; color: string };
-export type PlanDevice = { id: string; type: string; fx: number; fy: number };
+export type PlanDevice = { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean };
 
 export const roomColor = (i: number) => COLORS[i % COLORS.length];
 
@@ -126,7 +126,7 @@ export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: num
       const c = r ? interior(r.pts) : null;
       const rot = c ? Math.atan2(X(c[0]) - x, Z(c[1]) - z) : 0;
       const label = DEVICE_TYPES.find(t => t.key === d.type)?.label ?? d.type;
-      return { id: d.id, type: d.type, room: r?.key ?? 'out', name: `${label} · ${r?.name ?? 'Outside'}`, position: [x, MOUNT[d.type] ?? 1, z], rotationY: +rot.toFixed(4) };
+      return { id: d.id, type: d.type, room: r?.key ?? 'out', name: `${d.name ?? label} · ${r?.name ?? 'Outside'}${d.assumed ? ' (position assumed)' : ''}`, position: [x, MOUNT[d.type] ?? 1, z], rotationY: +rot.toFixed(4) };
     }),
     plan: { dataUrl, x0: -W / 2, x1: W / 2, z0: -H / 2, z1: H / 2 },
   };

@@ -29,6 +29,8 @@ func _ready() -> void:
 		# Leave live health from the platform alone and end on the traced refrigerant circuit.
 		run = [{"type": "setLayer", "layer": "temperature", "on": true}, {"type": "trace", "from": "AC-04"}, {"type": "highlight", "ids": ["AC-03", "AC-04", "ODU-01"]}]
 		await get_tree().create_timer(2.5).timeout
+	while get_parent().world == null:  # the scene is built once a layout is known (or after the 2.5 s fallback)
+		await get_tree().process_frame
 	for s in run:
 		Bridge.handle(s)
 		await get_tree().create_timer(0.3).timeout

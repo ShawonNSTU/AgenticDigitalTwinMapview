@@ -28,6 +28,9 @@ var _plan_req: HTTPRequest
 var _busy_building := false
 var _pending_layout: Dictionary = {}
 var _busy_floor := false
+var _announced := false  # first layout announced to the scene
+var _fails := 0
+signal platform_unreachable  # the first /api/floor request failed: run on the bundled sample
 var _busy_dev := false
 
 
@@ -60,7 +63,7 @@ func _ready() -> void:
 	timer.timeout.connect(_poll)
 	add_child(timer)
 	_poll.call_deferred()  # ask for the current layout right away, not after the first second
-	Bus.open_requested.connect(func(id, _p): open_id = id; _poll_device())
+	Bus.open_requested.connect(func(id, _p): open_id = id; _poll_device(true))
 	Bus.close_requested.connect(func(): open_id = "")
 
 
@@ -90,7 +93,10 @@ func _poll() -> void:
 	_poll_device()
 
 
-func _poll_device() -> void:
+func _poll_device(restart := false) -> void:
+	if restart and _busy_dev:
+		_dev_req.cancel_request()  # a different device was opened; don't wait for the old answer
+		_busy_dev = false
 	if open_id != "" and not _busy_dev:
 		_busy_dev = true
 		_dev_req.request(platform_url + "/api/devices/" + open_id)
@@ -99,14 +105,23 @@ func _poll_device() -> void:
 func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
 	_busy_floor = false
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		_fails += 1
+		if not _announced and _fails == 3:  # three failures in a row (the first request in a browser can fail once)
+			platform_unreachable.emit()
 		return  # platform offline: keep showing the static floor
+	_fails = 0
 	var data = JSON.parse_string(body.get_string_from_utf8())
 	if typeof(data) != TYPE_DICTIONARY:
 		return
-	if int(data.get("layoutVersion", 0)) != layout_version and not _busy_building:
+	if _busy_building:
+		return  # a new layout (and its plan image) is still downloading
+	if int(data.get("layoutVersion", 0)) != layout_version:
 		_busy_building = true
 		_building_req.request(platform_url + "/api/building")
 		return
+	if not _announced:
+		_announced = true  # the platform runs the same sample home we bundle: build it now
+		Bus.layout_changed.emit()
 	set_time(float(data.get("time", t)))
 	set_scenario(str(data.get("scenario", scenario)))
 	for d in data.get("devices", []):
@@ -195,6 +210,7 @@ func _finish_layout(tex: Texture2D) -> void:
 	plan_bounds = Rect2(plan.x0, plan.z0, plan.x1 - plan.x0, plan.z1 - plan.z0) if plan is Dictionary else Rect2()
 	_apply_layout(b.get("rooms", []), b.get("devices", []), b.get("outdoorPad", {}), float(b.get("wallHeight", wall_height)))
 	layout_version = int(b.get("version", 0))
+	_announced = true
 	Bus.layout_changed.emit()
 
 

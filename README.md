@@ -55,8 +55,11 @@ Open http://localhost:3000. Without the Godot web export the page shows a placeh
 the device list, side panel, timeline and chat still work. `next start` only serves files that existed when it
 started, so restart it after exporting.
 
-To use your own plan: open http://localhost:3000/setup (or "Upload floor plan" in the header).
-Room detection needs `ANTHROPIC_API_KEY`; without it, draw the rooms by dragging on the plan.
+To use your own plan: open http://localhost:3000/setup (or "Upload floor plan" in the header). A phone photo of a
+printed sheet can be straightened there first. Room detection needs `ANTHROPIC_API_KEY`; without it, draw the rooms.
+
+Reference floor: with the private 4F files installed ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), "4F plan
+(traced)" loads the traced 4th floor and "4F photo (straighten)" the original photo.
 
 Try in the chat: "which air conditioners have a problem?", "what's wrong with ODU-01", "set AC-01 to 24 degrees",
 "unlock the front door" (the agent asks for confirmation first). Pick a scenario in the timeline bar.

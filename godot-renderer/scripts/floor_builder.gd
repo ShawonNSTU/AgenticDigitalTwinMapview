@@ -64,6 +64,15 @@ func build() -> void:
 		add_child(plane)
 
 
+## While a device twin is open, walls turn to glass so they never hide it.
+func set_walls_faded(on: bool) -> void:
+	if _walls.is_empty():
+		return
+	var m: StandardMaterial3D = _walls[0].material_override
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if on else BaseMaterial3D.TRANSPARENCY_DISABLED
+	m.albedo_color.a = 0.18 if on else 1.0
+
+
 ## Floor slab for any simple polygon: triangulated top face plus side faces.
 func _slab(poly: PackedVector2Array, mat: Material) -> void:
 	var tris := Geometry2D.triangulate_polygon(poly)
@@ -106,7 +115,7 @@ func play_build_up(secs := 1.6) -> void:
 	var tw := create_tween().set_parallel()
 	if _plan_mat:
 		_plan_mat.albedo_color.a = 1.0
-		tw.tween_property(_plan_mat, "albedo_color:a", 0.3, secs * 0.6).set_delay(0.3)
+		tw.tween_property(_plan_mat, "albedo_color:a", 0.18, secs * 0.6).set_delay(0.3)
 	for r in _slabs:
 		var m: StandardMaterial3D = _slabs[r]
 		var c := m.albedo_color

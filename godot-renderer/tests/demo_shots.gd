@@ -7,10 +7,12 @@ func _ready() -> void:
 	var out := "/tmp"
 	var open_id := ""
 	var part := ""
+	var trace := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--demo-shots="): out = a.substr(13)
 		elif a.begins_with("--open="): open_id = a.substr(7)
 		elif a.begins_with("--part="): part = a.substr(7)
+		elif a.begins_with("--trace="): trace = a.substr(8)
 	await Bus.layout_changed
 	await get_tree().create_timer(0.9).timeout
 	_shot(out + "/1_plan.png")
@@ -39,6 +41,13 @@ func _ready() -> void:
 			Bridge.handle({"type": "focusPart", "id": open_id, "part": part})
 			await get_tree().create_timer(2.0).timeout
 			_shot(out + "/5_part.png")
+	if trace != "":
+		Bridge.handle({"type": "closeDevice"})
+		await get_tree().create_timer(1.2).timeout
+		Bridge.handle({"type": "trace", "from": trace})
+		Bridge.handle({"type": "highlight", "ids": [trace]})
+		await get_tree().create_timer(2.0).timeout
+		_shot(out + "/6_trace.png")
 	print("DEMO SHOTS OK")
 	get_tree().quit(0)
 

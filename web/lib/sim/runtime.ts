@@ -1,6 +1,6 @@
 // Runtime state of the simulated device platform: scenario, clock and device overrides.
 // Kept on globalThis so it survives hot reloads in development. One process = one demo.
-import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, scenarioName } from './engine';
+import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, scenarioName, scenarioAvailable } from './engine';
 import building from './data/building.json';
 import sampleDevices from './data/devices.json';
 
@@ -29,11 +29,11 @@ export function tick(): number {
 }
 
 export function simState() {
-  return { t: +rt.t.toFixed(3), playing: rt.playing, speed: rt.speed, scenario: engineState.scen, fixT: engineState.fixT, scenarios: Object.keys(SCEN).map(key => ({ key, name: scenarioName(key) })) };
+  return { t: +rt.t.toFixed(3), playing: rt.playing, speed: rt.speed, scenario: engineState.scen, fixT: engineState.fixT, scenarios: Object.keys(SCEN).map(key => ({ key, name: scenarioName(key), available: scenarioAvailable(key) })) };
 }
 
 export function setSim(p: { scenario?: string; t?: number; playing?: boolean; speed?: number; fix?: boolean }) {
-  if (p.scenario && p.scenario in SCEN) { engineState.scen = p.scenario; engineState.fixT = null; rt.overrides = {}; }
+  if (p.scenario && p.scenario in SCEN && scenarioAvailable(p.scenario)) { engineState.scen = p.scenario; engineState.fixT = null; rt.overrides = {}; }
   if (typeof p.t === 'number') rt.t = Math.max(6, Math.min(22, p.t));
   if (typeof p.playing === 'boolean') rt.playing = p.playing;
   if (typeof p.speed === 'number') rt.speed = Math.max(0.05, Math.min(5, p.speed));
@@ -123,6 +123,7 @@ export function buildingState() {
 export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null) {
   const pad = outdoorPad ?? (() => { const o = devices.find(d => d.type === 'odu'); return o ? { x: o.position[0], z: o.position[2] } : LAYOUT.outdoorPad; })();
   setLayout(rooms, devices, { outdoorPad: pad, custom: true });
+  if (!scenarioAvailable(engineState.scen)) engineState.scen = 'normal';
   if (plan) {
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(plan.dataUrl);
     if (!m) throw new Error('plan.dataUrl must be a base64 PNG, JPEG or WebP data URL');

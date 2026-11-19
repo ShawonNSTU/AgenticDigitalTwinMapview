@@ -21,3 +21,8 @@ web/public/godot/*
 .env.local
 
 .DS_Store
+
+# Reference floor traced from a photo of an internal drawing (camera positions, staff names): kept private
+web/public/presets/
+docs/plans/samsung-rnd-4f/*
+!docs/plans/samsung-rnd-4f/README.md
