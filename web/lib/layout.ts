@@ -141,6 +141,6 @@ export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: num
     // rot in the image: 0 faces down = +z in the scene, so it carries over unchanged
     furniture: furniture.map(f => ({ kind: f.kind, x: X(f.fx), z: Z(f.fy), w: +(f.fw * W).toFixed(3), d: +(f.fd * W).toFixed(3), rot: +f.rot.toFixed(4) })),
     notes: notes.map(n => ({ text: n.text, x: X(n.fx), z: Z(n.fy), size: n.size ?? 1, rot: n.rot ?? 0 })),
-    plan: { dataUrl, x0: -W / 2, x1: W / 2, z0: -H / 2, z1: H / 2 },
+    plan: dataUrl ? { dataUrl, x0: -W / 2, x1: W / 2, z0: -H / 2, z1: H / 2 } : null,
   };
 }

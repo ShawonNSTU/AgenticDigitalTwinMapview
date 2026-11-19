@@ -81,9 +81,10 @@ rename or delete rooms, add or remove doors, set the real plan width, switch the
 Works best on clean architectural plans; on dense CAD prints (thin double-line walls, hundreds of symbols) expect to
 fix rooms by hand or use the vision model. Devices are added afterwards by dragging them onto the 3D map.
 
-Default floor: with the private 4F files installed ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), the platform
-starts on the 4th floor (28 rooms, doors, interiors and the sheet's labels, no devices) so the map shows it without
-any upload; without them it starts on a small built-in home. In the editor, "4F plan (traced)" and "4F photo (straighten)" load the same files.
+Default floor: the platform starts on the traced 4th floor (28 rooms, doors, interiors and the sheet's labels, no
+devices), stored in `web/lib/presets/samsung-rnd-4f.json` without the drawing. With the private drawing installed in
+`web/public/presets/` ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), it is also laid under the floor, and the
+editor's "4F plan (traced)" and "4F photo" samples work. "Default floor" in the editor returns to it.
 
 Try in the chat: "which air conditioners have a problem?", "what's wrong with ODU-01", "set AC-01 to 24 degrees",
 "unlock the front door" (the agent asks for confirmation first). Pick a scenario in the timeline bar.

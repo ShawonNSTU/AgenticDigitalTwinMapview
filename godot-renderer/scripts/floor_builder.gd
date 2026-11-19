@@ -58,7 +58,7 @@ func build() -> void:
 		pad.albedo_color = Color("9aa3ad")
 		_box(Vector3(Store.outdoor_pad.x, -0.02, Store.outdoor_pad.z), Vector3(1.6, 0.04, 1.2), pad)
 	var ground := StandardMaterial3D.new()
-	ground.albedo_color = Color("1a2028")
+	ground.albedo_color = Color("7d8796")  # shows as a soft grey under the scene lighting, a step darker than the floor
 	var fr: Rect2 = Store.floor_rect()
 	_box(Vector3(fr.get_center().x, -SLAB - 0.03, fr.get_center().y), Vector3(fr.size.x + 60, 0.02, fr.size.y + 60), ground)
 	if Store.plan_texture:
@@ -199,7 +199,7 @@ func set_walls_faded(on: bool) -> void:
 	var m: StandardMaterial3D = _walls[0].material_override
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if on else BaseMaterial3D.TRANSPARENCY_DISABLED
 	m.albedo_color.a = 0.07 if on else 1.0
-	# focus mode for an opened twin: labels step back and a dark veil lies over the floor so the twin reads
+	# focus mode for an opened twin: labels step back and a light veil lies over the floor so the twin reads
 	for c in get_children():
 		if c is Label3D:
 			c.visible = not on
@@ -211,7 +211,7 @@ func set_walls_faded(on: bool) -> void:
 		var vm := StandardMaterial3D.new()
 		vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		vm.albedo_color = Color(0.03, 0.05, 0.08, 0.0)
+		vm.albedo_color = Color(0.95, 0.96, 0.98, 0.0)
 		_veil.material_override = vm
 		_veil.position.y = 0.06
 		add_child(_veil)
@@ -219,7 +219,7 @@ func set_walls_faded(on: bool) -> void:
 	if _veil_tw:
 		_veil_tw.kill()
 	_veil_tw = create_tween()
-	_veil_tw.tween_property(veil_mat, "albedo_color:a", 0.72 if on else 0.0, 0.5)
+	_veil_tw.tween_property(veil_mat, "albedo_color:a", 0.82 if on else 0.0, 0.5)
 
 
 ## Floor slab for any simple polygon: triangulated top face plus side faces.

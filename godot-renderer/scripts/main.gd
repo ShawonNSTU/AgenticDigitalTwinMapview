@@ -206,13 +206,14 @@ func _on_scenario(_key: String) -> void:
 func _environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("0b0e12")
+	env.background_color = Color("dfe5ed")  # light theme, close to the page's stage
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("aab4c3")
 	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
+	env.glow_intensity = 0.3
+	env.glow_hdr_threshold = 1.4  # bloom only the bright flow beads, not the light floor
 	env.ssao_enabled = true  # Forward+ only; ignored by the web (Compatibility) renderer
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -228,11 +229,11 @@ func _hud() -> void:
 	add_child(layer)
 	hud = Label.new()
 	hud.position = Vector2(14, 10)
-	hud.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	hud.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.85))
 	layer.add_child(hud)
 	legend = Label.new()
 	legend.position = Vector2(14, 34)
-	legend.add_theme_color_override("font_color", Color(1, 1, 1, 0.65))
+	legend.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.7))
 	layer.add_child(legend)
 	if OS.has_feature("web"):
 		# the page shows the clock and its own panels on the left; keep only the flow legend, clear of the palette
@@ -241,7 +242,7 @@ func _hud() -> void:
 	if not OS.has_feature("web"):
 		var help := Label.new()
 		help.text = "Click a device to focus · double-click to open · P piping · Esc back · drag orbit · right-drag pan · wheel zoom"
-		help.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+		help.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.55))
 		help.anchor_top = 1.0
 		help.anchor_bottom = 1.0
 		help.position = Vector2(14, -30)

@@ -219,20 +219,29 @@ export default function PlanEditor() {
 
   return (
     <main className="setup">
-      <header className="row between">
-        <b>Floor plan → 3D map</b>
-        <span className="row"><button onClick={loadTraced}>4F plan (traced)</button><button onClick={loadPhoto}>4F photo (straighten)</button><button onClick={sample}>Use the default floor</button><a href="/"><button>Back to map</button></a></span>
+      <header className="topbar">
+        <a href="/" className="brand"><span className="logo" /><div><b>Agentic Digital Twin</b><small>Floor plan → 3D map</small></div></a>
+        <div className="floor-chip">{img ? (rooms.length ? `${rooms.length} rooms · ${doors.length} doors` : 'Plan loaded') : 'No plan yet'}</div>
+        <div className="stats">
+          <span className="muted">Samples</span>
+          <button className="ghost" onClick={loadTraced}>4F plan (traced)</button>
+          <button className="ghost" onClick={loadPhoto}>4F photo</button>
+          <button className="ghost" onClick={sample}>Default floor</button>
+          <a href="/"><button>Back to map</button></a>
+        </div>
       </header>
       <div className="setup-body">
         <section className="plan">
           {!img ? (
             <label className="drop">
-              <b>1. Upload a floor plan image</b><span className="muted">PNG, JPEG or WebP. A clean architectural plan works best.</span>
+              <span className="drop-ico" aria-hidden>⬆</span>
+              <b>Upload a floor plan image</b><span className="muted">PNG, JPEG or WebP, a scan, an export or a phone photo of a printed sheet. Clean architectural plans read best.</span>
+              <span className="drop-btn">Choose a file</span>
               <input type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => { const f = e.target.files?.[0]; if (f) { try { setImg(await loadImage(f)); setTitle(f.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 60) || 'Uploaded floor plan'); setRooms([]); setDoors([]); setFurniture([]); setNotes([]); setScaleNote(''); setMsg('Press "Read the plan" to find rooms, doors and the scale, or draw each room by hand.'); } catch (err) { setMsg((err as Error).message); } } }} />
             </label>
           ) : (
             <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={mode}>
-              <rect x={-PAD} y={-PAD} width={1 + 2 * PAD} height={ar + 2 * PAD} fill="#1a2028" />
+              <rect x={-PAD} y={-PAD} width={1 + 2 * PAD} height={ar + 2 * PAD} fill="#eef2f7" />
               <image href={img.url} x={0} y={0} width={1} height={ar} preserveAspectRatio="none" />
               {furniture.length + suggested.length > 0 && (
                 <g pointerEvents="none" opacity={0.7}>
@@ -281,30 +290,39 @@ export default function PlanEditor() {
         </section>
         <aside className="side setup-side">
           <div className="panel">
-            {msg && <div className="muted">{msg}</div>}
-            <b>1b. Photo taken at an angle?</b>
-            <div className="row"><button disabled={!img} className={mode === 'straighten' ? 'on' : ''} onClick={() => setMode('straighten')}>Straighten photo</button>{mode === 'straighten' && <button className="pri" onClick={applyStraighten}>Straighten</button>}</div>
-            {mode === 'straighten' && <div className="muted">Drag the four orange handles onto four points that form a rectangle in reality: the corners of the drawing frame, or four outer corners of the building. Then press Straighten.</div>}
-            <b>2. Rooms</b>
-            <div className="muted">Reading finds walls, rooms, doors and printed room names. With an Anthropic key on the agent, Claude also names rooms and lists furniture.</div>
-            <div className="row"><button className="pri" disabled={!img || busy} onClick={detect}>{busy ? 'Reading…' : 'Read the plan'}</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
-            {mode === 'rooms' && img && <div className="muted">Drag for a rectangle. For any other shape click each corner, then click the first corner (or double-click, or Enter). Click an existing corner to reuse it; drag a white dot to move it (rooms sharing it move too). Backspace undoes a corner, Esc cancels.</div>}
-            {rooms.map((r, i) => (
-              <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input value={r.name} onChange={e => rename(i, e.target.value)} /><button onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
-            ))}
-            <b>3. Doors</b>
-            <div className="row"><button disabled={!rooms.length} className={mode === 'doors' ? 'on' : ''} onClick={() => setMode('doors')}>Edit doors</button><span className="muted">{doors.length} doors (green)</span></div>
-            {mode === 'doors' && <div className="muted">Click a wall to add a door, click a door to remove it. Walls are built along room edges and doors leave openings.</div>}
-            <b>4. Interiors</b>
-            {furniture.length > 0 && <div className="row"><span className="muted">{furniture.length} items read from the plan (orange)</span><button onClick={() => setFurniture([])}>Remove</button></div>}
-            <label className="row"><input type="checkbox" checked={suggest} onChange={e => setSuggest(e.target.checked)} style={{ width: 'auto' }} /> Suggest furniture by room type <span className="muted">({suggested.length} items, blue)</span></label>
-            <div className="muted">Suggestions use the room names (bedroom, kitchen, office…) and are a starting fit-out, not read from the drawing. Rename a room to change its furniture.</div>
-            <div className="muted">SmartThings devices are added on the 3D map afterwards: drag them from the palette into a room.</div>
-            <b>5. Scale and build</b>
-            <label className="row">Floor name <input value={title} onChange={e => setTitle(e.target.value)} /></label>
-            <label className="row">Plan width <input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} style={{ width: 80 }} /> m</label>
-            {scaleNote && <div className="muted">{scaleNote} Correct it if you know a real dimension.</div>}
-            <button className="pri" disabled={!img || !rooms.length || busy} onClick={build}>Render the 3D map</button>
+            {msg && <div className="note">{msg}</div>}
+            <section className={`step ${img ? 'done' : 'cur'}`}>
+              <h4><i>1</i>Image</h4>
+              <div className="row"><button disabled={!img} className={mode === 'straighten' ? 'on' : ''} onClick={() => setMode('straighten')}>Straighten photo</button>{mode === 'straighten' && <button className="pri" onClick={applyStraighten}>Straighten</button>}</div>
+              {mode === 'straighten' && <div className="muted">Drag the four orange handles onto four points that form a rectangle in reality: the corners of the drawing frame, or four outer corners of the building. Then press Straighten.</div>}
+            </section>
+            <section className={`step ${rooms.length ? 'done' : img ? 'cur' : ''}`}>
+              <h4><i>2</i>Rooms<em>{rooms.length || ''}</em></h4>
+              <div className="muted">Reading finds walls, rooms, doors, the scale and printed room names. With an Anthropic key on the agent, Claude also names rooms and lists furniture.</div>
+              <div className="row"><button className="pri" disabled={!img || busy} onClick={detect}>{busy ? 'Reading…' : 'Read the plan'}</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
+              {mode === 'rooms' && img && <div className="muted">Drag for a rectangle. For any other shape click each corner, then click the first corner (or double-click, or Enter). Click an existing corner to reuse it; drag a white dot to move it (rooms sharing it move too). Backspace undoes a corner, Esc cancels.</div>}
+              {rooms.length > 0 && <div className="room-list">{rooms.map((r, i) => (
+                <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input value={r.name} onChange={e => rename(i, e.target.value)} /><button className="icon" title="Delete room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
+              ))}</div>}
+            </section>
+            <section className={`step ${rooms.length ? 'done' : ''}`}>
+              <h4><i>3</i>Doors<em>{doors.length || ''}</em></h4>
+              <div className="row"><button disabled={!rooms.length} className={mode === 'doors' ? 'on' : ''} onClick={() => setMode('doors')}>Edit doors</button><span className="muted">shown in green on the plan</span></div>
+              {mode === 'doors' && <div className="muted">Click a wall to add a door, click a door to remove it. Walls are built along room edges and doors leave openings.</div>}
+            </section>
+            <section className={`step ${rooms.length ? 'done' : ''}`}>
+              <h4><i>4</i>Interiors<em>{furniture.length + suggested.length || ''}</em></h4>
+              {furniture.length > 0 && <div className="row"><span className="muted grow">{furniture.length} items read from the plan (orange)</span><button onClick={() => setFurniture([])}>Remove</button></div>}
+              <label className="switch"><input type="checkbox" checked={suggest} onChange={e => setSuggest(e.target.checked)} /><span /> Suggest furniture by room type <em>{suggested.length} items, blue</em></label>
+              <div className="muted">Suggestions follow the room names (bedroom, kitchen, office…) and are a starting fit-out, not read from the drawing. Rename a room to change its furniture. SmartThings devices are added on the 3D map afterwards, by dragging them into a room.</div>
+            </section>
+            <section className={`step ${rooms.length ? 'cur' : ''}`}>
+              <h4><i>5</i>Scale and build</h4>
+              <label className="field">Floor name <input value={title} onChange={e => setTitle(e.target.value)} /></label>
+              <label className="field">Plan width <span className="row"><input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} /> m</span></label>
+              {scaleNote && <div className="muted">{scaleNote} Correct it if you know a real dimension.</div>}
+              <button className="pri wide" disabled={!img || !rooms.length || busy} onClick={build}>Render the 3D map</button>
+            </section>
           </div>
         </aside>
       </div>

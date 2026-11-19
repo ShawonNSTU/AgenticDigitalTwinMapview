@@ -192,29 +192,32 @@ export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan:
     const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(plan.dataUrl);
     if (!m) throw new Error('plan.dataUrl must be a base64 PNG, JPEG or WebP data URL');
     rt.plan = { bytes: Buffer.from(m[2], 'base64'), mime: m[1], x0: plan.x0, x1: plan.x1, z0: plan.z0, z1: plan.z1 };
-  }
+  } else rt.plan = null;
   rt.overrides = {};
   engineState.fixT = null;
   return buildingState();
 }
 
 /**
- * Default floor. If a preset is installed in public/presets (the private reference floor), the platform starts with it,
- * so the map shows a real floor without an upload; otherwise it uses the small built-in sample home.
+ * Default floor: the traced 4th floor (lib/presets, in the repo: rooms, labels, doors, interiors, no devices).
+ * If the private drawing is installed in public/presets, it is laid under the floor as the plan image.
  */
 const PRESET = 'samsung-rnd-4f';
 export function defaultPreset() {
-  const dir = path.join(process.cwd(), 'public', 'presets');
-  const json = path.join(dir, `${PRESET}.json`);
-  if (!existsSync(json)) return null;
-  const pre = JSON.parse(readFileSync(json, 'utf8'));
-  const img = path.join(process.cwd(), 'public', pre.image);
-  if (!existsSync(img)) return null;
+  const priv = path.join(process.cwd(), 'public', 'presets', `${PRESET}.json`);
+  const pub = path.join(process.cwd(), 'lib', 'presets', `${PRESET}.json`);
+  const file = existsSync(priv) ? priv : existsSync(pub) ? pub : null;
+  if (!file) return null;
+  const pre = JSON.parse(readFileSync(file, 'utf8'));
+  const img = pre.image ? path.join(process.cwd(), 'public', pre.image) : null;
+  const imgData = img && existsSync(img) ? readFileSync(img) : null;
   const taken = new Set<string>();
   const rooms: PlanRoom[] = pre.rooms.map((r: { name: string; pts: Pt[]; label?: string; labelAt?: Pt; zone?: string }, i: number) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts, color: roomColor(i), label: r.label, labelAt: r.labelAt, zone: r.zone }; });
-  const size = jpegSize(readFileSync(img));
-  const mime = pre.image.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  return { title: (pre.title as string).replace(/\s*\(.*\)\s*$/, ''), ...toBuilding(rooms, pre.devices, pre.widthM, size ? size[1] / size[0] : 1400 / 1930, `data:${mime};base64,${readFileSync(img).toString('base64')}`, pre.furniture ?? [], pre.notes ?? []) };
+  const size = imgData ? jpegSize(imgData) : null;
+  const aspect = size ? size[1] / size[0] : pre.aspect ?? 1400 / 1930;
+  const mime = pre.image?.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  const dataUrl = imgData ? `data:${mime};base64,${imgData.toString('base64')}` : '';
+  return { title: (pre.title as string).replace(/\s*\(.*\)\s*$/, ''), ...toBuilding(rooms, pre.devices ?? [], pre.widthM, aspect, dataUrl, pre.furniture ?? [], pre.notes ?? []) };
 }
 
 /** Width and height of a JPEG from its SOF marker (no image library needed). */
