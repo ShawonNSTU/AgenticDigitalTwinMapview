@@ -3,11 +3,15 @@
 Proof of concept with three features:
 
 1. **Floor plan to 3D map.** Upload a floor plan image (a phone photo of a printed sheet is straightened first), let AI
-   detect the rooms and the interiors drawn on it (or draw them), place SmartThings devices, and render it as a 3D map
-   view in Godot with walls, columns, furniture, stairs and sanitary ware.
-2. **Device digital twin.** Click any device: it opens in place into its internal components, with the
-   internal flows (refrigerant, air, water, power, signal), the piping to the rest of the system and live data per part.
-3. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what
+   detect the rooms and the interiors drawn on it (or draw them), and render it as a 3D map view in Godot with walls,
+   doors, columns, modelled furniture, stairs, sanitary ware and the labels printed on the plan.
+2. **Drag and drop devices.** The floor starts without devices (a plan doesn't show them). Drag SmartThings devices
+   from the palette onto the 3D map: each type snaps where it is installed (wall units on the nearest wall facing the
+   room, locks beside a door, lights on the ceiling, appliances on the floor). Move or remove them from the side panel.
+3. **Device digital twin.** Click any device: it opens in place into its internal components (5 to 16 per type), with
+   the internal flows between them and the device's connections (refrigerant cycle, cooled and warm air, water, drain,
+   power, signal), the piping to the rest of the system and synthetic live data per part and per flow.
+4. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what
    to do, and control devices (risky commands need confirmation).
 
 All device data is simulated.
@@ -60,8 +64,8 @@ To use your own plan: open http://localhost:3000/setup (or "Upload floor plan" i
 printed sheet can be straightened there first. Room detection needs `ANTHROPIC_API_KEY`; without it, draw the rooms.
 
 Default floor: with the private 4F files installed ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), the platform
-starts on the 4th floor (rooms, doors, interiors, devices) so the map shows it without any upload; without them it
-starts on a small built-in home. In the editor, "4F plan (traced)" and "4F photo (straighten)" load the same files.
+starts on the 4th floor (28 rooms, doors, interiors and the sheet's labels, no devices) so the map shows it without
+any upload; without them it starts on a small built-in home. In the editor, "4F plan (traced)" and "4F photo (straighten)" load the same files.
 
 Try in the chat: "which air conditioners have a problem?", "what's wrong with ODU-01", "set AC-01 to 24 degrees",
 "unlock the front door" (the agent asks for confirmation first). Pick a scenario in the timeline bar.

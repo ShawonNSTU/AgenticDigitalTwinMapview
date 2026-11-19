@@ -1,11 +1,11 @@
 // Runtime state of the simulated device platform: scenario, clock and device overrides.
 // Kept on globalThis so it survives hot reloads in development. One process = one demo.
-import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, scenarioName, scenarioAvailable } from './engine';
+import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, setDevices, scenarioName, scenarioAvailable } from './engine';
 import building from './data/building.json';
 import sampleDevices from './data/devices.json';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { roomColor, roomKey, toBuilding, type PlanRoom, type Pt } from '@/lib/layout';
+import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
 
 type Override = Record<string, unknown>;
 interface Runtime {
@@ -17,10 +17,13 @@ interface Runtime {
   log: { at: number; deviceId: string; command: string; args: unknown; by: string }[];
   plan: { bytes: Buffer; mime: string; x0: number; x1: number; z0: number; z1: number } | null; // uploaded floor plan image
   furniture: { kind: string; x: number; z: number; w: number; d: number; rot?: number; h?: number }[]; // interiors from the plan
+  notes: Note[]; // other text printed on the plan (zone tags, SCREEN, UP/DN, dimensions)
 }
+export type Note = { text: string; x: number; z: number; size?: number; rot?: number };
 const g = globalThis as unknown as { __twin?: Runtime };
-export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [], plan: null, furniture: [] });
+export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, lastTick: Date.now(), overrides: {}, log: [], plan: null, furniture: [], notes: [] });
 rt.furniture ??= [];
+rt.notes ??= [];
 
 /** Advance the clock if playing. Called by every request and by the event stream. */
 export function tick(): number {
@@ -67,6 +70,7 @@ export function floor(t = tick()) {
     time: t,
     scenario: engineState.scen,
     layoutVersion: LAYOUT.version,
+    devicesVersion: LAYOUT.devVersion,
     rooms: ROOMS,
     devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h], ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
   };
@@ -110,24 +114,73 @@ export function runCommand(id: string, command: string, args: Record<string, unk
   return { ok: true, device: device(id) };
 }
 
+/* ---------------- devices placed on the floor (drag and drop) ---------------- */
+
+const plain = (d: any) => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 });
+
+/** Room containing a point (metres), by polygon. Outside every room → 'out'. */
+export function roomAtXZ(x: number, z: number) {
+  return ROOMS.find((r: any) => r.poly ? insideXZ(r.poly, x, z) : x >= r.x[0] && x <= r.x[1] && z >= r.z[0] && z <= r.z[1]) ?? null;
+}
+
+function nextDeviceId(type: string) {
+  const p = PREFIX[type] ?? type.slice(0, 2).toUpperCase();
+  let n = 1;
+  while (byId[`${p}-${String(n).padStart(2, '0')}`]) n++;
+  return `${p}-${String(n).padStart(2, '0')}`;
+}
+
+/** Add a device at (x, z) metres. Mount height comes from the type unless y is given. */
+export function addDevice(p: { type: string; x: number; z: number; y?: number; rotationY?: number; room?: string; name?: string; id?: string }) {
+  if (!(p.type in TYPES)) return { ok: false as const, error: `Unknown device type "${p.type}"` };
+  if (p.id && byId[p.id]) return { ok: false as const, error: `Device ${p.id} already exists` };
+  const id = p.id ?? nextDeviceId(p.type);
+  const room = (p.room && ROOMS.find((r: any) => r.key === p.room)) || roomAtXZ(p.x, p.z);
+  const label = TYPES[p.type].label;
+  const d = { id, type: p.type, room: room?.key ?? 'out', name: `${p.name ?? label} · ${room?.name ?? 'Outside'}`, position: [+p.x.toFixed(3), +(p.y ?? MOUNT[p.type] ?? 1).toFixed(3), +p.z.toFixed(3)], rotationY: +(p.rotationY ?? 0).toFixed(4) };
+  setDevices([...DEV.map(plain), d]);
+  return { ok: true as const, device: d };
+}
+
+export function moveDevice(id: string, p: { x?: number; z?: number; y?: number; rotationY?: number }) {
+  const cur = byId[id];
+  if (!cur) return { ok: false as const, error: `Unknown device ${id}` };
+  const x = p.x ?? cur.p[0], z = p.z ?? cur.p[2];
+  const room = roomAtXZ(x, z);
+  const label = TYPES[cur.type].label;
+  const next = { ...plain(cur), room: room?.key ?? 'out', name: `${label} · ${room?.name ?? 'Outside'}`, position: [x, p.y ?? cur.p[1], z], rotationY: p.rotationY ?? cur.rotationY ?? 0 };
+  setDevices(DEV.map(d => d.id === id ? next : plain(d)));
+  return { ok: true as const, device: next };
+}
+
+export function removeDevice(id: string) {
+  if (!byId[id]) return { ok: false as const, error: `Unknown device ${id}` };
+  setDevices(DEV.filter(d => d.id !== id).map(plain));
+  delete rt.overrides[id];
+  return { ok: true as const };
+}
+
 /* ---------------- building layout (floor plan upload) ---------------- */
 
 /** Static layout for the renderer: rooms, device placements and the plan image bounds. */
 export function buildingState() {
   return {
     version: LAYOUT.version,
+    devicesVersion: LAYOUT.devVersion,
     custom: LAYOUT.custom,
     wallHeight: LAYOUT.wallHeight,
     outdoorPad: LAYOUT.outdoorPad,
     rooms: ROOMS,
     devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 })),
     furniture: rt.furniture,
+    notes: rt.notes,
     plan: rt.plan ? { url: `/api/building/plan?v=${LAYOUT.version}`, x0: rt.plan.x0, x1: rt.plan.x1, z0: rt.plan.z0, z1: rt.plan.z1 } : null,
   };
 }
 
-export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null, furniture: Runtime['furniture'] = []) {
+export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null, furniture: Runtime['furniture'] = [], notes: Note[] = []) {
   rt.furniture = furniture;
+  rt.notes = notes;
   const pad = outdoorPad ?? (() => { const o = devices.find(d => d.type === 'odu'); return o ? { x: o.position[0], z: o.position[2] } : LAYOUT.outdoorPad; })();
   setLayout(rooms, devices, { outdoorPad: pad, custom: true });
   if (!scenarioAvailable(engineState.scen)) engineState.scen = 'normal';
@@ -154,10 +207,10 @@ export function defaultPreset() {
   const img = path.join(process.cwd(), 'public', pre.image);
   if (!existsSync(img)) return null;
   const taken = new Set<string>();
-  const rooms: PlanRoom[] = pre.rooms.map((r: { name: string; pts: Pt[] }, i: number) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts, color: roomColor(i) }; });
+  const rooms: PlanRoom[] = pre.rooms.map((r: { name: string; pts: Pt[]; label?: string; labelAt?: Pt; zone?: string }, i: number) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts, color: roomColor(i), label: r.label, labelAt: r.labelAt, zone: r.zone }; });
   const size = jpegSize(readFileSync(img));
   const mime = pre.image.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  return toBuilding(rooms, pre.devices, pre.widthM, size ? size[1] / size[0] : 1400 / 1930, `data:${mime};base64,${readFileSync(img).toString('base64')}`, pre.furniture ?? []);
+  return toBuilding(rooms, pre.devices, pre.widthM, size ? size[1] / size[0] : 1400 / 1930, `data:${mime};base64,${readFileSync(img).toString('base64')}`, pre.furniture ?? [], pre.notes ?? []);
 }
 
 /** Width and height of a JPEG from its SOF marker (no image library needed). */
@@ -175,13 +228,14 @@ function jpegSize(b: Buffer): [number, number] | null {
 export function resetBuilding() {
   const pre = defaultPreset();
   if (pre) {
-    const out = setBuilding(pre.rooms, pre.devices, undefined, pre.plan, pre.furniture);
+    const out = setBuilding(pre.rooms, pre.devices, undefined, pre.plan, pre.furniture, pre.notes);
     LAYOUT.custom = false;
     return { ...out, custom: false };
   }
   setLayout(building.rooms, sampleDevices, { outdoorPad: building.outdoorPad, custom: false });
   rt.plan = null;
   rt.furniture = [];
+  rt.notes = [];
   rt.overrides = {};
   return buildingState();
 }

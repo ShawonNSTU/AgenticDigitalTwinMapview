@@ -96,6 +96,60 @@
         "size": null,
         "color": null,
         "inferred": false
+      },
+      {
+        "key": "eevin",
+        "name": "Indoor expansion valve",
+        "unit": "step",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "liqsens",
+        "name": "Liquid-pipe sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "gassens",
+        "name": "Gas-pipe sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "humsens",
+        "name": "Humidity sensor",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "psu",
+        "name": "Power supply and terminal block",
+        "unit": "W",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "display",
+        "name": "Display and IR receiver",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -187,6 +241,69 @@
         "size": null,
         "color": null,
         "inferred": false
+      },
+      {
+        "key": "oil",
+        "name": "Oil separator",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "dissens",
+        "name": "Discharge temp. sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "ambsens",
+        "name": "Outdoor air sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "ct",
+        "name": "Power meter",
+        "unit": "kW",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "pfc",
+        "name": "PFC reactor and DC link",
+        "unit": "V",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "rec",
+        "name": "Liquid receiver",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "svc",
+        "name": "Service valves",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -246,6 +363,24 @@
           0.04
         ],
         "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "sink",
+        "name": "Heat sink",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "ntc",
+        "name": "LED temp. sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
         "inferred": false
       }
     ]
@@ -309,6 +444,51 @@
         ],
         "color": "#1d7a4a",
         "inferred": false
+      },
+      {
+        "key": "bl",
+        "name": "LED backlight and diffuser",
+        "unit": "nit",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "tcon",
+        "name": "T-con board",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "spk",
+        "name": "Speakers",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "ir",
+        "name": "IR receiver",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "io",
+        "name": "I/O board (HDMI, USB)",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -369,6 +549,42 @@
         ],
         "color": "#1d7a4a",
         "inferred": false
+      },
+      {
+        "key": "tweeter",
+        "name": "Tweeter",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "dsp",
+        "name": "DSP board",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "psu",
+        "name": "Power supply",
+        "unit": "W",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "port",
+        "name": "Bass reflex port",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -415,6 +631,24 @@
           0.04
         ],
         "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "gear",
+        "name": "Gearbox",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "limit",
+        "name": "Limit switch",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
         "inferred": false
       }
     ]
@@ -499,6 +733,69 @@
         ],
         "color": "#f59e0b",
         "inferred": false
+      },
+      {
+        "key": "drier",
+        "name": "Filter drier",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "cap",
+        "name": "Capillary tube",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "efan",
+        "name": "Evaporator fan",
+        "unit": "rpm",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "cfan",
+        "name": "Condenser fan",
+        "unit": "rpm",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "defrost",
+        "name": "Defrost heater",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "damper",
+        "name": "Air damper",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "pcb",
+        "name": "Inverter board",
+        "unit": "W",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -559,6 +856,51 @@
         ],
         "color": "#1d7a4a",
         "inferred": false
+      },
+      {
+        "key": "top",
+        "name": "Top grill element",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "cool",
+        "name": "Cooling fan",
+        "unit": "rpm",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "lamp",
+        "name": "Oven lamp",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "door",
+        "name": "Door switch",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "relay",
+        "name": "Heater relays",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -618,6 +960,51 @@
         ],
         "color": "#94a3b8",
         "inferred": false
+      },
+      {
+        "key": "suction",
+        "name": "Suction fan",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "wheels",
+        "name": "Drive wheels and motors",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "side",
+        "name": "Side brush",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "cliff",
+        "name": "Cliff sensors",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "mcu",
+        "name": "Main board",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -676,6 +1063,33 @@
           0.04
         ],
         "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "soc",
+        "name": "AI vision chip and encoder",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "sd",
+        "name": "Storage (microSD)",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "pan",
+        "name": "Pan / tilt motors",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
         "inferred": false
       }
     ]
@@ -737,6 +1151,33 @@
         ],
         "color": "#1d7a4a",
         "inferred": false
+      },
+      {
+        "key": "pir",
+        "name": "Motion sensor",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "spk",
+        "name": "Speaker",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "chime",
+        "name": "Chime relay",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -797,6 +1238,33 @@
           0.04
         ],
         "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "fp",
+        "name": "Fingerprint reader",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "gear",
+        "name": "Motor and gearbox",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "dps",
+        "name": "Door position sensor",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
         "inferred": false
       }
     ]
@@ -884,6 +1352,60 @@
         ],
         "color": "#1d7a4a",
         "inferred": false
+      },
+      {
+        "key": "drum",
+        "name": "Drum and tub",
+        "unit": "rpm",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "heater",
+        "name": "Water heater",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "wtemp",
+        "name": "Water temp. sensor",
+        "unit": "°C",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "det",
+        "name": "Detergent dispenser",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "inv",
+        "name": "Inverter board",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "flow",
+        "name": "Flow meter",
+        "unit": "L/min",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -943,6 +1465,51 @@
         ],
         "color": "#e24b4a",
         "inferred": false
+      },
+      {
+        "key": "drum",
+        "name": "Drum",
+        "unit": "rpm",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "fan",
+        "name": "Blower fan",
+        "unit": "rpm",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "moist",
+        "name": "Moisture sensor bars",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "tco",
+        "name": "Thermal cut-off",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "pcb",
+        "name": "Control board",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -989,6 +1556,24 @@
           0.04
         ],
         "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "mcu",
+        "name": "Microcontroller",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "buzz",
+        "name": "Buzzer",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
         "inferred": false
       }
     ]
@@ -1049,6 +1634,24 @@
         ],
         "color": "#1d7a4a",
         "inferred": false
+      },
+      {
+        "key": "mcu",
+        "name": "Microcontroller",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "lcd",
+        "name": "E-ink display",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -1107,6 +1710,24 @@
         ],
         "color": "#1d7a4a",
         "inferred": false
+      },
+      {
+        "key": "lux",
+        "name": "Light sensor",
+        "unit": "lx",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "mcu",
+        "name": "Microcontroller",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
       }
     ]
   },
@@ -1155,6 +1776,33 @@
           0.04
         ],
         "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "fuse",
+        "name": "Fuse and surge protector",
+        "unit": "V",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "psu",
+        "name": "AC-DC supply",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "led",
+        "name": "Status LED",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
         "inferred": false
       }
     ]
@@ -1215,6 +1863,42 @@
           0.01
         ],
         "color": "#1d7a4a",
+        "inferred": false
+      },
+      {
+        "key": "pre",
+        "name": "Pre-filter",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "carbon",
+        "name": "Activated carbon filter",
+        "unit": "%",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "motor",
+        "name": "BLDC fan motor",
+        "unit": "",
+        "shape": null,
+        "size": null,
+        "color": null,
+        "inferred": false
+      },
+      {
+        "key": "gas",
+        "name": "VOC gas sensor",
+        "unit": "ppb",
+        "shape": null,
+        "size": null,
+        "color": null,
         "inferred": false
       }
     ]

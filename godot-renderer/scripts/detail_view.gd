@@ -14,7 +14,10 @@ signal legend_changed(text: String)
 const TWIN := 1.1          # metres across the largest side of the twin
 const SPREAD := 2.0        # exploded: part positions spread over SPREAD × TWIN on every axis
 const BODY_PORT := Vector3(-0.55, -0.35, -0.45)  # where '@body' flows enter/leave, in body fractions
-const MEDIA_NAMES := {"refrigerant_liquid": "refrigerant (liquid)", "refrigerant_gas": "refrigerant (gas)", "air": "air", "water": "water", "drain": "drain water", "power": "power", "signal": "signal", "heat": "heat", "light": "light"}
+const MEDIA_NAMES := {"refrigerant_liquid": "refrigerant (liquid)", "refrigerant_gas": "refrigerant (gas)", "refrigerant_2phase": "refrigerant (expanding)",
+	"air": "air", "air_cold": "cooled air", "air_warm": "warm air", "water": "water", "drain": "drain water", "power": "power", "signal": "signal", "heat": "heat", "light": "light"}
+const PORT_NAMES := {"@liquid": "liquid line", "@gas": "gas line", "@gas_in": "suction from indoor units", "@liquid_out": "liquid to indoor units",
+	"@air_in": "air in", "@air_out": "air out", "@drain_out": "drain", "@power": "power in", "@water_in": "water in", "@hdmi": "HDMI", "@load": "to the appliance", "@dock": "dock contacts"}
 static var _flow_defs: Dictionary = {}
 static var _layout: Dictionary = {}
 
@@ -206,7 +209,13 @@ func _route(a: Vector3, b: Vector3, lane: int) -> Array:
 
 
 const UNITS := {"hz": " Hz", "air": " % airflow", "fan": " fan", "amps": " A", "pump": " A pump", "eev": " steps", "lv": " % light",
-	"vol": " volume", "w": " W", "motor": " rpm", "pos": " %", "pm": " µg/m³", "bin": " % full", "evIn": " °C", "dis": " °C"}
+	"vol": " volume", "w": " W", "motor": " rpm", "pos": " %", "pm": " µg/m³", "bin": " % full", "evIn": " °C evap.", "dis": " °C discharge",
+	"liq": " °C liquid", "gas": " °C gas", "eevIn": " steps EEV", "supply": " °C supply air", "room": " °C return air", "cmh": " m³/h", "kw": " kW",
+	"cond": " mL/h condensate", "hum": " %RH", "suc": " °C suction", "lp": " kgf/cm² low", "hp": " kgf/cm² high", "amb": " °C outdoor",
+	"dcv": " V DC", "condT": " °C condensing", "evapT": " °C evaporating", "damper": " % damper", "fz": " °C fridge", "fr": " °C freezer",
+	"flow": " L/min", "det": " % detergent", "wtemp": " °C water", "level": "", "inlet": " °C inlet", "moist": " % moisture", "temp": " °C",
+	"rpm": " rpm", "cool": " rpm cooling", "nits": " nit", "ma": " mA", "ledT": " °C LED", "lm": " lm", "fps": " fps", "storage": " % storage",
+	"kbps": " kbps", "batt": " % battery", "presses": " presses", "lux": " lx", "volt": " V", "kwh": " kWh", "voc": " ppb VOC"}
 
 
 func _tag_text(reading: String) -> String:
@@ -224,8 +233,56 @@ func _port() -> Vector3:
 	return twin.to_global(BODY_PORT * _body)
 
 
+func _ports() -> Dictionary:
+	return _layout.get(device.data.type, {}).get("_ports", {})
+
+
+func _has_end(key: String) -> bool:
+	return key.begins_with("@") or _parts.has(key)
+
+
 func _part_pos(key: String) -> Vector3:
-	return _port() if key == "@body" else twin.to_global(_parts[key].node.position)
+	if key.begins_with("@"):
+		var p = _ports().get(key)
+		return twin.to_global(Vector3(p[0], p[1], p[2]) * _body) if p is Array else _port()
+	return twin.to_global(_parts[key].node.position)
+
+
+## Connection points on the body (pipes, air in/out, power): a short stub and a name.
+func _build_ports() -> void:
+	var used := {}
+	for f in _flow_defs.get(device.data.type, []):
+		for k in [f.from, f.to]:
+			if str(k).begins_with("@") and _ports().has(k):
+				used[k] = f.medium
+	var media: Dictionary = _flow_defs.get("_media", {})
+	for k in used:
+		var at := _part_pos(k)
+		var col := Color(media.get(used[k], "#ffffff"))
+		var stub := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.035
+		sm.height = 0.07
+		stub.mesh = sm
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = 0.8
+		stub.material_override = m
+		_flow_root.add_child(stub)
+		stub.global_position = at
+		var l := Label3D.new()
+		l.text = PORT_NAMES.get(k, k.substr(1))
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.no_depth_test = true
+		l.fixed_size = true
+		l.font_size = 16
+		l.pixel_size = 0.0005
+		l.outline_size = 6
+		l.modulate = col.lightened(0.5)
+		_flow_root.add_child(l)
+		l.global_position = at + Vector3(0, 0.07, 0)
 
 
 func _build_flows() -> void:
@@ -236,7 +293,7 @@ func _build_flows() -> void:
 	var lane := 0
 	var tagged := {}
 	for f in _flow_defs.get(device.data.type, []):
-		if (f.from != "@body" and not _parts.has(f.from)) or (f.to != "@body" and not _parts.has(f.to)):
+		if not _has_end(f.from) or not _has_end(f.to):
 			continue
 		var a := _part_pos(f.from)
 		var b := _part_pos(f.to)
@@ -245,7 +302,7 @@ func _build_flows() -> void:
 		# Route like real internal piping: orthogonal runs in the device's own axes with elbow joints,
 		# each flow on its own lane so parallel lines don't overlap.
 		var color := Color(media.get(f.medium, "#ffffff"))
-		var thick: bool = f.medium.begins_with("refrigerant") or f.medium in ["water", "drain", "air", "heat"]
+		var thick: bool = f.medium.begins_with("refrigerant") or f.medium.begins_with("air") or f.medium in ["water", "drain", "heat"]
 		var radius := (0.014 if thick else 0.007) * (1.0 if exploded else 0.7)
 		var pts := _route(a, b, lane)
 		lane += 1
@@ -272,8 +329,10 @@ func _build_flows() -> void:
 		beads.add_line(pts, 0.11 if exploded else 0.06)
 		var tag: Label3D = null
 		var rule: Dictionary = f.get("rate", {})
-		if not rule.is_empty() and not tagged.has(rule.reading):
-			tagged[rule.reading] = true
+		# a flow shows its own tag, or the reading that drives it when that reading has a unit (not plain on/off)
+		var tag_reading: String = str(f.get("tag", rule.get("reading", "") if UNITS.has(rule.get("reading", "")) else ""))
+		if tag_reading != "" and not tagged.has(tag_reading):
+			tagged[tag_reading] = true
 			tag = Label3D.new()
 			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			tag.no_depth_test = true
@@ -284,8 +343,9 @@ func _build_flows() -> void:
 			tag.modulate = color.lightened(0.45)
 			holder.add_child(tag)
 			tag.global_position = pts[pts.size() / 2] + Vector3(0, 0.05, 0)
-		_flows.append({"mats": mats, "from": f.from, "to": f.to, "color": color, "rate": rule, "beads": beads, "tag": tag})
+		_flows.append({"mats": mats, "from": f.from, "to": f.to, "color": color, "rate": rule, "beads": beads, "tag": tag, "tag_reading": tag_reading})
 		used[f.medium] = true
+	_build_ports()
 	var names: Array = []
 	for m in used:
 		names.append(MEDIA_NAMES.get(m, m))
@@ -323,7 +383,7 @@ func _refresh_flows() -> void:
 		if f.beads:
 			f.beads.set_speed(0, speed * 0.7)
 		if f.tag:
-			f.tag.text = _tag_text(f.rate.reading)
+			f.tag.text = _tag_text(f.tag_reading)
 			f.tag.modulate = col.lightened(0.45)
 
 

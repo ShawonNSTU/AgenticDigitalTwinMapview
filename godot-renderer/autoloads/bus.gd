@@ -19,8 +19,17 @@ signal health_changed(id: String, health: String)
 signal device_data(id: String, data: Dictionary)
 signal live_updated  # Store.live refreshed from /api/floor (about once a second)
 signal layout_changed  # a floor plan was uploaded (or reset); rebuild the scene from Store
+signal devices_changed  # devices were placed, moved or removed on the same floor; rebuild only the devices
+
+# Placing devices (drag and drop from the host page's palette, or moving a placed device)
+signal place_started(type: String, move_id: String)
+signal place_moved(uv: Vector2)
+signal place_ended(uv: Vector2, drop: bool)
 
 # Events back to the host page
 signal device_clicked(id: String)
 signal part_clicked(id: String, part: String)
 signal device_closed
+signal device_dropped(info: Dictionary)   # {deviceType, x, y, z, rotationY, room} — host adds it to the platform
+signal device_moved(info: Dictionary)     # {id, x, y, z, rotationY, room}
+signal place_hover(info: Dictionary)      # {room, valid, mount}

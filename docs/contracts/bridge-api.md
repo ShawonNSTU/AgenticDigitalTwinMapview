@@ -20,6 +20,11 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `setTime` | `t` (hours, 6–22) | scene clock (sun, HUD, time-driven effects) |
 | `setScenario` | `key: normal \| filter \| refrig \| washer` | closes any open device, refreshes flow |
 | `resetView` | | close, clear, camera home |
+| `dragStart` | `deviceType` | a palette tile is dragged over the map: a see-through device follows the pointer |
+| `dragMove` | `u`, `v` (pointer, 0–1 across the map) | the device snaps where that type is installed (wall, door, ceiling, floor); the room is outlined green, or red if it can't go there |
+| `dragEnd` | `u`, `v`, `drop` | `drop: true` reports `dropDevice`; `false` cancels |
+| `startMove` | `id` | the placed device follows the pointer inside the map; click puts it down (`moveDevice`), right-click or Esc cancels |
+| `refreshDevices` | | poll the platform now (the page just added, moved or removed a device) |
 
 ## Renderer → host
 
@@ -31,9 +36,22 @@ Every message is `{ source: "twin-renderer", type, ...fields }`.
 | `deviceClicked` | `id` | click on a device (drags are ignored) |
 | `partClicked` | `id`, `part` | click on a part of an opened device |
 | `deviceClosed` | | the open device was closed (Esc, back, scenario change) |
+| `placeHover` | `room`, `roomName`, `valid`, `mount` | while dragging: the room under the pointer and how the device would be mounted |
+| `dropDevice` | `deviceType`, `x`, `y`, `z`, `rotationY`, `room` | a device was dropped; the page adds it with `POST /api/devices` |
+| `moveDevice` | `id`, `x`, `y`, `z`, `rotationY`, `room` | a placed device was put down somewhere else; the page saves it with `PATCH /api/devices/:id` |
 
 Layout changes (floor plan upload) do not go through the bridge: the renderer sees `layoutVersion` change in
-`/api/floor`, loads `/api/building` and rebuilds. The page only refreshes its own lists.
+`/api/floor`, loads `/api/building` and rebuilds. Device changes (placed, moved, removed) bump `devicesVersion`
+instead: the renderer reloads only the devices and their piping, and new or moved devices drop into place.
+The page only refreshes its own lists.
+
+## Device placement API (platform)
+
+| request | body | result |
+|---|---|---|
+| `POST /api/devices` | `type`, `x`, `z`, `y?`, `rotationY?`, `room?`, `name?` | 201 with the device (`id` like `AC-01`; mount height from the type unless `y` is given) |
+| `PATCH /api/devices/:id` | `x?`, `z?`, `y?`, `rotationY?` | the moved device (room recomputed) |
+| `DELETE /api/devices/:id` | | `{ ok: true }` |
 
 ## Rules
 

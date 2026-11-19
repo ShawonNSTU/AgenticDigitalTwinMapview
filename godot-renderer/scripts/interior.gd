@@ -28,6 +28,8 @@ const PALETTE := {
 	"partition2": [Color("d6dbe1"), 0.0, 0.5], "slide": [Color("e9f1ff"), 0.0, 0.4],
 	"wood_dark": [Color("8a6446"), 0.0, 0.55], "porcelain": [Color("f7f8fa"), 0.05, 0.15], "chrome": [Color("d4d8dd"), 0.55, 0.3],
 	"mesh_black": [Color("23262c"), 0.1, 0.7], "soil": [Color("4a3a2c"), 0.0, 0.95],
+	"water": [Color(0.45, 0.72, 0.95, 0.55), 0.0, 0.1], "warn": [Color("f2c94c"), 0.0, 0.5], "locker": [Color("aab7c4"), 0.3, 0.45],
+	"tile": [Color("e8edf2"), 0.0, 0.3], "drinks": [Color("e85d4a"), 0.0, 0.5],
 }
 const MODEL_DIR := "res://assets/furniture/kenney/"
 ## Kenney material name -> palette key (the kit's pastel colours read as toys in an office)
@@ -36,7 +38,7 @@ const RECOLOUR := {
 	"metal": "chrome", "metalLight": "porcelain", "metalMedium": "frame", "metalDark": "dark", "plant": "leaf",
 	"_defaultMat": "porcelain", "glass": "glass", "paper": "white", "darkWood": "wood_dark",
 }
-const GLOW := ["led", "console", "display", "slide"]
+const GLOW := ["led", "console", "display", "slide", "drinks"]
 const TEXTURED := {"wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6}
 
 var counts := {}         # kind -> number of items built (for the HUD / tests)
@@ -377,6 +379,68 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			var n := maxi(3, roundi(w / 0.22))
 			for i in n:
 				_bm("dark", Vector3(-w / 2 + w * (i + 0.5) / n, 0.65, 0), Vector3(0.12, 0.13, minf(0.32, d * 0.9)), "cyl")
+		"locker":
+			# a bank of steel lockers (cut at the wall height like the walls), a door per 0.4 m with vents and a handle
+			var lh := minf(h, 1.1)
+			_b("locker", Vector3(0, lh / 2, 0), Vector3(1, lh, 1))
+			var n := maxi(2, roundi(w / 0.4))
+			for i in n:
+				var x := -w / 2 + w * (i + 0.5) / n
+				_bm("partition2", Vector3(x, lh / 2, d / 2 + 0.006), Vector3(w / n - 0.02, lh - 0.05, 0.012))
+				_bm("chrome", Vector3(x + w / n * 0.32, lh * 0.55, d / 2 + 0.016), Vector3(0.02, 0.1, 0.012))
+				for v in 3:
+					_bm("dark", Vector3(x, lh - 0.1 - v * 0.035, d / 2 + 0.014), Vector3(w / n * 0.5, 0.012, 0.006))
+		"bench":
+			_bm("wood", Vector3(0, 0.44, 0), Vector3(w, 0.05, d))
+			for sx in [-1, 1]:
+				_bm("frame", Vector3(sx * (w / 2 - 0.06), 0.21, 0), Vector3(0.04, 0.42, d * 0.85))
+		"stool":
+			_bm("chrome", Vector3(0, 0.18, 0), Vector3(0.05, 0.36, 0.05), "cyl")
+			_bm("fabric", Vector3(0, 0.38, 0), Vector3(w, 0.05, w), "cyl")
+			_bm("chrome", Vector3(0, 0.01, 0), Vector3(w * 0.9, 0.02, w * 0.9), "cyl")
+			_bm("chrome", Vector3(0, 0.75, -0.25), Vector3(0.03, 0.06, 0.12))  # wall tap above
+		"dispenser":
+			# water dispenser: cabinet, taps, a blue bottle upside down on top
+			_bm("white", Vector3(0, 0.5, 0), Vector3(w, 1.0, d))
+			_bm("dark", Vector3(0, 0.72, d / 2 + 0.01), Vector3(w * 0.7, 0.18, 0.02))
+			_bm("rail", Vector3(-w * 0.15, 0.7, d / 2 + 0.04), Vector3(0.03, 0.05, 0.05))
+			_bm("console", Vector3(w * 0.15, 0.7, d / 2 + 0.04), Vector3(0.03, 0.05, 0.05))
+			_bm("water", Vector3(0, 1.17, 0), Vector3(w * 0.8, 0.34, w * 0.8), "cyl")
+		"vending":
+			# drinks fridges: dark cabinets with lit glass fronts and shelves of cans (cut at the wall height)
+			var vh := minf(h, 1.1)
+			var units := maxi(1, roundi(w / 0.6))
+			for i in units:
+				var x := -w / 2 + w * (i + 0.5) / units
+				var uw := w / units - 0.03
+				_bm("dark", Vector3(x, vh / 2, 0), Vector3(uw, vh, d))
+				_bm("glass", Vector3(x, vh / 2 + 0.05, d / 2 + 0.005), Vector3(uw * 0.86, vh - 0.25, 0.01))
+				for sh in 4:
+					var y := 0.25 + sh * (vh - 0.35) / 4.0
+					_bm("frame", Vector3(x, y, d * 0.1), Vector3(uw * 0.84, 0.012, d * 0.7))
+					_bm("drinks", Vector3(x, y + 0.06, d * 0.1), Vector3(uw * 0.78, 0.1, d * 0.5))
+				_bm("console", Vector3(x, vh - 0.07, d / 2 + 0.008), Vector3(uw * 0.8, 0.06, 0.01))
+		"shower":
+			# shower cubicle: tray, tiled back wall, side panels, glass door, mixer and head
+			_b("porcelain", Vector3(0, 0.04, 0), Vector3(1, 0.08, 1))
+			_bm("tile", Vector3(0, 0.6, -d / 2 + 0.02), Vector3(w, 1.1, 0.04))
+			for sx in [-1, 1]:
+				_bm("partition2", Vector3(sx * w / 2, 0.6, 0), Vector3(0.03, 1.1, d))
+			_bm("glass", Vector3(-w * 0.12, 0.6, d / 2), Vector3(w * 0.74, 1.05, 0.015))
+			_bm("chrome", Vector3(w * 0.25, 0.6, d / 2), Vector3(0.02, 1.05, 0.02))
+			_bm("chrome", Vector3(0, 1.0, -d / 2 + 0.1), Vector3(0.025, 0.025, 0.16))
+			_bm("chrome", Vector3(0, 0.98, -d / 2 + 0.17), Vector3(0.14, 0.015, 0.14), "cyl")
+			_bm("chrome", Vector3(0, 0.75, -d / 2 + 0.05), Vector3(0.1, 0.06, 0.04))
+			_bm("dark", Vector3(0, 0.085, 0), Vector3(0.07, 0.01, 0.07), "cyl")  # drain
+		"elec_panel":
+			# electrical distribution board: grey cabinet, door seam, status lights, warning label
+			var ph := minf(h, 1.1)
+			_b("partition2", Vector3(0, ph / 2, 0), Vector3(1, ph, 1))
+			_bm("frame", Vector3(0, ph / 2, d / 2 + 0.004), Vector3(0.01, ph - 0.08, 0.008))
+			_bm("warn", Vector3(-w * 0.22, ph * 0.72, d / 2 + 0.006), Vector3(minf(0.12, w * 0.3), 0.08, 0.006))
+			for k in 3:
+				_bm("led" if k < 2 else "rail", Vector3(w * 0.12 + k * 0.05, ph * 0.86, d / 2 + 0.008), Vector3(0.025, 0.025, 0.008), "cyl")
+			_bm("chrome", Vector3(w * 0.06, ph * 0.5, d / 2 + 0.012), Vector3(0.02, 0.09, 0.015))
 		"plant":
 			_swap = {"wood": "pot", "woodDark": "soil"}
 			_model("pottedPlant", Vector3.ZERO, w, d, maxf(0.9, w * 2.2))

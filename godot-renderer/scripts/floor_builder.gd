@@ -7,6 +7,8 @@ const WALL := 0.08
 
 var _slabs := {}  # room key -> StandardMaterial3D
 var _walls: Array = []
+var _veil: MeshInstance3D
+var _veil_tw: Tween
 var _plan_mat: StandardMaterial3D
 
 
@@ -20,16 +22,9 @@ func build() -> void:
 		_finish(mat, str(r.name).to_lower())
 		_slabs[r.key] = mat
 		_slab(poly, mat)
-		var label := Label3D.new()
-		label.text = r.name
-		label.font_size = 48
-		label.pixel_size = 0.004
-		label.modulate = Color(0.15, 0.18, 0.22, 0.75)
-		label.outline_size = 0
-		label.rotation = Vector3(-PI / 2, 0, 0)
-		var c := PlanGeo.interior_point(poly)
-		label.position = Vector3(c.x, 0.012, c.y)
-		add_child(label)
+		_room_label(r, poly)
+	for n in Store.notes:
+		_note(n)
 	var wall_mat := StandardMaterial3D.new()
 	wall_mat.albedo_color = Color("f2f3f5")
 	wall_mat.roughness = 0.8
@@ -129,12 +124,102 @@ func _finish(mat: StandardMaterial3D, name: String) -> void:
 
 
 ## While a device twin is open, walls turn to glass so they never hide it.
+## Room name as printed on the plan (label/labelAt from the plan when there is one), flat on the floor,
+## sized to the room so long names stay inside it, with the zone tag under it.
+func _room_label(r: Dictionary, poly: PackedVector2Array) -> void:
+	var text: String = str(r.get("label", r.name))
+	var at: Vector2
+	if r.has("labelAt"):
+		at = Vector2(r.labelAt[0], r.labelAt[1])
+	else:
+		at = PlanGeo.interior_point(poly)
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for v in poly:
+		box = box.expand(v)
+	var longest := 1
+	for line in text.split("\n"):
+		longest = maxi(longest, line.length())
+	# about 0.55 em per character; keep the text within ~85 % of the room width, between 0.16 and 0.42 m tall
+	var em := clampf(box.size.x * 0.85 / (longest * 0.55), 0.16, 0.32)
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = 64
+	label.pixel_size = em / 64.0
+	label.modulate = Color(0.13, 0.17, 0.25, 0.9)
+	label.outline_size = 12
+	label.outline_modulate = Color(1, 1, 1, 0.55)
+	label.rotation = Vector3(-PI / 2, 0, 0)
+	label.position = Vector3(at.x, 0.014, at.y)
+	label.name = "Label_" + str(r.key)
+	add_child(label)
+	var zone: String = str(r.get("zone", ""))
+	if zone != "":
+		var tag := Label3D.new()
+		tag.text = "ZONE " + zone
+		tag.font_size = 64
+		tag.pixel_size = em * 0.5 / 64.0
+		tag.modulate = Color(0.25, 0.45, 0.75, 0.75)
+		tag.rotation = Vector3(-PI / 2, 0, 0)
+		tag.position = Vector3(at.x, 0.014, at.y + em * (0.75 * text.split("\n").size() + 0.2))
+		add_child(tag)
+
+
+## Other text printed on the plan: zone tags (on a light-blue band like the sheet), SCREEN, UP/DN, dimensions.
+func _note(n: Dictionary) -> void:
+	var text: String = str(n.text)
+	var size: float = float(n.get("size", 1.0))
+	var em := 0.26 * size
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = 64
+	label.pixel_size = em / 64.0
+	label.rotation = Vector3(-PI / 2, float(n.get("rot", 0.0)), 0)
+	label.position = Vector3(n.x, 0.016, n.z)
+	var zone := text.begins_with("ZONE")
+	label.modulate = Color(0.12, 0.2, 0.35, 0.95) if zone else Color(0.2, 0.24, 0.32, 0.75)
+	label.outline_size = 8
+	label.outline_modulate = Color(1, 1, 1, 0.5)
+	add_child(label)
+	if zone:
+		var band := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(em * 0.62 * text.length() + em * 1.2, 0.01, em * 1.4)
+		band.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color("9fd3ee")
+		m.roughness = 0.9
+		band.material_override = m
+		add_child(band)
+		band.position = Vector3(n.x, 0.008, n.z)
+
+
 func set_walls_faded(on: bool) -> void:
 	if _walls.is_empty():
 		return
 	var m: StandardMaterial3D = _walls[0].material_override
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if on else BaseMaterial3D.TRANSPARENCY_DISABLED
 	m.albedo_color.a = 0.18 if on else 1.0
+	# focus mode for an opened twin: labels step back and a dark veil lies over the floor so the twin reads
+	for c in get_children():
+		if c is Label3D:
+			c.visible = not on
+	if _veil == null:
+		_veil = MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(400, 400)
+		_veil.mesh = pm
+		var vm := StandardMaterial3D.new()
+		vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		vm.albedo_color = Color(0.03, 0.05, 0.08, 0.0)
+		_veil.material_override = vm
+		_veil.position.y = 0.06
+		add_child(_veil)
+	var veil_mat: StandardMaterial3D = _veil.material_override
+	if _veil_tw:
+		_veil_tw.kill()
+	_veil_tw = create_tween()
+	_veil_tw.tween_property(veil_mat, "albedo_color:a", 0.72 if on else 0.0, 0.5)
 
 
 ## Floor slab for any simple polygon: triangulated top face plus side faces.

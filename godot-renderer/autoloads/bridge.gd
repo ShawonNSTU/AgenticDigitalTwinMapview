@@ -12,6 +12,9 @@ func _ready() -> void:
 	Bus.device_clicked.connect(func(id): emit_event({"type": "deviceClicked", "id": id}))
 	Bus.part_clicked.connect(func(id, part): emit_event({"type": "partClicked", "id": id, "part": part}))
 	Bus.device_closed.connect(func(): emit_event({"type": "deviceClosed"}))
+	Bus.device_dropped.connect(func(info): emit_event({"type": "dropDevice"}.merged(info)))
+	Bus.device_moved.connect(func(info): emit_event({"type": "moveDevice"}.merged(info)))
+	Bus.place_hover.connect(func(info): emit_event({"type": "placeHover"}.merged(info)))
 	if not OS.has_feature("web"):
 		return
 	_cb = JavaScriptBridge.create_callback(_on_message)
@@ -54,4 +57,9 @@ func handle(msg: Dictionary) -> void:
 		"setTime": Store.set_time(float(msg.get("t", Store.t)))
 		"setScenario": Store.set_scenario(str(msg.get("key", "normal")))
 		"resetView": Bus.reset_view_requested.emit()
+		"dragStart": Bus.place_started.emit(str(msg.get("deviceType", "")), "")
+		"dragMove": Bus.place_moved.emit(Vector2(float(msg.get("u", 0)), float(msg.get("v", 0))))
+		"dragEnd": Bus.place_ended.emit(Vector2(float(msg.get("u", 0)), float(msg.get("v", 0))), bool(msg.get("drop", false)))
+		"startMove": Bus.place_started.emit("", str(msg.get("id", "")))
+		"refreshDevices": Store.refresh_now()
 		_: push_warning("Bridge: unknown message %s" % msg)

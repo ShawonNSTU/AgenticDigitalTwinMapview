@@ -9,7 +9,7 @@ import devices from './data/devices.json';
 // route bundle, and every copy must see the same layout, scenario and clock.
 const G = ((globalThis as any).__twinEngine ??= {
   ROOMS: [], DEV: [], byId: {}, init: false,
-  LAYOUT: { outdoorPad: building.outdoorPad, wallHeight: building.wallHeight, version: 0, custom: false },
+  LAYOUT: { outdoorPad: building.outdoorPad, wallHeight: building.wallHeight, version: 0, devVersion: 0, custom: false },
   R: { odu: null, far: [], circuit: [], filterAc: null, washer: null, leak: null, lowBatt: null, farNames: '' },
   state: { scen: 'normal', fixT: null },
   scenNames: {},
@@ -17,21 +17,32 @@ const G = ((globalThis as any).__twinEngine ??= {
 export const ROOMS: any[] = G.ROOMS;
 export const DEV: any[] = G.DEV;
 export const byId: Record<string, any> = G.byId;
-export const LAYOUT: { outdoorPad: any; wallHeight: number; version: number; custom: boolean } = G.LAYOUT;
+export const LAYOUT: { outdoorPad: any; wallHeight: number; version: number; devVersion: number; custom: boolean } = G.LAYOUT;
+G.LAYOUT.devVersion ??= 0;
 
 /** Devices that each scenario acts on. Chosen from the layout, so scenarios work on any uploaded plan. */
 export const R: { odu: string | null; far: string[]; circuit: string[]; filterAc: string | null; washer: string | null; leak: string | null; lowBatt: string | null; farNames: string } = G.R;
 
 export function setLayout(rooms: any[], devices: any[], extra: { outdoorPad?: any; wallHeight?: number; custom?: boolean } = {}) {
   ROOMS.splice(0, ROOMS.length, ...rooms);
-  const counters = {};
-  DEV.splice(0, DEV.length, ...devices.map(d => ({ ...d, p: d.position, n: (counters[d.type] = (counters[d.type] ?? -1) + 1) })));
-  for (const k of Object.keys(byId)) delete byId[k];
-  for (const d of DEV) byId[d.id] = d;
   if (extra.outdoorPad) LAYOUT.outdoorPad = extra.outdoorPad;
   if (extra.wallHeight) LAYOUT.wallHeight = extra.wallHeight;
   LAYOUT.custom = !!extra.custom;
   LAYOUT.version++;
+  assignDevices(devices);
+}
+
+/** Replace the device list on the current floor (devices dropped on, moved on or removed from the map). The floor stays. */
+export function setDevices(devices: any[]) {
+  assignDevices(devices);
+  LAYOUT.devVersion++;
+}
+
+function assignDevices(devices: any[]) {
+  const counters = {};
+  DEV.splice(0, DEV.length, ...devices.map(d => ({ ...d, p: d.position, n: (counters[d.type] = (counters[d.type] ?? -1) + 1) })));
+  for (const k of Object.keys(byId)) delete byId[k];
+  for (const d of DEV) byId[d.id] = d;
   const of = (type) => DEV.filter(d => d.type === type);
   const dist = (a, b) => Math.hypot(a.p[0] - b.p[0], a.p[2] - b.p[2]);
   const odus = of('odu'), odu = odus[0], acs = of('ac'), washer = of('washer')[0];
@@ -62,7 +73,7 @@ export const SCEN: Record<string, any> = {
 };
 export const state: { scen: string; fixT: number | null } = G.state;
 function sev(t) { const s = SCEN[state.scen]; if (!s.onset) return 0; let v = clamp((t - s.onset) / s.ramp, 0, 1); if (state.fixT != null && t >= state.fixT) v *= clamp(1 - (t - state.fixT) / .5, 0, 1); return v; }
-const occ = (room, t) => ({ media: t > 19, living: (t > 9 && t < 12) || t > 17, kitchen: (t > 6.5 && t < 8.5) || (t > 17.5 && t < 20), primary: t < 7.5 || t > 21, bedroom: t < 7.5 || t > 10.5, dining: (t > 7 && t < 8.5) || (t > 18.5 && t < 20.5), bath: (t > 6.5 && t < 7.5) || t > 21.5, laundry: t > 13.5 && t < 16 }[room] ?? (t > 7 && t < 9 || t > 18 && t < 23));
+const occ = (room, t) => ({ media: t > 19, living: (t > 9 && t < 12) || t > 17, kitchen: (t > 6.5 && t < 8.5) || (t > 17.5 && t < 20), primary: t < 7.5 || t > 21, bedroom: t < 7.5 || t > 10.5, dining: (t > 7 && t < 8.5) || (t > 18.5 && t < 20.5), bath: (t > 6.5 && t < 7.5) || t > 21.5, laundry: t > 13.5 && t < 16 }[room] ?? (t > 8.5 && t < 18.5)); // rooms of an uploaded plan: office hours
 function acRead(d, t) {
   const w = Math.sin(t * 1.3 + (d.n % 6)) * .25;
   const r = { on: true, set: 24, room: 24 + w * .6, evIn: 7 + w * .3, evOut: 12 + w * .3, fan: 55, air: 100, louver: 35, drain: 'Flowing', rssi: -52 - (d.n % 6) * 3, err: null };
@@ -73,13 +84,13 @@ function acRead(d, t) {
 }
 /* Only the outdoor unit on the leaking circuit shows the shortage. */ function oduRead(t, id = R.odu) { const s = state.scen === 'refrig' && id === R.odu ? sev(t) : 0; return { dis: 74 + 34 * s, suc: 12 + 7 * s, lp: 9.4 - 2.4 * s, hp: 26 - 3 * s, hz: 58 + 30 * s, fan: 26, eev: Math.round(300 + 180 * s) }; }
 const LT_LEVEL = { media: 40, living: 80, kitchen: 90, primary: 50, bedroom: 60, dining: 75, bath: 85, laundry: 90 };
-function read(d, t) {
+function readBase(d, t) {
   const s = sev(t), o = occ(d.room, t);
   switch (d.type) {
     case 'ac': return acRead(d, t);
     case 'odu': return oduRead(t, d.id);
     case 'light': { const lv = o ? (LT_LEVEL[d.room] ?? 70) : 0; return { lv, ma: lv * 4.1, ledT: 28 + lv * .22, rssi: -55 - (d.n % 6) * 2 }; }
-    case 'tv': return { on: o && d.room === 'media' ? true : (o && t > 19), w: o ? 112 : 0.5, rssi: -48 };
+    case 'tv': { const home = d.room in LT_LEVEL; const on = o && (!home || d.room === 'media' || t > 19); return { on, w: on ? 112 : 0.5, rssi: -48 }; }
     case 'speaker': return { on: o, vol: o ? 30 : 0, rssi: -50 - (d.n % 6) };
     case 'blinds': return { pos: t > 7 && t < 19.5 ? 100 : 0, batt: 64 - (d.n % 6) * 4, rssi: -62 };
     case 'fridge': return { fz: 3.1 + Math.sin(t * 3) * .3, fr: -18.2 + Math.sin(t * 2) * .4, comp: Math.sin(t * 6) > -.2 ? 'Running' : 'Idle', door: 'Closed', w: 95 };
@@ -200,6 +211,166 @@ export const TYPES: Record<string, any> = {
       { key: 'pm', name: 'PM2.5 sensor', shape: 'box', size: [.04, .03, .02], col: 0x1d2433, val: r => `${r.pm} µg/m³`, h: () => 'ok', s: r => r.pm, u: 'µg/m³' },
       { key: 'pcb', name: 'Control board', shape: 'box', size: [.1, .06, .01], col: 0x1d7a4a, val: () => 'No error', h: () => 'ok', s: () => 0, u: '' }] },
 };
+
+
+/* ---------------- deeper twins ----------------
+   Extra components per device type (pipe and air sensors, valves, fans, boards, power stages) and the readings
+   they show. The readings are derived from the base readings above, so every part of a device tells the same story
+   (e.g. a blocked AC filter lowers airflow, which lowers capacity and raises the indoor EEV opening). */
+function derive(d, r, t) {
+  const w = Math.sin(t * 2.1 + (d.n % 5));
+  switch (d.type) {
+    case 'ac': {
+      const supply = r.on ? r.evOut + 2 + (100 - r.air) * 0.02 : r.room;
+      const cmh = Math.round(r.on ? r.air * 9 * (0.6 + r.fan / 140) : 0);
+      const kw = +(cmh * 1.2 * Math.max(0, r.room - supply) / 3600).toFixed(2);
+      const pw = Math.round(r.on ? 18 + r.fan * 0.55 : 2);
+      return { liq: 27 + 1.2 * w, gas: r.evOut + 0.8, eevIn: Math.round(clamp(260 + (r.sh - 5) * 22 + (100 - r.air) * 0.8, 40, 480)), supply: +supply.toFixed(1),
+        hum: +clamp(58 - (r.on ? (r.room - r.evIn) * 0.5 : 0) + w, 30, 90).toFixed(0), cmh, kw, w: pw, volt: 228 + Math.round(w * 2), cond: Math.round(r.on ? kw * 160 : 0) };
+    }
+    case 'odu': {
+      const amb = +(31 + 3 * Math.sin(((t - 9) / 12) * Math.PI)).toFixed(1);
+      const kw = +(0.6 + r.hz * 0.055).toFixed(2), cap = +(r.hz * 0.19).toFixed(1);
+      return { amb, liq: +(amb + 5 + w * 0.4).toFixed(1), kw, amps: +((kw * 1000) / (1.73 * 400 * 0.95)).toFixed(1), dcv: Math.round(540 + w * 4), cap, cop: +(cap / kw).toFixed(2), sc: +(4 + w * 0.5).toFixed(1) };
+    }
+    case 'fridge': {
+      const run = r.comp === 'Running';
+      return { condT: run ? 41 : 30, evapT: +(r.fr - 7).toFixed(1), efan: run ? 1350 : 400, cfan: run ? 1500 : 0, defrost: t % 8 > 7.7 ? 'On' : 'Off', damper: Math.round(clamp((r.fz - 2) * 45, 10, 100)) };
+    }
+    case 'washer': {
+      const run = r.state === 'Washing', heat = run && t < 14;
+      return { heater: heat ? 'On' : 'Off', wtemp: Math.round(run ? (heat ? 22 + (t - 13.5) * 36 : 40) : 22), flow: r.valve === 'Open' ? 8.5 : 0, det: 72, w: run ? (heat ? 2100 : Math.round(180 + r.motor * 0.1)) : 1 };
+    }
+    case 'dryer': {
+      const dry = r.state === 'Drying';
+      return { rpm: dry ? 52 : 0, fanrpm: dry ? 2750 : 0, inlet: r.heat === 'On' ? 118 : 25, moist: dry ? Math.max(5, Math.round(60 - (t - 15.5) * 50)) : 0, w: dry ? 2600 : 1 };
+    }
+    case 'oven': return { top: r.on && t % 0.2 < 0.1 ? 'On' : 'Off', cool: r.on ? 2200 : 0, w: r.on ? 2400 : 3 };
+    case 'tv': return { nits: r.on ? 420 : 0, vol: r.on ? 18 : 0 };
+    case 'speaker': return { w: r.on ? 9.5 : 1.2 };
+    case 'light': return { lm: Math.round(r.lv * 8.6), w: +(r.lv * 0.095 + 0.3).toFixed(1) };
+    case 'blinds': return { moving: (t > 7 && t < 7.08) || (t > 19.5 && t < 19.58) };
+    case 'camera': return { fps: 25, kbps: r.rec ? 2048 + Math.round(w * 150) : 0, storage: Math.round(38 + (t - 6) * 1.2), pan: 0.5, w: 4.8 };
+    case 'doorbell': return { motion: Math.sin(t * 7) > 0.9, ring: false };
+    case 'lock': return { moving: false };
+    case 'motion': return { lux: Math.round(t > 6.5 && t < 18.5 ? 320 + 80 * w : 15) };
+    case 'plug': return { volt: 230, amps: +(r.w / 230).toFixed(2) };
+    case 'purifier': return { pre: 35, carbon: 70, cmh: r.fan * 95, voc: 120 + r.pm * 4, w: r.fan * 9 + 2 };
+    case 'temphum': return { on: true };
+  }
+  return {};
+}
+function read(d, t) { const r = readBase(d, t); return r ? { ...r, ...derive(d, r, t) } : r; }
+
+const XP = (key, name, val, s, u, h = (_r) => 'ok') => ({ key, name, val, h, s, u });
+const EXTRA = {
+  ac: [
+    XP('eevin', 'Indoor expansion valve', r => `${r.eevIn} steps open`, r => r.eevIn, 'step', r => r.eevIn > 460 ? 'watch' : 'ok'),
+    XP('liqsens', 'Liquid-pipe sensor', r => `${r.liq.toFixed(1)} °C`, r => r.liq, '°C'),
+    XP('gassens', 'Gas-pipe sensor', r => `${r.gas.toFixed(1)} °C · superheat ${r.sh.toFixed(1)} K`, r => r.gas, '°C', r => r.sh > 10 ? 'watch' : 'ok'),
+    XP('humsens', 'Humidity sensor', r => `${r.hum} %RH`, r => r.hum, '%'),
+    XP('psu', 'Power supply and terminal block', r => `${r.w} W · ${r.volt} V`, r => r.w, 'W'),
+    XP('display', 'Display and IR receiver', r => r.on ? `Cooling · set ${r.set} °C · ${r.kw} kW` : 'Off', r => r.kw, 'kW'),
+  ],
+  odu: [
+    XP('oil', 'Oil separator', o => `${(o.dis - 2).toFixed(1)} °C · oil return OK`, o => o.dis, '°C'),
+    XP('dissens', 'Discharge temp. sensor', o => `${o.dis.toFixed(1)} °C`, o => o.dis, '°C', o => o.dis > 100 ? 'watch' : 'ok'),
+    XP('ambsens', 'Outdoor air sensor', o => `${o.amb} °C`, o => o.amb, '°C'),
+    XP('ct', 'Power meter', o => `${o.kw} kW · ${o.amps} A · COP ${o.cop}`, o => o.kw, 'kW'),
+    XP('pfc', 'PFC reactor and DC link', o => `${o.dcv} V DC`, o => o.dcv, 'V'),
+    XP('rec', 'Liquid receiver', o => `${o.liq} °C · subcool ${o.sc} K`, o => o.liq, '°C'),
+    XP('svc', 'Service valves', o => `open · ${o.cap} kW to the indoor units`, o => o.cap, 'kW'),
+  ],
+  fridge: [
+    XP('drier', 'Filter drier', () => 'OK', () => 0, ''),
+    XP('cap', 'Capillary tube', r => r.comp === 'Running' ? 'Flowing' : 'Equalising', r => r.comp === 'Running' ? 1 : 0, ''),
+    XP('efan', 'Evaporator fan', r => `${r.efan} rpm`, r => r.efan, 'rpm'),
+    XP('cfan', 'Condenser fan', r => `${r.cfan} rpm`, r => r.cfan, 'rpm'),
+    XP('defrost', 'Defrost heater', r => r.defrost, r => r.defrost === 'On' ? 1 : 0, ''),
+    XP('damper', 'Air damper', r => `${r.damper} % open`, r => r.damper, '%'),
+    XP('pcb', 'Inverter board', r => `${r.w} W`, r => r.w, 'W'),
+  ],
+  washer: [
+    XP('drum', 'Drum and tub', r => `${r.motor} rpm`, r => r.motor, 'rpm'),
+    XP('heater', 'Water heater', r => r.heater, r => r.heater === 'On' ? 1 : 0, ''),
+    XP('wtemp', 'Water temp. sensor', r => `${r.wtemp} °C`, r => r.wtemp, '°C'),
+    XP('det', 'Detergent dispenser', r => `${r.det} % left`, r => r.det, '%'),
+    XP('inv', 'Inverter board', r => `${r.w} W`, r => r.w, 'W'),
+    XP('flow', 'Flow meter', r => `${r.flow} L/min`, r => r.flow, 'L/min'),
+  ],
+  dryer: [
+    XP('drum', 'Drum', r => `${r.rpm} rpm`, r => r.rpm, 'rpm'),
+    XP('fan', 'Blower fan', r => `${r.fanrpm} rpm`, r => r.fanrpm, 'rpm'),
+    XP('moist', 'Moisture sensor bars', r => `${r.moist} % moisture`, r => r.moist, '%'),
+    XP('tco', 'Thermal cut-off', r => `closed · inlet ${r.inlet} °C`, r => r.inlet, '°C'),
+    XP('pcb', 'Control board', r => `${r.w} W`, r => r.w, 'W'),
+  ],
+  oven: [
+    XP('top', 'Top grill element', r => r.top, r => r.top === 'On' ? 1 : 0, ''),
+    XP('cool', 'Cooling fan', r => `${r.cool} rpm`, r => r.cool, 'rpm'),
+    XP('lamp', 'Oven lamp', r => r.on ? 'On' : 'Off', r => r.on ? 1 : 0, ''),
+    XP('door', 'Door switch', () => 'Closed', () => 0, ''),
+    XP('relay', 'Heater relays', r => `${r.w} W`, r => r.w, 'W'),
+  ],
+  tv: [
+    XP('bl', 'LED backlight and diffuser', r => `${r.nits} nit`, r => r.nits, 'nit'),
+    XP('tcon', 'T-con board', r => r.on ? '120 Hz' : 'Standby', r => r.on ? 1 : 0, ''),
+    XP('spk', 'Speakers', r => `volume ${r.vol}`, r => r.vol, ''),
+    XP('ir', 'IR receiver', () => 'OK', () => 0, ''),
+    XP('io', 'I/O board (HDMI, USB)', r => r.on ? 'HDMI 1 active' : 'Idle', r => r.on ? 1 : 0, ''),
+  ],
+  speaker: [
+    XP('tweeter', 'Tweeter', r => r.on ? 'Playing' : 'Idle', r => r.vol, ''),
+    XP('dsp', 'DSP board', r => r.on ? 'Room EQ on' : 'Idle', r => r.on ? 1 : 0, ''),
+    XP('psu', 'Power supply', r => `${r.w} W`, r => r.w, 'W'),
+    XP('port', 'Bass reflex port', () => 'OK', () => 0, ''),
+  ],
+  light: [
+    XP('sink', 'Heat sink', r => `${r.ledT.toFixed(0)} °C`, r => r.ledT, '°C', r => r.ledT > 70 ? 'watch' : 'ok'),
+    XP('ntc', 'LED temp. sensor', r => `${r.ledT.toFixed(1)} °C · ${r.lm} lm · ${r.w} W`, r => r.ledT, '°C'),
+  ],
+  blinds: [
+    XP('gear', 'Gearbox', r => r.moving ? 'Turning' : 'Holding', r => r.moving ? 1 : 0, ''),
+    XP('limit', 'Limit switch', r => r.pos >= 100 ? 'Top limit' : r.pos <= 0 ? 'Bottom limit' : 'Between', r => r.pos, '%'),
+  ],
+  camera: [
+    XP('soc', 'AI vision chip and encoder', r => `${r.fps} fps · ${r.kbps} kbps`, r => r.kbps, 'kbps'),
+    XP('sd', 'Storage (microSD)', r => `${r.storage} % used`, r => r.storage, '%', r => r.storage > 90 ? 'watch' : 'ok'),
+    XP('pan', 'Pan / tilt motors', () => 'Patrol', () => 0, ''),
+  ],
+  doorbell: [
+    XP('pir', 'Motion sensor', r => r.motion ? 'Motion' : 'Clear', r => r.motion ? 1 : 0, ''),
+    XP('spk', 'Speaker', () => 'OK', () => 0, ''),
+    XP('chime', 'Chime relay', () => 'Ready', () => 0, ''),
+  ],
+  lock: [
+    XP('fp', 'Fingerprint reader', () => '6 prints enrolled', () => 6, ''),
+    XP('gear', 'Motor and gearbox', r => r.moving ? 'Turning' : 'Holding', r => r.moving ? 1 : 0, ''),
+    XP('dps', 'Door position sensor', () => 'Door closed', () => 0, ''),
+  ],
+  leak: [XP('mcu', 'Microcontroller', () => 'Sleeping · wakes on water', () => 0, ''), XP('buzz', 'Buzzer', r => r.wet ? 'Sounding' : 'Silent', r => r.wet ? 1 : 0, '')],
+  temphum: [XP('mcu', 'Microcontroller', () => 'Reports every 5 min', () => 0, ''), XP('lcd', 'E-ink display', r => `${r.temp.toFixed(1)} °C · ${r.hum} %`, r => r.temp, '°C')],
+  motion: [XP('lux', 'Light sensor', r => `${r.lux} lx`, r => r.lux, 'lx'), XP('mcu', 'Microcontroller', r => r.motion ? 'Reporting motion' : 'Watching', r => r.motion ? 1 : 0, '')],
+  plug: [
+    XP('fuse', 'Fuse and surge protector', r => `${r.volt} V · OK`, r => r.volt, 'V'),
+    XP('psu', 'AC-DC supply', () => '3.3 V OK', () => 3.3, 'V'),
+    XP('led', 'Status LED', r => r.on ? 'Blue' : 'Off', r => r.on ? 1 : 0, ''),
+  ],
+  purifier: [
+    XP('pre', 'Pre-filter', r => `${r.pre} % dust`, r => r.pre, '%', r => r.pre > 80 ? 'watch' : 'ok'),
+    XP('carbon', 'Activated carbon filter', r => `${r.carbon} % life left`, r => r.carbon, '%'),
+    XP('motor', 'BLDC fan motor', r => `${r.cmh} m³/h · ${r.w} W`, r => r.cmh, 'm³/h'),
+    XP('gas', 'VOC gas sensor', r => `${r.voc} ppb`, r => r.voc, 'ppb'),
+  ],
+  vacuum: [
+    XP('suction', 'Suction fan', r => r.state === 'Cleaning' ? '2500 Pa' : 'Off', r => r.state === 'Cleaning' ? 2500 : 0, 'Pa'),
+    XP('wheels', 'Drive wheels and motors', r => r.state === 'Cleaning' ? 'Driving' : 'Parked', () => 0, ''),
+    XP('side', 'Side brush', r => r.state === 'Cleaning' ? 'Spinning' : 'Stopped', () => 0, ''),
+    XP('cliff', 'Cliff sensors', () => 'Clear', () => 0, ''),
+    XP('mcu', 'Main board', r => r.state, () => 0, ''),
+  ],
+};
+for (const [k, ps] of Object.entries(EXTRA)) for (const p of ps) if (!TYPES[k].parts.some(x => x.key === p.key)) TYPES[k].parts.push(p);
 
 
 const RANK = { ok: 0, watch: 1, fault: 2 };

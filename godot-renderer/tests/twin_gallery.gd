@@ -9,8 +9,10 @@ func _ready() -> void:
 		if a.begins_with("--gallery="):
 			out = a.substr(10)
 	# let the layout load and the plan-to-3D intro finish before taking pictures
-	await get_tree().create_timer(6.0).timeout
 	var main = get_parent()
+	while main.world == null or Store.devices.is_empty():
+		await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(5.0).timeout
 	var seen := {}
 	for d in Store.devices:
 		if seen.has(d.type):
@@ -18,6 +20,8 @@ func _ready() -> void:
 		seen[d.type] = true
 		Bridge.handle({"type": "openDevice", "id": d.id})
 		await get_tree().create_timer(0.75).timeout
+		main.rig.jump(main.detail.centre(), DetailView.TWIN * 2.6, deg_to_rad(-22.0), d.get("rotationY", 0.0) + deg_to_rad(30.0))
+		await get_tree().process_frame
 		_shot("%s/%s_assembled.png" % [out, d.type])
 		await get_tree().create_timer(2.4).timeout
 		# frame the exploded twin from a fixed three-quarter view

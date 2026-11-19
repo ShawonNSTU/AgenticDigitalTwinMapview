@@ -11,7 +11,9 @@ var hud: Label
 var devices := {}  # id -> DeviceNode
 var world: Node3D   # everything built from the layout; rebuilt when a plan is uploaded
 var legend: Label
+var placer: Placer
 var _highlight: Array = []
+var _pending_focus := ""  # a device the host asked to focus before it arrived from the platform
 
 
 func _ready() -> void:
@@ -23,6 +25,7 @@ func _ready() -> void:
 	# Wait for the platform's layout so the bundled sample never flashes up first. Fall back to the
 	# bundled sample only when the platform can't be reached (offline desktop run) or after 20 s.
 	Bus.layout_changed.connect(func(): _build_world(true))
+	Bus.devices_changed.connect(_rebuild_devices)
 	Store.platform_unreachable.connect(func():
 		if world == null:
 			_build_world(true))
@@ -54,6 +57,10 @@ func _ready() -> void:
 			var rs := Node.new()
 			rs.set_script(load("res://tests/room_shots.gd"))
 			add_child(rs)
+		if a.begins_with("--place="):
+			var pt := Node.new()
+			pt.set_script(load("res://tests/place_test.gd"))
+			add_child(pt)
 		if a.begins_with("--gallery="):
 			var g := Node.new()
 			g.set_script(load("res://tests/twin_gallery.gd"))
@@ -85,26 +92,72 @@ func _build_world(animate: bool) -> void:
 	interior.name = "Interior"
 	world.add_child(interior)
 	interior.build(Store.furniture)
-	var holder := Node3D.new()
-	holder.name = "Devices"
-	world.add_child(holder)
-	for d in Store.devices:
-		var n := DeviceNode.new()
-		holder.add_child(n)
-		devices[d.id] = n.setup(d)
-	piping = Piping.new()
-	world.add_child(piping)
-	piping.build()
+	_make_devices()
 	detail = DetailView.new()
 	world.add_child(detail)
 	detail.part_selected.connect(func(pos, size): rig.fly_to(pos.lerp(detail.centre(), 0.3), clampf(size * 4.0, 1.2, 2.6)))
 	detail.legend_changed.connect(func(text): legend.text = text)
 	legend.text = ""
+	placer = Placer.new()
+	placer.name = "Placer"
+	placer.rig = rig
+	world.add_child(placer)
 	var fr: Rect2 = Store.floor_rect()
 	rig.set_home(Vector3(fr.get_center().x, 0, fr.get_center().y), clampf(fr.size.length() * 0.95, 8.0, 60.0))
 	_on_time(Store.t)
 	if animate:
 		_play_plan_to_3d()
+
+
+func _make_devices() -> void:
+	var holder := Node3D.new()
+	holder.name = "Devices"
+	world.add_child(holder)
+	DeviceNode.dense = Store.devices.size() > 40
+	for d in Store.devices:
+		var n := DeviceNode.new()
+		holder.add_child(n)
+		devices[d.id] = n.setup(d)
+	piping = Piping.new()
+	piping.name = "Piping"
+	world.add_child(piping)
+	piping.build()
+
+
+## Devices were placed, moved or removed on the same floor: rebuild devices and piping, keep the rest.
+## New or moved devices drop in; the camera goes to the device the host asked for.
+func _rebuild_devices() -> void:
+	if world == null:
+		return
+	var before := {}
+	for id in devices:
+		before[id] = devices[id].position
+	if detail.device and not Store.by_id.has(detail.device.data.id):
+		_on_close()
+	var open_id: String = detail.device.data.id if detail.device else ""
+	if open_id != "":
+		_on_close()
+	var piping_on := piping.visible
+	world.get_node("Devices").free()
+	piping.free()
+	devices.clear()
+	_make_devices()
+	piping.visible = piping_on
+	for id in devices:
+		var n: DeviceNode = devices[id]
+		if before.has(id) and (before[id] as Vector3).distance_to(n.position) < 0.01:
+			continue
+		var y := n.position.y
+		n.position.y = y + 1.8
+		var tw := create_tween()
+		tw.tween_property(n, "position:y", y, 0.5).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	if _highlight.size() > 0:
+		_on_highlight(_highlight.filter(func(i): return devices.has(i)), "")
+	if open_id != "" and devices.has(open_id):
+		_on_open(open_id, "")
+	elif _pending_focus != "" and devices.has(_pending_focus):
+		_on_focus(_pending_focus)
+	_pending_focus = ""
 
 
 ## Tour step "plan → 3D": top-down on the plan, walls rise, devices drop in, piping fades in, camera tilts.
@@ -181,6 +234,10 @@ func _hud() -> void:
 	legend.position = Vector2(14, 34)
 	legend.add_theme_color_override("font_color", Color(1, 1, 1, 0.65))
 	layer.add_child(legend)
+	if OS.has_feature("web"):
+		# the page shows the clock and its own panels on the left; keep only the flow legend, clear of the palette
+		hud.visible = false
+		legend.position = Vector2(270, 16)
 	if not OS.has_feature("web"):
 		var help := Label.new()
 		help.text = "Click a device to focus · double-click to open · P piping · Esc back · drag orbit · right-drag pan · wheel zoom"
@@ -228,6 +285,8 @@ func _on_focus(id: String) -> void:
 		return
 	if devices.has(id):
 		rig.fly_to(devices[id].global_position, 4.0)
+	else:
+		_pending_focus = id  # not here yet: it was just placed and is on its way from the platform
 
 
 func _on_open(id: String, part: String) -> void:
@@ -235,6 +294,8 @@ func _on_open(id: String, part: String) -> void:
 		return
 	if not devices.has(id):
 		return
+	if placer.active():
+		placer.cancel()
 	Store.open_id = id
 	var dev: DeviceNode = devices[id]
 	# Only the opened device stays: other devices and the floor piping step back.
@@ -291,7 +352,9 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e.is_action_pressed("toggle_piping"):
 		piping.visible = not piping.visible
 	elif e.is_action_pressed("back"):
-		if detail.device:
+		if placer and placer.active():
+			placer.cancel()
+		elif detail.device:
 			_on_close()
 		else:
 			Bus.highlight_cleared.emit()

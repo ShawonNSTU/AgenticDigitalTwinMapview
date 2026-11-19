@@ -1,25 +1,39 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { send } from '@/lib/bridge';
+import { DeviceIcon } from '@/components/DevicePalette';
 
 type Part = { key: string; name: string; value: string; health: string; inferred: boolean };
 type Finding = { lvl: string; title: string; conf: string; ev: string[]; steps: { t: string; p: string; go?: string }[] } | null;
-type Device = { id: string; label: string; name: string; health: string; parts: Part[]; finding: Finding };
+type Device = { id: string; type: string; label: string; name: string; health: string; parts: Part[]; finding: Finding };
 
 /** Selected device: health, finding, guided steps and live parts. Polls the simulated platform. */
-export default function DevicePanel({ id, t, onClose, onSelect }: { id: string; t: number; onClose: () => void; onSelect: (id: string) => void }) {
+export default function DevicePanel({ id, t, onClose, onSelect, onMove, onRemove }: { id: string; t: number; onClose: () => void; onSelect: (id: string) => void; onMove?: (id: string) => void; onRemove?: (id: string) => void }) {
   const [d, setD] = useState<Device | null>(null);
   const [step, setStep] = useState(0);
   const [exploded, setExploded] = useState(true);
   useEffect(() => { setStep(0); }, [id]);
   useEffect(() => { let on = true; fetch(`/api/devices/${id}`).then(r => r.json()).then(x => on && setD(x)); return () => { on = false; }; }, [id, t]);
   if (!d) return <div className="panel">Loading…</div>;
+  if ((d as unknown as { error?: string }).error) return <div className="panel"><div className="muted">This device is no longer on the floor.</div><button onClick={onClose}>Back</button></div>;
   const f = d.finding;
   const go = (i: number) => { if (!f) return; const s = Math.max(0, Math.min(f.steps.length - 1, i)); setStep(s); send({ type: 'focusPart', id, part: f.steps[s].p }); };
   return (
     <div className="panel">
-      <div className="row between"><div><b>{d.id} · {d.label}</b><div className="muted">{d.name}</div></div><span className={`badge ${d.health}`}>{d.health}</span></div>
-      <div className="row"><button onClick={() => { send({ type: 'openDevice', id }); setExploded(true); }}>Open in place</button><button onClick={() => { send({ type: 'setLayer', layer: 'exploded', on: !exploded }); setExploded(!exploded); }}>{exploded ? 'Assembled view' : 'Exploded view'}</button><button onClick={() => { send({ type: 'closeDevice' }); onClose(); }}>Back to floor</button></div>
+      <div className="dev-head">
+        <span className="dev-ico big"><DeviceIcon type={d.type} size={26} /></span>
+        <div className="grow"><b>{d.id} · {d.label}</b><div className="muted">{d.name.split(' · ').slice(1).join(' · ')}</div></div>
+        <span className={`badge ${d.health}`}>{d.health === 'ok' ? 'Normal' : d.health === 'watch' ? 'Watch' : 'Fault'}</span>
+      </div>
+      <div className="btns">
+        <button className="pri" onClick={() => { send({ type: 'openDevice', id }); setExploded(true); }}>Open digital twin</button>
+        <button onClick={() => { send({ type: 'setLayer', layer: 'exploded', on: !exploded }); setExploded(!exploded); }}>{exploded ? 'Assemble' : 'Explode'}</button>
+        <button onClick={() => { send({ type: 'closeDevice' }); onClose(); }}>Floor</button>
+      </div>
+      {(onMove || onRemove) && <div className="btns small">
+        {onMove && <button onClick={() => onMove(id)}>Move on map</button>}
+        {onRemove && <button className="danger" onClick={() => onRemove(id)}>Remove</button>}
+      </div>}
       {f && (
         <div className={`finding ${f.lvl}`}>
           <b>{f.title}</b><div className="muted">{f.conf}</div>
@@ -34,8 +48,9 @@ export default function DevicePanel({ id, t, onClose, onSelect }: { id: string; 
           </div>
         </div>
       )}
+      <div className="sec-title">Components · live</div>
       <div className="parts">{d.parts.map(p => (
-        <div key={p.key} className="part" onClick={() => send({ type: 'focusPart', id, part: p.key })}>
+        <div key={p.key} className="part" onClick={() => { send({ type: 'focusPart', id, part: p.key }); }}>
           <span><i className={`dot ${p.health}`} />{p.name}{p.inferred && <em> (inferred)</em>}</span><b>{p.value}</b>
         </div>))}
       </div>

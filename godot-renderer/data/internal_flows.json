@@ -1,5 +1,5 @@
 {
- "_doc": "Internal flows drawn between parts when a device is opened. from/to are part keys; '@body' is the device's own pipe or cable connection. medium picks the colour. rate (optional) ties the flow speed to a live reading of the device: {reading, max} -> speed in proportion to value/max (0..1.5); {reading, equals} -> full speed when the reading equals the value, else stopped; a boolean reading -> full or stopped. Without rate the flow runs at nominal speed. A part in fault stops the flows that touch it.",
+ "_doc": "Internal flows drawn between parts when a device is opened. from/to are part keys; '@body' is the device's own pipe or cable connection. medium picks the colour. rate (optional) ties the flow speed to a live reading of the device: {reading, max} -> speed in proportion to value/max (0..1.5); {reading, equals} -> full speed when the reading equals the value, else stopped; a boolean reading -> full or stopped. Without rate the flow runs at nominal speed. A part in fault stops the flows that touch it. Ports: '@name' points come from part_layout.json <type>._ports (body fractions); '@body' is the default port. tag (optional) names the reading shown on the flow.",
  "_media": {
   "refrigerant_liquid": "#4c8dff",
   "refrigerant_gas": "#ff8a3d",
@@ -9,29 +9,61 @@
   "power": "#ffd34d",
   "signal": "#b48cff",
   "heat": "#ff5a3d",
-  "light": "#fff6d5"
+  "light": "#fff6d5",
+  "air_cold": "#7dd3fc",
+  "air_warm": "#fdba74",
+  "refrigerant_2phase": "#a78bfa"
  },
  "ac": [
   {
-   "from": "@body",
-   "to": "coil",
+   "from": "@liquid",
+   "to": "eevin",
    "medium": "refrigerant_liquid",
    "rate": {
     "reading": "on"
-   }
+   },
+   "tag": "liq"
+  },
+  {
+   "from": "eevin",
+   "to": "coil",
+   "medium": "refrigerant_2phase",
+   "rate": {
+    "reading": "on"
+   },
+   "tag": "eevIn"
   },
   {
    "from": "coil",
-   "to": "@body",
+   "to": "gassens",
    "medium": "refrigerant_gas",
    "rate": {
     "reading": "on"
    }
   },
   {
+   "from": "gassens",
+   "to": "@gas",
+   "medium": "refrigerant_gas",
+   "rate": {
+    "reading": "on"
+   },
+   "tag": "gas"
+  },
+  {
+   "from": "@air_in",
+   "to": "filter",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "air",
+    "max": 100
+   },
+   "tag": "room"
+  },
+  {
    "from": "filter",
    "to": "coil",
-   "medium": "air",
+   "medium": "air_warm",
    "rate": {
     "reading": "air",
     "max": 100
@@ -40,20 +72,32 @@
   {
    "from": "coil",
    "to": "fan",
-   "medium": "air",
+   "medium": "air_cold",
    "rate": {
     "reading": "air",
     "max": 100
-   }
+   },
+   "tag": "supply"
   },
   {
    "from": "fan",
    "to": "louver",
-   "medium": "air",
+   "medium": "air_cold",
    "rate": {
     "reading": "air",
     "max": 100
-   }
+   },
+   "tag": "cmh"
+  },
+  {
+   "from": "louver",
+   "to": "@air_out",
+   "medium": "air_cold",
+   "rate": {
+    "reading": "air",
+    "max": 100
+   },
+   "tag": "kw"
   },
   {
    "from": "coil",
@@ -61,16 +105,43 @@
    "medium": "drain",
    "rate": {
     "reading": "on"
+   },
+   "tag": "cond"
+  },
+  {
+   "from": "drain",
+   "to": "@drain_out",
+   "medium": "drain",
+   "rate": {
+    "reading": "on"
    }
   },
   {
-   "from": "motor",
-   "to": "fan",
+   "from": "@power",
+   "to": "psu",
+   "medium": "power",
+   "rate": {
+    "reading": "on"
+   },
+   "tag": "w"
+  },
+  {
+   "from": "psu",
+   "to": "pcb",
+   "medium": "power",
+   "rate": {
+    "reading": "on"
+   }
+  },
+  {
+   "from": "pcb",
+   "to": "motor",
    "medium": "power",
    "rate": {
     "reading": "fan",
     "max": 100
-   }
+   },
+   "tag": "amps"
   },
   {
    "from": "coilsens",
@@ -83,13 +154,25 @@
    "medium": "signal"
   },
   {
+   "from": "liqsens",
+   "to": "pcb",
+   "medium": "signal"
+  },
+  {
+   "from": "gassens",
+   "to": "pcb",
+   "medium": "signal"
+  },
+  {
+   "from": "humsens",
+   "to": "pcb",
+   "medium": "signal",
+   "tag": "hum"
+  },
+  {
    "from": "pcb",
-   "to": "motor",
-   "medium": "power",
-   "rate": {
-    "reading": "fan",
-    "max": 100
-   }
+   "to": "eevin",
+   "medium": "signal"
   },
   {
    "from": "pcb",
@@ -100,11 +183,35 @@
    "from": "wifi",
    "to": "pcb",
    "medium": "signal"
+  },
+  {
+   "from": "pcb",
+   "to": "display",
+   "medium": "signal"
   }
  ],
  "odu": [
   {
-   "from": "@body",
+   "from": "@gas_in",
+   "to": "svc",
+   "medium": "refrigerant_gas",
+   "rate": {
+    "reading": "hz",
+    "max": 58
+   },
+   "tag": "suc"
+  },
+  {
+   "from": "svc",
+   "to": "fw",
+   "medium": "refrigerant_gas",
+   "rate": {
+    "reading": "hz",
+    "max": 58
+   }
+  },
+  {
+   "from": "fw",
    "to": "acc",
    "medium": "refrigerant_gas",
    "rate": {
@@ -119,24 +226,21 @@
    "rate": {
     "reading": "hz",
     "max": 58
-   }
-  },
-  {
-   "from": "lp",
-   "to": "inv",
-   "medium": "signal"
+   },
+   "tag": "lp"
   },
   {
    "from": "comp",
-   "to": "hp",
+   "to": "oil",
    "medium": "refrigerant_gas",
    "rate": {
     "reading": "hz",
     "max": 58
-   }
+   },
+   "tag": "dis"
   },
   {
-   "from": "hp",
+   "from": "oil",
    "to": "fw",
    "medium": "refrigerant_gas",
    "rate": {
@@ -151,10 +255,21 @@
    "rate": {
     "reading": "hz",
     "max": 58
-   }
+   },
+   "tag": "hp"
   },
   {
    "from": "coil",
+   "to": "rec",
+   "medium": "refrigerant_liquid",
+   "rate": {
+    "reading": "hz",
+    "max": 58
+   },
+   "tag": "liq"
+  },
+  {
+   "from": "rec",
    "to": "eev",
    "medium": "refrigerant_liquid",
    "rate": {
@@ -164,7 +279,17 @@
   },
   {
    "from": "eev",
-   "to": "@body",
+   "to": "svc",
+   "medium": "refrigerant_liquid",
+   "rate": {
+    "reading": "hz",
+    "max": 58
+   },
+   "tag": "eev"
+  },
+  {
+   "from": "svc",
+   "to": "@liquid_out",
    "medium": "refrigerant_liquid",
    "rate": {
     "reading": "hz",
@@ -172,13 +297,62 @@
    }
   },
   {
-   "from": "fans",
+   "from": "@air_in",
    "to": "coil",
    "medium": "air",
    "rate": {
     "reading": "fan",
     "max": 26
+   },
+   "tag": "amb"
+  },
+  {
+   "from": "coil",
+   "to": "fans",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "fan",
+    "max": 26
    }
+  },
+  {
+   "from": "fans",
+   "to": "@air_out",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "fan",
+    "max": 26
+   },
+   "tag": "fan"
+  },
+  {
+   "from": "@power",
+   "to": "ct",
+   "medium": "power",
+   "rate": {
+    "reading": "hz",
+    "max": 58
+   },
+   "tag": "kw"
+  },
+  {
+   "from": "ct",
+   "to": "pfc",
+   "medium": "power",
+   "rate": {
+    "reading": "hz",
+    "max": 58
+   }
+  },
+  {
+   "from": "pfc",
+   "to": "inv",
+   "medium": "power",
+   "rate": {
+    "reading": "hz",
+    "max": 58
+   },
+   "tag": "dcv"
   },
   {
    "from": "inv",
@@ -187,7 +361,8 @@
    "rate": {
     "reading": "hz",
     "max": 58
-   }
+   },
+   "tag": "hz"
   },
   {
    "from": "inv",
@@ -199,20 +374,42 @@
    }
   },
   {
+   "from": "dissens",
+   "to": "inv",
+   "medium": "signal"
+  },
+  {
+   "from": "ambsens",
+   "to": "inv",
+   "medium": "signal"
+  },
+  {
+   "from": "lp",
+   "to": "inv",
+   "medium": "signal"
+  },
+  {
    "from": "hp",
    "to": "inv",
+   "medium": "signal"
+  },
+  {
+   "from": "inv",
+   "to": "eev",
+   "medium": "signal"
+  },
+  {
+   "from": "inv",
+   "to": "fw",
    "medium": "signal"
   }
  ],
  "light": [
   {
-   "from": "@body",
+   "from": "@power",
    "to": "driver",
    "medium": "power",
-   "rate": {
-    "reading": "lv",
-    "max": 100
-   }
+   "tag": "w"
   },
   {
    "from": "driver",
@@ -221,12 +418,18 @@
    "rate": {
     "reading": "lv",
     "max": 100
-   }
+   },
+   "tag": "ma"
   },
   {
-   "from": "radio",
-   "to": "driver",
-   "medium": "signal"
+   "from": "led",
+   "to": "sink",
+   "medium": "heat",
+   "rate": {
+    "reading": "lv",
+    "max": 100
+   },
+   "tag": "ledT"
   },
   {
    "from": "led",
@@ -235,17 +438,29 @@
    "rate": {
     "reading": "lv",
     "max": 100
-   }
+   },
+   "tag": "lm"
+  },
+  {
+   "from": "radio",
+   "to": "driver",
+   "medium": "signal"
+  },
+  {
+   "from": "ntc",
+   "to": "driver",
+   "medium": "signal"
   }
  ],
  "tv": [
   {
-   "from": "@body",
+   "from": "@power",
    "to": "psu",
    "medium": "power",
    "rate": {
     "reading": "on"
-   }
+   },
+   "tag": "w"
   },
   {
    "from": "psu",
@@ -257,14 +472,31 @@
   },
   {
    "from": "psu",
-   "to": "panel",
+   "to": "bl",
    "medium": "power",
+   "rate": {
+    "reading": "on"
+   },
+   "tag": "nits"
+  },
+  {
+   "from": "bl",
+   "to": "panel",
+   "medium": "light",
    "rate": {
     "reading": "on"
    }
   },
   {
    "from": "main",
+   "to": "tcon",
+   "medium": "signal",
+   "rate": {
+    "reading": "on"
+   }
+  },
+  {
+   "from": "tcon",
    "to": "panel",
    "medium": "signal",
    "rate": {
@@ -272,43 +504,120 @@
    }
   },
   {
-   "from": "wifi",
-   "to": "main",
-   "medium": "signal"
-  }
- ],
- "speaker": [
-  {
-   "from": "wifi",
-   "to": "amp",
+   "from": "@hdmi",
+   "to": "io",
    "medium": "signal",
    "rate": {
     "reading": "on"
    }
   },
   {
-   "from": "amp",
-   "to": "woofer",
+   "from": "io",
+   "to": "main",
    "medium": "signal",
    "rate": {
-    "reading": "vol",
-    "max": 30
+    "reading": "on"
    }
   },
   {
-   "from": "mic",
-   "to": "amp",
+   "from": "main",
+   "to": "spk",
+   "medium": "signal",
+   "rate": {
+    "reading": "on"
+   },
+   "tag": "vol"
+  },
+  {
+   "from": "wifi",
+   "to": "main",
    "medium": "signal"
+  },
+  {
+   "from": "ir",
+   "to": "main",
+   "medium": "signal"
+  }
+ ],
+ "speaker": [
+  {
+   "from": "@power",
+   "to": "psu",
+   "medium": "power",
+   "tag": "w"
+  },
+  {
+   "from": "psu",
+   "to": "amp",
+   "medium": "power"
+  },
+  {
+   "from": "wifi",
+   "to": "dsp",
+   "medium": "signal"
+  },
+  {
+   "from": "mic",
+   "to": "dsp",
+   "medium": "signal"
+  },
+  {
+   "from": "dsp",
+   "to": "amp",
+   "medium": "signal",
+   "rate": {
+    "reading": "vol",
+    "max": 40
+   },
+   "tag": "vol"
+  },
+  {
+   "from": "amp",
+   "to": "woofer",
+   "medium": "power",
+   "rate": {
+    "reading": "vol",
+    "max": 40
+   }
+  },
+  {
+   "from": "amp",
+   "to": "tweeter",
+   "medium": "power",
+   "rate": {
+    "reading": "vol",
+    "max": 40
+   }
+  },
+  {
+   "from": "woofer",
+   "to": "port",
+   "medium": "air",
+   "rate": {
+    "reading": "vol",
+    "max": 40
+   }
   }
  ],
  "blinds": [
   {
    "from": "batt",
    "to": "motor",
+   "medium": "power",
+   "tag": "batt"
+  },
+  {
+   "from": "motor",
+   "to": "gear",
    "medium": "power"
   },
   {
    "from": "radio",
+   "to": "motor",
+   "medium": "signal"
+  },
+  {
+   "from": "limit",
    "to": "motor",
    "medium": "signal"
   }
@@ -321,16 +630,36 @@
    "rate": {
     "reading": "comp",
     "equals": "Running"
-   }
+   },
+   "tag": "condT"
   },
   {
    "from": "cond",
-   "to": "evap",
+   "to": "drier",
    "medium": "refrigerant_liquid",
    "rate": {
     "reading": "comp",
     "equals": "Running"
    }
+  },
+  {
+   "from": "drier",
+   "to": "cap",
+   "medium": "refrigerant_liquid",
+   "rate": {
+    "reading": "comp",
+    "equals": "Running"
+   }
+  },
+  {
+   "from": "cap",
+   "to": "evap",
+   "medium": "refrigerant_2phase",
+   "rate": {
+    "reading": "comp",
+    "equals": "Running"
+   },
+   "tag": "evapT"
   },
   {
    "from": "evap",
@@ -342,24 +671,128 @@
    }
   },
   {
-   "from": "ftemp",
+   "from": "cfan",
+   "to": "cond",
+   "medium": "air",
+   "rate": {
+    "reading": "cfan",
+    "max": 1600
+   }
+  },
+  {
+   "from": "evap",
+   "to": "efan",
+   "medium": "air_cold",
+   "rate": {
+    "reading": "efan",
+    "max": 1400
+   }
+  },
+  {
+   "from": "efan",
+   "to": "damper",
+   "medium": "air_cold",
+   "rate": {
+    "reading": "efan",
+    "max": 1400
+   },
+   "tag": "damper"
+  },
+  {
+   "from": "damper",
+   "to": "ftemp",
+   "medium": "air_cold",
+   "rate": {
+    "reading": "damper",
+    "max": 100
+   },
+   "tag": "fz"
+  },
+  {
+   "from": "efan",
+   "to": "ztemp",
+   "medium": "air_cold",
+   "rate": {
+    "reading": "efan",
+    "max": 1400
+   },
+   "tag": "fr"
+  },
+  {
+   "from": "defrost",
+   "to": "evap",
+   "medium": "heat",
+   "rate": {
+    "reading": "defrost",
+    "equals": "On"
+   }
+  },
+  {
+   "from": "@power",
+   "to": "pcb",
+   "medium": "power",
+   "tag": "w"
+  },
+  {
+   "from": "pcb",
    "to": "comp",
+   "medium": "power",
+   "rate": {
+    "reading": "comp",
+    "equals": "Running"
+   }
+  },
+  {
+   "from": "pcb",
+   "to": "efan",
+   "medium": "power",
+   "rate": {
+    "reading": "efan",
+    "max": 1400
+   }
+  },
+  {
+   "from": "pcb",
+   "to": "cfan",
+   "medium": "power",
+   "rate": {
+    "reading": "cfan",
+    "max": 1600
+   }
+  },
+  {
+   "from": "ftemp",
+   "to": "pcb",
    "medium": "signal"
   },
   {
    "from": "ztemp",
-   "to": "comp",
+   "to": "pcb",
    "medium": "signal"
   },
   {
    "from": "door",
-   "to": "comp",
+   "to": "pcb",
    "medium": "signal"
   }
  ],
  "oven": [
   {
+   "from": "@power",
+   "to": "pcb",
+   "medium": "power",
+   "tag": "w"
+  },
+  {
    "from": "pcb",
+   "to": "relay",
+   "medium": "signal",
+   "rate": {
+    "reading": "on"
+   }
+  },
+  {
+   "from": "relay",
    "to": "elem",
    "medium": "power",
    "rate": {
@@ -367,8 +800,35 @@
    }
   },
   {
+   "from": "relay",
+   "to": "top",
+   "medium": "power",
+   "rate": {
+    "reading": "top",
+    "equals": "On"
+   }
+  },
+  {
    "from": "elem",
    "to": "fan",
+   "medium": "heat",
+   "rate": {
+    "reading": "on"
+   },
+   "tag": "temp"
+  },
+  {
+   "from": "top",
+   "to": "probe",
+   "medium": "heat",
+   "rate": {
+    "reading": "top",
+    "equals": "On"
+   }
+  },
+  {
+   "from": "fan",
+   "to": "probe",
    "medium": "heat",
    "rate": {
     "reading": "on"
@@ -378,11 +838,67 @@
    "from": "probe",
    "to": "pcb",
    "medium": "signal"
+  },
+  {
+   "from": "pcb",
+   "to": "cool",
+   "medium": "power",
+   "rate": {
+    "reading": "cool",
+    "max": 2200
+   }
+  },
+  {
+   "from": "cool",
+   "to": "@air_out",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "cool",
+    "max": 2200
+   },
+   "tag": "cool"
+  },
+  {
+   "from": "door",
+   "to": "pcb",
+   "medium": "signal"
+  },
+  {
+   "from": "pcb",
+   "to": "lamp",
+   "medium": "power",
+   "rate": {
+    "reading": "on"
+   }
   }
  ],
  "vacuum": [
   {
+   "from": "@dock",
+   "to": "batt",
+   "medium": "power",
+   "rate": {
+    "reading": "state",
+    "equals": "Docked"
+   },
+   "tag": "batt"
+  },
+  {
    "from": "batt",
+   "to": "mcu",
+   "medium": "power"
+  },
+  {
+   "from": "mcu",
+   "to": "wheels",
+   "medium": "power",
+   "rate": {
+    "reading": "state",
+    "equals": "Cleaning"
+   }
+  },
+  {
+   "from": "mcu",
    "to": "brush",
    "medium": "power",
    "rate": {
@@ -391,8 +907,17 @@
    }
   },
   {
-   "from": "batt",
-   "to": "lidar",
+   "from": "mcu",
+   "to": "suction",
+   "medium": "power",
+   "rate": {
+    "reading": "state",
+    "equals": "Cleaning"
+   }
+  },
+  {
+   "from": "mcu",
+   "to": "side",
    "medium": "power",
    "rate": {
     "reading": "state",
@@ -406,73 +931,160 @@
    "rate": {
     "reading": "state",
     "equals": "Cleaning"
+   },
+   "tag": "bin"
+  },
+  {
+   "from": "bin",
+   "to": "suction",
+   "medium": "air",
+   "rate": {
+    "reading": "state",
+    "equals": "Cleaning"
    }
+  },
+  {
+   "from": "lidar",
+   "to": "mcu",
+   "medium": "signal"
+  },
+  {
+   "from": "cliff",
+   "to": "mcu",
+   "medium": "signal"
   }
  ],
  "camera": [
   {
-   "from": "ir",
-   "to": "img",
-   "medium": "light"
+   "from": "@power",
+   "to": "soc",
+   "medium": "power",
+   "tag": "w"
   },
   {
    "from": "img",
-   "to": "wifi",
-   "medium": "signal"
+   "to": "soc",
+   "medium": "signal",
+   "rate": {
+    "reading": "rec"
+   },
+   "tag": "fps"
   },
   {
    "from": "mic",
-   "to": "wifi",
+   "to": "soc",
    "medium": "signal"
+  },
+  {
+   "from": "soc",
+   "to": "sd",
+   "medium": "signal",
+   "rate": {
+    "reading": "rec"
+   },
+   "tag": "storage"
+  },
+  {
+   "from": "soc",
+   "to": "wifi",
+   "medium": "signal",
+   "rate": {
+    "reading": "rec"
+   },
+   "tag": "kbps"
+  },
+  {
+   "from": "soc",
+   "to": "ir",
+   "medium": "power"
+  },
+  {
+   "from": "soc",
+   "to": "pan",
+   "medium": "power"
   }
  ],
  "doorbell": [
   {
    "from": "batt",
    "to": "cam",
-   "medium": "power"
+   "medium": "power",
+   "tag": "batt"
+  },
+  {
+   "from": "pir",
+   "to": "cam",
+   "medium": "signal"
   },
   {
    "from": "btn",
    "to": "wifi",
-   "medium": "signal"
+   "medium": "signal",
+   "tag": "presses"
   },
   {
    "from": "cam",
    "to": "wifi",
    "medium": "signal"
+  },
+  {
+   "from": "wifi",
+   "to": "chime",
+   "medium": "signal"
+  },
+  {
+   "from": "batt",
+   "to": "spk",
+   "medium": "power"
   }
  ],
  "lock": [
   {
    "from": "batt",
+   "to": "gear",
+   "medium": "power",
+   "tag": "batt"
+  },
+  {
+   "from": "gear",
    "to": "bolt",
    "medium": "power"
   },
   {
    "from": "keypad",
-   "to": "bolt",
+   "to": "gear",
+   "medium": "signal"
+  },
+  {
+   "from": "fp",
+   "to": "gear",
    "medium": "signal"
   },
   {
    "from": "radio",
-   "to": "bolt",
+   "to": "gear",
+   "medium": "signal"
+  },
+  {
+   "from": "dps",
+   "to": "radio",
    "medium": "signal"
   }
  ],
  "washer": [
   {
-   "from": "@body",
+   "from": "@water_in",
    "to": "valve",
    "medium": "water",
    "rate": {
     "reading": "valve",
     "equals": "Open"
-   }
+   },
+   "tag": "flow"
   },
   {
    "from": "valve",
-   "to": "motor",
+   "to": "flow",
    "medium": "water",
    "rate": {
     "reading": "valve",
@@ -480,27 +1092,96 @@
    }
   },
   {
-   "from": "motor",
+   "from": "flow",
+   "to": "det",
+   "medium": "water",
+   "rate": {
+    "reading": "valve",
+    "equals": "Open"
+   },
+   "tag": "det"
+  },
+  {
+   "from": "det",
+   "to": "drum",
+   "medium": "water",
+   "rate": {
+    "reading": "valve",
+    "equals": "Open"
+   }
+  },
+  {
+   "from": "heater",
+   "to": "drum",
+   "medium": "heat",
+   "rate": {
+    "reading": "heater",
+    "equals": "On"
+   },
+   "tag": "wtemp"
+  },
+  {
+   "from": "drum",
    "to": "pump",
    "medium": "water",
    "rate": {
     "reading": "pump",
     "max": 0.22
-   }
+   },
+   "tag": "level"
   },
   {
    "from": "pump",
-   "to": "@body",
+   "to": "@drain_out",
    "medium": "drain",
+   "rate": {
+    "reading": "pump",
+    "max": 0.22
+   },
+   "tag": "pump"
+  },
+  {
+   "from": "@power",
+   "to": "pcb",
+   "medium": "power",
+   "tag": "w"
+  },
+  {
+   "from": "pcb",
+   "to": "inv",
+   "medium": "power",
+   "rate": {
+    "reading": "motor",
+    "max": 1200
+   }
+  },
+  {
+   "from": "inv",
+   "to": "motor",
+   "medium": "power",
+   "rate": {
+    "reading": "motor",
+    "max": 1200
+   },
+   "tag": "motor"
+  },
+  {
+   "from": "pcb",
+   "to": "pump",
+   "medium": "power",
    "rate": {
     "reading": "pump",
     "max": 0.22
    }
   },
   {
-   "from": "level",
-   "to": "pcb",
-   "medium": "signal"
+   "from": "pcb",
+   "to": "heater",
+   "medium": "power",
+   "rate": {
+    "reading": "heater",
+    "equals": "On"
+   }
   },
   {
    "from": "pcb",
@@ -512,13 +1193,14 @@
    }
   },
   {
-   "from": "pcb",
-   "to": "pump",
-   "medium": "power",
-   "rate": {
-    "reading": "pump",
-    "max": 0.22
-   }
+   "from": "level",
+   "to": "pcb",
+   "medium": "signal"
+  },
+  {
+   "from": "wtemp",
+   "to": "pcb",
+   "medium": "signal"
   },
   {
    "from": "dlock",
@@ -528,106 +1210,207 @@
  ],
  "dryer": [
   {
+   "from": "@air_in",
+   "to": "heat",
+   "medium": "air",
+   "rate": {
+    "reading": "state",
+    "equals": "Drying"
+   },
+   "tag": "inlet"
+  },
+  {
    "from": "heat",
-   "to": "motor",
-   "medium": "heat",
+   "to": "drum",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "state",
+    "equals": "Drying"
+   }
+  },
+  {
+   "from": "drum",
+   "to": "lint",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "state",
+    "equals": "Drying"
+   },
+   "tag": "moist"
+  },
+  {
+   "from": "lint",
+   "to": "fan",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "state",
+    "equals": "Drying"
+   }
+  },
+  {
+   "from": "fan",
+   "to": "@air_out",
+   "medium": "air_warm",
+   "rate": {
+    "reading": "fanrpm",
+    "max": 2800
+   },
+   "tag": "temp"
+  },
+  {
+   "from": "@power",
+   "to": "pcb",
+   "medium": "power",
+   "tag": "w"
+  },
+  {
+   "from": "pcb",
+   "to": "tco",
+   "medium": "power",
    "rate": {
     "reading": "heat",
     "equals": "On"
    }
   },
   {
-   "from": "motor",
-   "to": "lint",
-   "medium": "air",
+   "from": "tco",
+   "to": "heat",
+   "medium": "power",
    "rate": {
-    "reading": "state",
-    "equals": "Drying"
+    "reading": "heat",
+    "equals": "On"
    }
   },
   {
-   "from": "lint",
-   "to": "temp",
-   "medium": "air",
+   "from": "pcb",
+   "to": "motor",
+   "medium": "power",
    "rate": {
-    "reading": "state",
-    "equals": "Drying"
+    "reading": "rpm",
+    "max": 50
+   },
+   "tag": "rpm"
+  },
+  {
+   "from": "pcb",
+   "to": "fan",
+   "medium": "power",
+   "rate": {
+    "reading": "fanrpm",
+    "max": 2800
    }
+  },
+  {
+   "from": "moist",
+   "to": "pcb",
+   "medium": "signal"
   },
   {
    "from": "temp",
-   "to": "@body",
-   "medium": "air",
-   "rate": {
-    "reading": "state",
-    "equals": "Drying"
-   }
+   "to": "pcb",
+   "medium": "signal"
   }
  ],
  "leak": [
   {
    "from": "probe",
-   "to": "radio",
+   "to": "mcu",
    "medium": "signal",
-   "rate": {
-    "reading": "wet"
-   }
+   "tag": "wet"
   },
   {
    "from": "batt",
+   "to": "mcu",
+   "medium": "power",
+   "tag": "batt"
+  },
+  {
+   "from": "mcu",
    "to": "radio",
-   "medium": "power"
+   "medium": "signal"
+  },
+  {
+   "from": "mcu",
+   "to": "buzz",
+   "medium": "power",
+   "rate": {
+    "reading": "wet"
+   }
   }
  ],
  "temphum": [
   {
    "from": "temp",
-   "to": "radio",
-   "medium": "signal"
+   "to": "mcu",
+   "medium": "signal",
+   "tag": "temp"
   },
   {
    "from": "hum",
+   "to": "mcu",
+   "medium": "signal",
+   "tag": "hum"
+  },
+  {
+   "from": "mcu",
+   "to": "lcd",
+   "medium": "signal"
+  },
+  {
+   "from": "mcu",
    "to": "radio",
    "medium": "signal"
   },
   {
    "from": "batt",
-   "to": "radio",
-   "medium": "power"
+   "to": "mcu",
+   "medium": "power",
+   "tag": "batt"
   }
  ],
  "motion": [
   {
    "from": "lens",
    "to": "pir",
-   "medium": "light",
-   "rate": {
-    "reading": "motion"
-   }
+   "medium": "light"
   },
   {
    "from": "pir",
-   "to": "radio",
+   "to": "mcu",
    "medium": "signal",
    "rate": {
     "reading": "motion"
    }
   },
   {
-   "from": "batt",
+   "from": "lux",
+   "to": "mcu",
+   "medium": "signal",
+   "tag": "lux"
+  },
+  {
+   "from": "mcu",
    "to": "radio",
-   "medium": "power"
+   "medium": "signal"
+  },
+  {
+   "from": "batt",
+   "to": "mcu",
+   "medium": "power",
+   "tag": "batt"
   }
  ],
  "plug": [
   {
-   "from": "@body",
-   "to": "relay",
+   "from": "@power",
+   "to": "fuse",
    "medium": "power",
-   "rate": {
-    "reading": "w",
-    "max": 42
-   }
+   "tag": "volt"
+  },
+  {
+   "from": "fuse",
+   "to": "relay",
+   "medium": "power"
   },
   {
    "from": "relay",
@@ -636,18 +1419,60 @@
    "rate": {
     "reading": "w",
     "max": 42
-   }
+   },
+   "tag": "w"
+  },
+  {
+   "from": "meter",
+   "to": "@load",
+   "medium": "power",
+   "rate": {
+    "reading": "w",
+    "max": 42
+   },
+   "tag": "amps"
+  },
+  {
+   "from": "fuse",
+   "to": "psu",
+   "medium": "power"
+  },
+  {
+   "from": "psu",
+   "to": "radio",
+   "medium": "power"
   },
   {
    "from": "meter",
    "to": "radio",
+   "medium": "signal",
+   "tag": "kwh"
+  },
+  {
+   "from": "radio",
+   "to": "relay",
    "medium": "signal"
+  },
+  {
+   "from": "psu",
+   "to": "led",
+   "medium": "power"
   }
  ],
  "purifier": [
   {
-   "from": "hepa",
-   "to": "fan",
+   "from": "@air_in",
+   "to": "pre",
+   "medium": "air",
+   "rate": {
+    "reading": "fan",
+    "max": 3
+   },
+   "tag": "pm"
+  },
+  {
+   "from": "pre",
+   "to": "carbon",
    "medium": "air",
    "rate": {
     "reading": "fan",
@@ -655,9 +1480,45 @@
    }
   },
   {
-   "from": "fan",
-   "to": "@body",
+   "from": "carbon",
+   "to": "hepa",
    "medium": "air",
+   "rate": {
+    "reading": "fan",
+    "max": 3
+   },
+   "tag": "voc"
+  },
+  {
+   "from": "hepa",
+   "to": "fan",
+   "medium": "air",
+   "rate": {
+    "reading": "fan",
+    "max": 3
+   },
+   "tag": "cmh"
+  },
+  {
+   "from": "fan",
+   "to": "@air_out",
+   "medium": "air_cold",
+   "rate": {
+    "reading": "fan",
+    "max": 3
+   },
+   "tag": "fan"
+  },
+  {
+   "from": "@power",
+   "to": "pcb",
+   "medium": "power",
+   "tag": "w"
+  },
+  {
+   "from": "pcb",
+   "to": "motor",
+   "medium": "power",
    "rate": {
     "reading": "fan",
     "max": 3
@@ -669,13 +1530,9 @@
    "medium": "signal"
   },
   {
-   "from": "pcb",
-   "to": "fan",
-   "medium": "power",
-   "rate": {
-    "reading": "fan",
-    "max": 3
-   }
+   "from": "gas",
+   "to": "pcb",
+   "medium": "signal"
   }
  ]
 }

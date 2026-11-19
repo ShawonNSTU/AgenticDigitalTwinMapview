@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/events: Server-Sent Events stream of the simulated device platform.
- * Emits `clock` every 500 ms, `health` whenever any device's health changes, and `layout` after a floor plan upload.
+ * Emits `clock` every 500 ms, `health` whenever any device's health changes, `layout` after a floor plan upload and `devices` when devices are placed, moved or removed.
  * The Godot renderer (desktop build) and the web UI both subscribe to this.
  */
 export async function GET() {
@@ -15,11 +15,13 @@ export async function GET() {
     start(controller) {
       let last = '';
       let version = LAYOUT.version;
+      let devVersion = LAYOUT.devVersion;
       const send = (event: string, data: unknown) => controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       const push = () => {
         tick();
         send('clock', simState());
-        if (LAYOUT.version !== version) { version = LAYOUT.version; last = ''; send('layout', { version }); }
+        if (LAYOUT.version !== version) { version = LAYOUT.version; devVersion = LAYOUT.devVersion; last = ''; send('layout', { version }); }
+        else if (LAYOUT.devVersion !== devVersion) { devVersion = LAYOUT.devVersion; last = ''; send('devices', { version: devVersion }); }
         const f = floor();
         const h = JSON.stringify(f.devices.map(d => [d.id, d.health]));
         if (h !== last) { last = h; send('health', f.devices.map(d => ({ id: d.id, health: d.health }))); }

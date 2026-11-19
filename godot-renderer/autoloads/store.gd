@@ -6,6 +6,8 @@ const HEALTH_COLORS := {"ok": Color("3fb950"), "watch": Color("d29922"), "fault"
 
 var rooms: Array = []
 var furniture: Array = []   # interiors from the plan: {kind, x, z, w, d, rot}
+var notes: Array = []       # other text printed on the plan: {text, x, z, size, rot}
+var devices_version := 0    # bumps when devices are placed, moved or removed (the floor itself stays)
 var devices: Array = []
 var by_id: Dictionary = {}
 var types: Dictionary = {}
@@ -27,6 +29,7 @@ var _dev_req: HTTPRequest
 var _building_req: HTTPRequest
 var _plan_req: HTTPRequest
 var _busy_building := false
+var _devices_only := false  # the pending /api/building request only refreshes devices
 var _pending_layout: Dictionary = {}
 var _busy_floor := false
 var _announced := false  # first layout announced to the scene
@@ -118,6 +121,12 @@ func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteAr
 		return  # a new layout (and its plan image) is still downloading
 	if int(data.get("layoutVersion", 0)) != layout_version:
 		_busy_building = true
+		_devices_only = false
+		_building_req.request(platform_url + "/api/building")
+		return
+	if _announced and int(data.get("devicesVersion", 0)) != devices_version:
+		_busy_building = true
+		_devices_only = true
 		_building_req.request(platform_url + "/api/building")
 		return
 	if not _announced:
@@ -177,6 +186,12 @@ func _on_building(result: int, code: int, _h: PackedStringArray, body: PackedByt
 	if typeof(b) != TYPE_DICTIONARY:
 		_busy_building = false
 		return
+	if _devices_only and int(b.get("version", -1)) == layout_version:
+		_apply_devices(b.get("devices", []))
+		devices_version = int(b.get("devicesVersion", 0))
+		_busy_building = false
+		Bus.devices_changed.emit()
+		return
 	_pending_layout = b
 	var plan = b.get("plan")
 	if plan is Dictionary:
@@ -210,10 +225,44 @@ func _finish_layout(tex: Texture2D) -> void:
 	var plan = b.get("plan")
 	plan_bounds = Rect2(plan.x0, plan.z0, plan.x1 - plan.x0, plan.z1 - plan.z0) if plan is Dictionary else Rect2()
 	furniture = b.get("furniture", [])
+	notes = b.get("notes", [])
+	devices_version = int(b.get("devicesVersion", 0))
 	_apply_layout(b.get("rooms", []), b.get("devices", []), b.get("outdoorPad", {}), float(b.get("wallHeight", wall_height)))
 	layout_version = int(b.get("version", 0))
 	_announced = true
 	Bus.layout_changed.emit()
+
+
+## Devices changed on the same floor: keep health and live readings of devices that stay.
+func _apply_devices(new_devices: Array) -> void:
+	devices = new_devices
+	by_id.clear()
+	for d in devices:
+		by_id[d.id] = d
+		if not health.has(d.id):
+			health[d.id] = "ok"
+	for id in health.keys():
+		if not by_id.has(id):
+			health.erase(id)
+			live.erase(id)
+	if open_id != "" and not by_id.has(open_id):
+		open_id = ""
+
+
+## Poll right away (the host page just changed something on the platform).
+func refresh_now() -> void:
+	_poll()
+
+
+func room_at(p: Vector2) -> Dictionary:
+	for r in rooms:
+		if Geometry2D.is_point_in_polygon(p, PlanGeo.room_poly(r)):
+			return r
+	return {}
+
+
+func room_label(r: Dictionary) -> String:
+	return str(r.get("label", r.get("name", ""))).split("\n")[0] if not r.is_empty() else "Outside"
 
 
 ## Bounds of all rooms in metres (x, z), for framing the camera.

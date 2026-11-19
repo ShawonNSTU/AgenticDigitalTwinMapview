@@ -12,13 +12,24 @@ export type ToRenderer =
   | { type: 'setLayer'; layer: 'devices' | 'piping' | 'names' | 'ids' | 'temperature' | 'exploded' | 'furniture'; on: boolean }
   | { type: 'setTime'; t: number }
   | { type: 'setScenario'; key: string }
-  | { type: 'resetView' };
+  | { type: 'resetView' }
+  | { type: 'dragStart'; deviceType: string }
+  | { type: 'dragMove'; u: number; v: number }
+  | { type: 'dragEnd'; u: number; v: number; drop: boolean }
+  | { type: 'startMove'; id: string }
+  | { type: 'refreshDevices' };
+
+/** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */
+export type Placement = { x: number; y: number; z: number; rotationY: number; room: string };
 
 export type FromRenderer =
   | { type: 'ready'; version: string }
   | { type: 'deviceClicked'; id: string }
   | { type: 'partClicked'; id: string; part: string }
-  | { type: 'deviceClosed' };
+  | { type: 'deviceClosed' }
+  | ({ type: 'dropDevice'; deviceType: string } & Placement)
+  | ({ type: 'moveDevice'; id: string } & Placement)
+  | { type: 'placeHover'; room: string; roomName: string; valid: boolean; mount: string };
 
 let frame: HTMLIFrameElement | null = null;
 const queue: ToRenderer[] = [];

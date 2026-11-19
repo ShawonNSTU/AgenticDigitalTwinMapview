@@ -1,55 +1,141 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TwinView from '@/components/TwinView';
 import DevicePanel from '@/components/DevicePanel';
 import ChatPanel from '@/components/ChatPanel';
 import Timeline from '@/components/Timeline';
+import DevicePalette, { DeviceIcon, type Hover } from '@/components/DevicePalette';
+import MapToolbar from '@/components/MapToolbar';
 import { send, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
-type Row = { id: string; label: string; room: string; health: string };
+type Row = { id: string; type: string; label: string; room: string; name: string; health: string };
+type Room = { key: string; name: string; label?: string; zone?: string };
+type Toast = { id: number; text: string; kind: 'ok' | 'bad' };
+
+const json = (r: Response) => r.json();
+const post = (url: string, method: string, body?: object) => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
 
 export default function Home() {
   const [sim, setSim] = useState<Sim | null>(null);
   const [devices, setDevices] = useState<Row[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [sel, setSel] = useState<string | null>(null);
-  const [tab, setTab] = useState<'devices' | 'agent'>('agent');
+  const [tab, setTab] = useState<'devices' | 'agent'>('devices');
+  const [hover, setHover] = useState<Hover>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [moving, setMoving] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const stage = useRef<HTMLElement>(null);
 
-  // Clock and health changes come from the simulated platform over SSE.
+  const toast = useCallback((text: string, kind: Toast['kind'] = 'ok') => {
+    const id = Date.now() + Math.random();
+    setToasts(t => [...t, { id, text, kind }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3800);
+  }, []);
+  const loadDevices = useCallback(() => fetch('/api/devices').then(json).then(x => setDevices(x.devices)), []);
+  const loadRooms = useCallback(() => fetch('/api/building').then(json).then(b => setRooms(b.rooms)), []);
+
+  // Clock, health and device changes come from the simulated platform over SSE.
   useEffect(() => {
     const es = new EventSource('/api/events');
     es.addEventListener('clock', e => { const s = JSON.parse((e as MessageEvent).data); setSim(s); send({ type: 'setTime', t: s.t }); });
-    es.addEventListener('health', () => fetch('/api/devices').then(r => r.json()).then(x => setDevices(x.devices)));
-    es.addEventListener('layout', () => { setSel(null); fetch('/api/devices').then(r => r.json()).then(x => setDevices(x.devices)); });
-    fetch('/api/devices').then(r => r.json()).then(x => setDevices(x.devices));
+    es.addEventListener('health', () => loadDevices());
+    es.addEventListener('devices', () => { loadDevices(); send({ type: 'refreshDevices' }); });
+    es.addEventListener('layout', () => { setSel(null); loadDevices(); loadRooms(); });
+    loadDevices(); loadRooms();
     return () => es.close();
-  }, []);
-  useEffect(() => { if (sim) send({ type: 'setScenario', key: sim.scenario }); }, [sim?.scenario]);
+  }, [loadDevices, loadRooms]);
+  useEffect(() => { if (sim) send({ type: 'setScenario', key: sim.scenario }); }, [sim?.scenario]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const select = useCallback((id: string) => { setSel(id); send({ type: 'focusDevice', id }); }, []);
-  const onEvent = useCallback((m: FromRenderer) => {
+  const roomName = useCallback((key: string) => { const r = rooms.find(x => x.key === key); return r ? r.name : key === 'out' ? 'Outside' : key; }, [rooms]);
+
+  const onEvent = useCallback(async (m: FromRenderer) => {
+    if (m.type === 'ready') setReady(true);
     if (m.type === 'deviceClicked') setSel(m.id);
     if (m.type === 'partClicked') setSel(m.id);
     if (m.type === 'deviceClosed') setSel(null);
-  }, []);
+    if (m.type === 'placeHover') setHover({ roomName: m.roomName, valid: m.valid, mount: m.mount });
+    if (m.type === 'dropDevice') {
+      setHover(null);
+      const r = await post('/api/devices', 'POST', { type: m.deviceType, x: m.x, y: m.y, z: m.z, rotationY: m.rotationY, room: m.room === 'out' ? undefined : m.room });
+      const d = await r.json();
+      if (!r.ok) { toast(d.error ?? 'Could not place the device', 'bad'); return; }
+      send({ type: 'refreshDevices' });
+      send({ type: 'focusDevice', id: d.id });
+      setSel(d.id);
+      loadDevices();
+      toast(`${d.id} placed · ${d.name.split(' · ')[1] ?? ''}`);
+    }
+    if (m.type === 'moveDevice') {
+      setMoving(null);
+      const r = await post(`/api/devices/${m.id}`, 'PATCH', { x: m.x, y: m.y, z: m.z, rotationY: m.rotationY });
+      if (!r.ok) { toast('Could not move the device', 'bad'); return; }
+      send({ type: 'refreshDevices' });
+      send({ type: 'focusDevice', id: m.id });
+      loadDevices();
+      toast(`${m.id} moved`);
+    }
+  }, [toast, loadDevices]);
+
+  const remove = useCallback(async (id: string) => {
+    send({ type: 'closeDevice' });
+    const r = await post(`/api/devices/${id}`, 'DELETE');
+    if (r.ok) { setSel(null); send({ type: 'refreshDevices' }); loadDevices(); toast(`${id} removed`); }
+  }, [toast, loadDevices]);
+  const move = useCallback((id: string) => { send({ type: 'closeDevice' }); setMoving(id); send({ type: 'startMove', id }); }, []);
+
   const bad = devices.filter(d => d.health !== 'ok');
+  const counts = useMemo(() => devices.reduce<Record<string, number>>((a, d) => { a[d.type] = (a[d.type] ?? 0) + 1; return a; }, {}), [devices]);
+  const byRoom = useMemo(() => {
+    const g = new Map<string, Row[]>();
+    for (const d of devices) g.set(d.room, [...(g.get(d.room) ?? []), d]);
+    return [...g.entries()].sort((a, b) => roomName(a[0]).localeCompare(roomName(b[0])));
+  }, [devices, roomName]);
+  const zoneOf = (key: string) => rooms.find(r => r.key === key)?.zone;
 
   return (
     <main className="app">
-      <header className="row between">
-        <b>Agentic Digital Twin · Map View</b>
-        <span className="row"><span className="muted">{devices.length} devices · {bad.length ? `${bad.length} need attention` : 'all healthy'}</span><a href="/setup"><button>Upload floor plan</button></a></span>
+      <header className="topbar">
+        <div className="brand"><span className="logo" /><div><b>Agentic Digital Twin</b><small>SmartThings · Map View</small></div></div>
+        <div className="floor-chip"><span className="live" />{rooms.length ? `${rooms.length} rooms · 4th floor` : 'Loading floor…'}</div>
+        <div className="stats">
+          <span className="stat"><b>{devices.length}</b> devices</span>
+          <span className={`stat ${bad.length ? 'warn' : 'good'}`}><b>{bad.length}</b> {bad.length === 1 ? 'needs' : 'need'} attention</span>
+          <a href="/setup"><button className="ghost">Upload floor plan</button></a>
+        </div>
       </header>
-      <section className="stage"><TwinView onEvent={onEvent} /></section>
+      <section className="stage" ref={stage}>
+        <TwinView onEvent={onEvent} />
+        <DevicePalette stage={stage} hover={hover} counts={counts} />
+        <MapToolbar />
+        {ready && devices.length === 0 && (
+          <div className="empty-hint glass">
+            <b>This floor has no SmartThings devices yet</b>
+            <span>Drag devices from the palette onto any room. Wall units snap to the nearest wall, locks go beside a door, lights on the ceiling.</span>
+          </div>
+        )}
+        {moving && <div className="move-hint glass">Moving <b>{moving}</b>: click where it should go · right-click or Esc to cancel</div>}
+        <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}</div>
+      </section>
       <aside className="side">
-        {sel ? <DevicePanel id={sel} t={sim ? Math.round(sim.t * 10) / 10 : 10} onClose={() => setSel(null)} onSelect={select} /> : (
+        {sel ? <DevicePanel id={sel} t={sim ? Math.round(sim.t * 10) / 10 : 10} onClose={() => setSel(null)} onSelect={select} onMove={move} onRemove={remove} /> : (
           <>
-            <div className="tabs row"><button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>Agent</button><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices</button></div>
+            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>AI agent</button></div>
             {tab === 'agent' ? <ChatPanel onSelect={select} /> : (
-              <div className="list">{devices.map(d => (
-                <div key={d.id} className="part" onClick={() => select(d.id)} onMouseEnter={() => send({ type: 'highlight', ids: [d.id] })} onMouseLeave={() => send({ type: 'clearHighlight' })}>
-                  <span><i className={`dot ${d.health}`} />{d.id} · {d.label}</span><em className="muted">{d.room}</em>
-                </div>))}
+              <div className="list">
+                {devices.length === 0 && <div className="muted pad">Nothing placed yet. Drag a device from the palette on the map.</div>}
+                {byRoom.map(([room, rows]) => (
+                  <div key={room} className="room-group">
+                    <div className="room-title"><span>{roomName(room)}</span>{zoneOf(room) && <em>Zone {zoneOf(room)}</em>}</div>
+                    {rows.map(d => (
+                      <div key={d.id} className="dev-row" onClick={() => select(d.id)} onMouseEnter={() => send({ type: 'highlight', ids: [d.id] })} onMouseLeave={() => send({ type: 'clearHighlight' })}>
+                        <span className="dev-ico"><DeviceIcon type={d.type} size={18} /></span>
+                        <span className="dev-txt"><b>{d.id}</b><small>{d.label}</small></span>
+                        <i className={`dot ${d.health}`} />
+                      </div>))}
+                  </div>))}
               </div>
             )}
           </>
