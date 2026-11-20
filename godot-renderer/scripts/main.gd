@@ -107,6 +107,10 @@ func _ready() -> void:
 			var wt := Node.new()
 			wt.set_script(load("res://tests/walk_test.gd"))
 			add_child(wt)
+		if a.begins_with("--routes="):
+			var rc := Node.new()
+			rc.set_script(load("res://tests/route_check.gd"))
+			add_child(rc)
 		if a.begins_with("--camera="):
 			var ct := Node.new()
 			ct.set_script(load("res://tests/camera_test.gd"))

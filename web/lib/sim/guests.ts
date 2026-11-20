@@ -1,7 +1,7 @@
 // Guest passes: a link (shown as a QR code) that lets a visitor walk from an entrance to one room and
 // see and control only the devices in that room. Everything a guest's browser loads goes through
 // /api/guest/<token>/..., which filters by the pass; nothing else is reachable with a token.
-import { guestReady, GUEST_HIDDEN, ST_PROFILE, ST_KIND_COMMANDS } from './stzone';
+import { guestReady, GUEST_HIDDEN, ST_PROFILE, ST_KIND_COMMANDS, ARRIVAL } from './stzone';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { DEV, ROOMS, TYPES, LAYOUT, byId } from './engine';
 import { buildingState, floor, device, COMMANDS, rt } from './runtime';
@@ -55,20 +55,21 @@ const ENTRANCE = /lift|elevator|lobby|reception|entrance|entry|foyer|stair/i;
 const roomOf = (key: string) => ROOMS.find((r: any) => r.key === key) as any;
 const roomName = (r: any) => String(r?.label ?? r?.name ?? '').split('\n')[0] || r?.key;
 
-/** Rooms a walk can sensibly start from, best first: lifts and lobbies, then the core stair (where guests come
- *  up to the 4th floor), then other stairs and entrances. */
-const rank = (name: string) => /lift|elevator|lobby|reception/i.test(name) ? 0 : /core stair/i.test(name) ? 1 : /entrance|entry|foyer/i.test(name) ? 2 : 3;
+/** Rooms a walk can sensibly start from, best first: the floor's arrival point (where guests come up to the
+ *  floor; set for the 4th floor in lib/sim/stzone.ts), then lifts and lobbies, then other stairs and entrances.
+ *  Stairs closed in behind service rooms (no way through to the guest rooms) are left out. */
+const rank = (key: string, name: string) => key === ARRIVAL.key ? 0 : /lift|elevator|lobby|reception/i.test(name) ? 1 : /entrance|entry|foyer/i.test(name) ? 2 : 3;
 export function entranceRooms() {
-  return ROOMS.filter((r: any) => ENTRANCE.test(`${r.name} ${r.label ?? ''}`))
+  return ROOMS.filter((r: any) => ENTRANCE.test(`${r.name} ${r.label ?? ''}`) && !ARRIVAL.closed.includes(r.key))
     .map((r: any) => ({ key: r.key, name: roomName(r) }))
-    .sort((a, b) => rank(a.name) - rank(b.name));
+    .sort((a, b) => rank(a.key, a.name) - rank(b.key, b.name));
 }
 
-/** Where a guest's walk starts when the host doesn't choose: a lift or lobby if the plan has one, else the core
- *  stair; '' (nearest door to the outside) only if the plan has neither. */
+/** Where a guest's walk starts when the host doesn't choose: the floor's arrival point, else a lift or lobby;
+ *  '' (nearest door to the outside) if the plan has neither. */
 export function defaultEntrance() {
   const best = entranceRooms()[0];
-  return best && rank(best.name) <= 1 ? best.key : '';
+  return best && rank(best.key, best.name) <= 1 ? best.key : '';
 }
 
 export function createPass(room: string, hours: number, entrance = '', label = '', opts: { until?: number; verify?: boolean; allowUnlock?: boolean; tag?: string; controls?: string[]; acRange?: [number, number] } = {}) {

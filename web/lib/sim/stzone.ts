@@ -45,6 +45,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   const r = zoneRoom();
   if (!r) return false;
   r.finish = ZONE_FINISH;
+  setArrival();
   growZone(r, rt.furniture);
   const P = polyOf(r);
   const xs = P.map(p => p[0]), zs = P.map(p => p[1]);
@@ -199,6 +200,19 @@ function growZone(r: any, furniture: any[]) {
     else if (f.kind === 'column' && Math.abs(f.x - x0) < 1.0 && Math.abs(f.z - z0) < 1.0) f.x = +(f.x + dx).toFixed(3);
   }
   r.grown = true;
+}
+
+/**
+ * Where guests arrive on the floor. On the 4th floor that is the South-West Stair: the wide main staircase,
+ * opening straight onto the main corridor in front of the training rooms, from where every guest room is reached
+ * along the corridor. The Core Stair is closed in behind the Utility Room (no way through to the guest rooms), so
+ * it is not offered as a starting point. Set when the floor is loaded; empty on other floors.
+ */
+export const ARRIVAL: { key: string; closed: string[] } = ((globalThis as any).__twinArrival ??= { key: '', closed: [] });
+export function setArrival() {
+  const find = (re: RegExp) => (ROOMS as any[]).find(r => re.test(String(r.name)))?.key ?? '';
+  ARRIVAL.key = find(/south-?west stair/i);
+  ARRIVAL.closed = [find(/core stair/i)].filter(Boolean);
 }
 
 /** Devices that only work while another one is on (the curtain motor and its switch): id -> id of the switch. */

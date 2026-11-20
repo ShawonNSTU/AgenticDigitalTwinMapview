@@ -56,7 +56,7 @@ Proof of concept with three features:
    `/api/guest/<token>/…`, which returns and controls nothing outside their room. Optional `ADMIN_KEY` keeps the
    host pages and APIs behind a sign-in (`?key=…` once).
 8. **3D guidance to the room.** After scanning, the guest enters the PIN and walks in 3D from an entrance (the host's
-   choice; by default a lift or lobby if the plan has one, else the Core Stair where guests come up to the floor) to the room along a route drawn on the floor with
+   choice; by default the South-West Stair, the main staircase opening onto the main corridor) to the room along a route drawn on the floor with
    tags where it enters the corridor, stairs and the room; they can pick another starting point, see the way from
    above or skip. Only rooms on the way open; other doors stay shut and show nothing.
    **Live indoor position** ("Find me" on the guest page): the view follows the guest's real position, snapped
