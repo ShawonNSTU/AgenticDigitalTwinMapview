@@ -28,7 +28,8 @@ Proof of concept with three features:
 **Hotel use case** (the 4th floor is treated as a hotel floor):
 
 0. **SmartThings Experience Zone, modelled as it is.** The zone is a real, already fitted room and the floor starts
-   with it furnished and its SmartThings devices installed: wood-panelled walls, cream floor tiles, a drop ceiling
+   with it furnished (the plan draws it a little small to walk round in 3D, so it is enlarged by about a fifth each
+   way, taken from the Maternity and Medical rooms beside it) and its SmartThings devices installed: wood-panelled walls, cream floor tiles, a drop ceiling
    with LED panels and AC diffusers and a lowered band for the spot bulbs, a grey tufted sofa facing a 65" TV on a
    walnut unit, a coffee table, a roller projector screen, four brass floor lamps, a white bookcase beside the
    panelled column, an L-desk with chairs under a wall TV, a Bespoke air purifier and a frosted glass door. Its

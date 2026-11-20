@@ -45,6 +45,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   const r = zoneRoom();
   if (!r) return false;
   r.finish = ZONE_FINISH;
+  growZone(r, rt.furniture);
   const P = polyOf(r);
   const xs = P.map(p => p[0]), zs = P.map(p => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
@@ -89,10 +90,10 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   const items: Item[] = [];
   const put = (kind: string, s: number, q: number, w: number, d: number, rot: number) => { const [x, z] = at(s, q); items.push({ kind, x, z, w, d, rot, room: r.key }); };
   // door wall: TV unit beyond the door's swing, coffee table and the sofa facing the TV
-  const tvS = Math.min(L - 0.95, dt + dw / 2 + 0.25 + 0.8);
+  const tvS = Math.min(L - 0.95, (dt + dw / 2 + 0.25 + L - 0.35) / 2);   // centred on the wall beyond the door
   put('tv_unit', tvS, g + 0.23, 1.6, 0.45, IN);
-  put('coffee_table', tvS, 1.3, 0.9, 0.6, IN);
-  put('tufted_sofa', tvS, 2.35, 1.9, 0.85, OUT);
+  put('coffee_table', tvS, D * 0.27, 0.9, 0.6, IN);
+  put('tufted_sofa', tvS, D * 0.5, 1.9, 0.85, OUT);
   // end wall: white shelf beside the pillar, then the standing lamp, the curtain and another lamp by the TV corner
   const shelfQ = Math.min(D - 1.6, 2.95);
   const curtQ = Math.max(1.0, shelfQ - 1.75);
@@ -142,6 +143,62 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   // the curtain motor only moves while its switch is on
   if (ids['aqara roller shade control'] && ids['blinds switch']) REQUIRES[ids['aqara roller shade control']] = ids['blinds switch'];
   return true;
+}
+
+/**
+ * The traced plan draws the zone smaller than it is to walk round in 3D (about 4.5 x 3.8 m), so it is enlarged by
+ * about a fifth each way, keeping its proportions: its far wall moves into the room beside it (up to that room's
+ * own wall line) and its wall opposite the corridor side's far end moves into the room behind it. Neighbouring
+ * outlines give up the same strip; the glass door keeps its place by the corner and the wood-clad pillar stays in
+ * its corner.
+ */
+const GROW = 1.19;
+function growZone(r: any, furniture: any[]) {
+  if (r.grown) return;
+  const P = polyOf(r);
+  const xs = P.map(p => p[0]), zs = P.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  if (P.length !== 4) return; // only a plain rectangle
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.05;
+  // west: as far as the neighbour's own west notch allows (the maternity room's wall line), else a fifth
+  let nx0 = x0 - (x1 - x0) * (GROW - 1);
+  let snap = Infinity;
+  for (const o of ROOMS as any[]) if (o !== r && o.poly) for (const [x, z] of o.poly) if (z > z1 - 0.05 && x < x0 - 0.3 && x > x0 - 1.4 && Math.abs(x - nx0) < Math.abs(snap - nx0)) snap = x;
+  if (Number.isFinite(snap) && Math.abs(snap - nx0) < 0.35) nx0 = snap;
+  const nz1 = z1 + (z1 - z0) * (GROW - 1) * 1.07;
+  const dz = nz1 - z1, dx = nx0 - x0;
+  for (const o of ROOMS as any[]) {
+    if (o === r || !o.poly) continue;
+    let moved = false;
+    o.poly = o.poly.map(([x, z]: [number, number]) => {
+      let nx = x, nz = z;
+      if (near(x, x0) && z >= z0 - 0.05 && z <= z1 + 0.05) { nx = nx0; moved = true; }
+      if (near(z, z1) && nx >= nx0 - 0.05 && nx <= x1 + 0.05) { nz = nz1; moved = true; }
+      return [+nx.toFixed(3), +nz.toFixed(3)];
+    }).filter((p: number[], i: number, a: number[][]) => {
+      const q = a[(i + a.length - 1) % a.length];
+      return !(near(p[0], q[0]) && near(p[1], q[1]));
+    });
+    // drop points in the middle of a straight edge
+    o.poly = o.poly.filter((p: number[], i: number, a: number[][]) => {
+      const pr = a[(i + a.length - 1) % a.length], nx = a[(i + 1) % a.length];
+      return !((near(pr[0], p[0]) && near(p[0], nx[0])) || (near(pr[1], p[1]) && near(p[1], nx[1])));
+    });
+    if (moved) {
+      const oxs = o.poly.map((p: number[]) => p[0]), ozs = o.poly.map((p: number[]) => p[1]);
+      o.x = [Math.min(...oxs), Math.max(...oxs)]; o.z = [Math.min(...ozs), Math.max(...ozs)];
+    }
+  }
+  r.poly = [[nx0, z0], [x1, z0], [x1, nz1], [nx0, nz1]].map(p => p.map(v => +v.toFixed(3)));
+  r.x = [nx0, x1]; r.z = [z0, nz1];
+  // the door by the corner it was beside, the pillar in the corner it was in
+  for (const f of furniture) {
+    if (f.kind === 'door' && near(f.x, x1) && f.z > z0 && f.z < z1) { if (z1 - f.z < (z1 - z0) / 2) f.z = +(f.z + dz).toFixed(3); }
+    else if (f.kind === 'door' && near(f.z, z1) && f.x > x0 && f.x < x1) f.z = +nz1.toFixed(3);
+    else if (f.kind === 'door' && near(f.x, x0) && f.z > z0 && f.z < z1) f.x = +nx0.toFixed(3);
+    else if (f.kind === 'column' && Math.abs(f.x - x0) < 1.0 && Math.abs(f.z - z0) < 1.0) f.x = +(f.x + dx).toFixed(3);
+  }
+  r.grown = true;
 }
 
 /** Devices that only work while another one is on (the curtain motor and its switch): id -> id of the switch. */
