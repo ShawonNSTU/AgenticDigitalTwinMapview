@@ -6,6 +6,7 @@ import sampleDevices from './data/devices.json';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
+import { fitSmartThingsZone } from './stzone';
 import { realState } from '@/lib/integrations/smartthings';
 
 type Override = Record<string, unknown>;
@@ -71,7 +72,8 @@ export function device(id: string, t = tick()) {
   if (real) o = { ...(o ?? {}), ...real.readings, ...(real.online ? {} : { online: false }) };
   const s = snapshot(id, t, o);
   if (!s) return null;
-  return { ...s, overrides: rt.overrides[id] ?? null, online: (s.readings as any).online !== false, source: real ? 'smartthings' : 'simulator' };
+  // which values the real device reported (the rest, and every component value, is simulated)
+  return { ...s, overrides: rt.overrides[id] ?? null, online: (s.readings as any).online !== false, source: real ? 'smartthings' : 'simulator', reported: real ? Object.keys(real.readings) : [] };
 }
 
 /** Readings the floor view needs for every refrigerant circuit, sent with each /api/floor poll. */
@@ -302,9 +304,11 @@ function jpegSize(b: Buffer): [number, number] | null {
 export function resetBuilding() {
   const pre = defaultPreset();
   if (pre) {
-    const out = setBuilding(pre.rooms, pre.devices, undefined, pre.plan, pre.furniture, pre.notes, pre.title);
+    setBuilding(pre.rooms, pre.devices, undefined, pre.plan, pre.furniture, pre.notes, pre.title);
     LAYOUT.custom = false;
-    return { ...out, custom: false };
+    // the SmartThings Experience Zone is a real, already fitted room (lib/sim/stzone.ts)
+    if (fitSmartThingsZone({ rt, addDevice, removeDevice })) LAYOUT.version++;
+    return { ...buildingState(), custom: false };
   }
   setLayout(building.rooms, sampleDevices, { outdoorPad: building.outdoorPad, custom: false });
   rt.plan = null;

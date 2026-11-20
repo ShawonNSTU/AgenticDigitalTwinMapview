@@ -8,7 +8,8 @@ Proof of concept with three features:
    the plan. Rooms without detected furniture get a suggested fit-out by room type. Review and correct everything in
    the editor, then render it as a 3D map view in Godot with walls, doors, modelled furniture, stairs, sanitary ware
    and the room labels. The traced 4th-floor sheet is the built-in sample.
-2. **Drag and drop devices.** The floor starts without devices (a plan doesn't show them). Drag SmartThings devices
+2. **Drag and drop devices.** The floor starts with devices only in the SmartThings Experience Zone (below); other
+   rooms start empty (a plan doesn't show devices). Drag SmartThings devices
    from the palette onto the 3D map: each type snaps where it is installed (wall units on the nearest wall facing the
    room, locks beside a door, lights on the ceiling, appliances on the floor). Move or remove them from the side panel.
 3. **Device digital twin.** Click any device: it opens in place into its internal components (5 to 16 per type), with
@@ -25,6 +26,16 @@ Proof of concept with three features:
    to do, and control devices (risky commands need confirmation).
 
 **Hotel use case** (the 4th floor is treated as a hotel floor):
+
+0. **SmartThings Experience Zone, modelled as it is.** The zone is a real, already fitted room and the floor starts
+   with it furnished and its SmartThings devices installed: wood-panelled walls, cream floor tiles, a drop ceiling
+   with LED panels and AC diffusers and a lowered band for the spot bulbs, a grey tufted sofa facing a 65" TV on a
+   walnut unit, a coffee table, a roller projector screen, four brass floor lamps, a white bookcase beside the
+   panelled column, an L-desk with chairs under a wall TV, a Bespoke air purifier and a frosted glass door. Devices:
+   ceiling cassette AC, two TVs, six spot bulbs and four floor-lamp bulbs, projector screen motor, purifier, smart
+   speaker, door lock, temperature/humidity and motion sensors, two indoor cameras (never shown to guests). A guest
+   QR can be made for it straight away; every other room needs Hotel setup first (the room card says so and the
+   API refuses a pass for a room without its devices). Layout: `web/lib/sim/stzone.ts`.
 
 6. **Hotel set-up.** "Hotel setup" (or "Set up as guest room" on a clicked room) refurnishes suitable rooms as guest
    rooms (bed, nightstands, desk, armchair) and fits the usual devices on the right walls: AC, TV, ceiling and
@@ -47,8 +58,13 @@ Proof of concept with three features:
    walls (one beside every door and in each stair or lift; print them from `/integrations`, scan with the phone
    camera), and in between from the phone's step counting and compass. "Simulate a badge" replays the route as
    an RTLS would, for demos without hardware.
-9. **Room tour and controls.** In the room a guided tour turns to each device and says what it does; tapping a
-   device in 3D opens its controls. The room reacts in 3D: lights brighten or dim the room (with colour), the AC
+9. **Room tour and 3D controls.** In the room a guided tour turns to each device and says what it does. Tapping a
+   device (in 3D or in the list) turns the view to it and pins its control beside it in the room, with a glowing
+   ring around the device: a climate dial for the AC (drag round the ring; mode chips, fan bars), a light beam
+   you drag up or down with a warm-to-daylight strip and scenes, a roller you pull for blinds and the projector
+   screen, a TV remote, a speed ring for the purifier or fan and a hold-to-unlock ring for the door. While a
+   control is dragged the room already shows the result and the new value floats over the device; the command is
+   sent when the guest lets go. The room reacts in 3D: lights brighten or dim the room (with colour), the AC
    blows air coloured by mode and swings its louver, the floor tints cool or warm, the TV screen plays, blinds go up
    and let daylight in, the fan spins and sweeps, the purifier ring shows air quality, the vacuum cleans the room,
    the AC cools the room over time, offline devices go grey.

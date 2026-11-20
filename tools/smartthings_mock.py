@@ -6,6 +6,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEV = {
     "st-lock-1": {"label": "Front door lock 403", "caps": ["lock", "battery"], "state": {"lock": {"lock": {"value": "locked"}}, "battery": {"battery": {"value": 87}}}, "health": "ONLINE"},
+    "st-ac-1": {"label": "Wall AC 403", "caps": ["switch", "thermostatCoolingSetpoint", "airConditionerMode", "temperatureMeasurement"],
+                "state": {"switch": {"switch": {"value": "on"}}, "thermostatCoolingSetpoint": {"coolingSetpoint": {"value": 25}}, "temperatureMeasurement": {"temperature": {"value": 27.5}},
+                          "airConditionerMode": {"airConditionerMode": {"value": "cool"}, "supportedAcModes": {"value": ["cool", "dry", "auto"]}}}, "health": "ONLINE"},
     "st-light-1": {"label": "Ceiling light 403", "caps": ["switch", "switchLevel"], "state": {"switch": {"switch": {"value": "off"}}, "switchLevel": {"level": {"value": 0}}}, "health": "ONLINE"},
 }
 LOG = []
@@ -29,6 +32,9 @@ class H(BaseHTTPRequestHandler):
         if p == "/devices":
             return self._send(200, {"items": [{"deviceId": k, "label": v["label"], "components": [{"id": "main", "capabilities": [{"id": c} for c in v["caps"]]}]} for k, v in DEV.items()], "_links": {}})
         parts = p.strip("/").split("/")
+        if len(parts) == 2 and parts[1] in DEV:
+            v = DEV[parts[1]]
+            return self._send(200, {"deviceId": parts[1], "label": v["label"], "components": [{"id": "main", "capabilities": [{"id": c} for c in v["caps"]]}]})
         if len(parts) == 3 and parts[2] == "status":
             return self._send(200, {"components": {"main": DEV[parts[1]]["state"]}})
         if len(parts) == 3 and parts[2] == "health":
@@ -59,6 +65,10 @@ class H(BaseHTTPRequestHandler):
                 s["switch"]["switch"]["value"] = c["command"]
             if c["capability"] == "switchLevel":
                 s["switchLevel"]["level"]["value"] = c["arguments"][0]
+            if c["capability"] == "thermostatCoolingSetpoint":
+                s["thermostatCoolingSetpoint"]["coolingSetpoint"]["value"] = c["arguments"][0]
+            if c["capability"] == "airConditionerMode":
+                s["airConditionerMode"]["airConditionerMode"]["value"] = c["arguments"][0]
         self._send(200, {"results": [{"id": "x", "status": "ACCEPTED"}]})
 
 

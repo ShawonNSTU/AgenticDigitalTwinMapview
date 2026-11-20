@@ -33,7 +33,7 @@ func _ready() -> void:
 	_hud()
 	# Wait for the platform's layout so the bundled sample never flashes up first. Fall back to the
 	# bundled sample only when the platform can't be reached (offline desktop run) or after 20 s.
-	Bus.layout_changed.connect(func(): _build_world(Store.guest_token == ""))  # guests go straight to their walk
+	Bus.layout_changed.connect(_on_layout)
 	Bus.devices_changed.connect(_rebuild_devices)
 	Store.platform_unreachable.connect(func():
 		if world == null and Store.guest_token == "":
@@ -44,6 +44,8 @@ func _ready() -> void:
 
 	Bus.health_changed.connect(_on_health)
 	Bus.live_updated.connect(_apply_live)
+	Bus.preview_requested.connect(_on_preview)
+	Bus.track_requested.connect(func(id): _track = id; _anchor_t = 0.0; _holo(id))
 	Bus.highlight_requested.connect(_on_highlight)
 	Bus.highlight_cleared.connect(func(): _on_highlight([], ""))
 	Bus.focus_requested.connect(func(id):
@@ -162,6 +164,27 @@ func _build_world(animate: bool) -> void:
 		_start_guest.call_deferred()
 
 
+var _rooms_sig := ""
+
+
+## A new layout: a new plan plays the plan-to-3D build; the same rooms with changed furniture just rebuild in
+## place (the view and the selected room stay).
+func _on_layout() -> void:
+	var sig := str(JSON.stringify(Store.rooms).hash())
+	var same := world != null and sig == _rooms_sig
+	_rooms_sig = sig
+	if Store.guest_token != "":
+		_build_world(false)
+		return
+	if same and walker == null:
+		var sel := floor_builder._selected if floor_builder else ""
+		_build_world(false)
+		if sel != "":
+			floor_builder.select_room(sel)
+		return
+	_build_world(not same)
+
+
 ## Every device shows its live state in the room (lights, airflow, screens, blinds...).
 func _apply_live() -> void:
 	if world == null:
@@ -171,8 +194,112 @@ func _apply_live() -> void:
 	for id in devices:
 		var n = devices[id]
 		if is_instance_valid(n):
-			n.apply_live(Store.live.get(id, {}))
+			n.apply_live(_live_of(id))
 	_room_light()
+
+
+# ---- 3D device control for guests: previews while a control is dragged, a pinned anchor, a hologram value --------
+
+var _preview := {}       # id -> {readings, until}
+var _track := ""         # device whose screen position is reported to the host
+var _anchor_t := 0.0
+var _last_anchor := ""
+var _holo_node: Node3D
+var _holo_label: Label3D
+var _holo_ring: MeshInstance3D
+
+
+func _live_of(id: String) -> Dictionary:
+	var l: Dictionary = Store.live.get(id, {})
+	var p: Dictionary = _preview.get(id, {})
+	if p.is_empty() or Time.get_ticks_msec() > int(p.until):
+		_preview.erase(id)
+		return l
+	return l.merged(p.readings, true)
+
+
+func _on_preview(id: String, readings: Dictionary, text: String) -> void:
+	if not devices.has(id):
+		return
+	_preview[id] = {"readings": readings, "until": Time.get_ticks_msec() + 4000}
+	devices[id].apply_live(_live_of(id))
+	_room_light()
+	if text != "" and _holo_label:
+		_holo_label.text = text
+		_holo_label.modulate.a = 1.0
+		var tw := _holo_label.create_tween()
+		tw.tween_interval(1.4)
+		tw.tween_property(_holo_label, "modulate:a", 0.0, 0.6)
+
+
+## A slowly turning ring of light around the device the guest is controlling, and a floating value over it.
+func _holo(id: String) -> void:
+	if _holo_node and is_instance_valid(_holo_node):
+		_holo_node.queue_free()
+	_holo_node = null
+	if id == "" or not devices.has(id) or world == null:
+		return
+	var n: Node3D = devices[id]
+	_holo_node = Node3D.new()
+	_holo_node.name = "ControlHolo"
+	world.add_child(_holo_node)
+	_holo_node.global_position = n.global_position
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.45, 0.75, 1.0, 0.75)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.no_depth_test = true
+	m.render_priority = 3
+	_holo_ring = MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	var size: Vector3 = DeviceNode.body_size(n.data)
+	var r := clampf(maxf(size.x, size.z) * 0.7 + 0.12, 0.2, 1.3)
+	tm.inner_radius = r
+	tm.outer_radius = r + 0.025
+	tm.rings = 48
+	_holo_ring.mesh = tm
+	_holo_ring.material_override = m
+	_holo_node.add_child(_holo_ring)
+	_holo_label = Label3D.new()
+	_holo_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_holo_label.no_depth_test = true
+	_holo_label.fixed_size = true
+	_holo_label.pixel_size = 0.0009
+	_holo_label.font_size = 64
+	_holo_label.outline_size = 14
+	_holo_label.outline_modulate = Color(0.02, 0.05, 0.12, 0.9)
+	_holo_label.modulate = Color(0.75, 0.9, 1.0, 0.0)
+	_holo_label.position.y = maxf(size.y * 0.5, 0.1) + 0.28
+	_holo_node.add_child(_holo_label)
+
+
+func _process(delta: float) -> void:
+	_track_tick(delta)
+
+
+func _track_tick(delta: float) -> void:
+	if _holo_ring and is_instance_valid(_holo_ring):
+		_holo_ring.rotation.y += delta * 0.8
+		var k := 1.0 + 0.06 * sin(Time.get_ticks_msec() / 300.0)
+		_holo_ring.scale = Vector3(k, 1, k)
+	if _track == "":
+		return
+	_anchor_t -= delta
+	if _anchor_t > 0.0:
+		return
+	_anchor_t = 0.08
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or not devices.has(_track):
+		return
+	var p: Vector3 = devices[_track].global_position
+	var vis := not cam.is_position_behind(p)
+	var sp := cam.unproject_position(p)
+	var vs := get_viewport().get_visible_rect().size
+	var ev := {"type": "anchor", "id": _track, "x": snappedf(sp.x / vs.x, 0.001), "y": snappedf(sp.y / vs.y, 0.001), "visible": vis and sp.x >= 0 and sp.y >= 0 and sp.x <= vs.x and sp.y <= vs.y}
+	var key := JSON.stringify(ev)
+	if key != _last_anchor:
+		_last_anchor = key
+		Bridge.emit_event(ev)
 
 
 var _amb_tw: Tween

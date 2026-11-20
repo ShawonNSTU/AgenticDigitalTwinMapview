@@ -21,7 +21,7 @@ const inAnyRoom = (p: V) => ROOMS.some((r: any) => inRoom(r, p));
 type Wall = { a: V; b: V; u: V; n: V; len: number; mid: V; outside: boolean; doors: number[] };
 
 /** The room's walls with the inward normal, whether they face outside, and door positions along them. */
-function walls(r: any): Wall[] {
+export function walls(r: any): Wall[] {
   const P = polyOf(r);
   const doors = rt.furniture.filter(f => f.kind === 'door');
   const out: Wall[] = [];
@@ -61,7 +61,7 @@ function freeT(w: Wall, half: number, prefer = 0.5): number | null {
 }
 
 /** Whether a person (0.25 m radius) can reach almost all of the room's floor from its doors. */
-function walkable(P: V[], furn: { x: number; z: number; w: number; d: number; rot?: number }[], doors: V[]) {
+export function walkable(P: V[], furn: { x: number; z: number; w: number; d: number; rot?: number }[], doors: V[]) {
   if (!doors.length) return true;
   const xs = P.map(p => p[0]), zs = P.map(p => p[1]);
   const x0 = Math.min(...xs), z0 = Math.min(...zs), c = 0.15;
@@ -108,6 +108,7 @@ export const GUEST_KIT = ['ac', 'tv', 'light', 'light', 'blinds', 'fridge', 'fan
 export function guestRoomCandidates() {
   const skip = /corridor|passage|stair|lift|toilet|wash|ablution|bath|pray|store|hub|utility|a\/?c|outdoor|plant|dressing|server|electric|cafeteria|gym|lobby|reception/i;
   return ROOMS.filter((r: any) => {
+    if (r.finish) return false; // already fitted with its SmartThings devices (the SmartThings Experience Zone)
     const P = polyOf(r);
     const xs = P.map(p => p[0]), zs = P.map(p => p[1]);
     const w = Math.max(...xs) - Math.min(...xs), d = Math.max(...zs) - Math.min(...zs);
@@ -119,6 +120,7 @@ export function guestRoomCandidates() {
 export function setUpGuestRoom(key: string) {
   const r = ROOMS.find((x: any) => x.key === key);
   if (!r) return { ok: false as const, error: `Unknown room ${key}` };
+  if ((r as any).finish) return { ok: false as const, error: 'This room already has its SmartThings devices installed; make a guest QR for it directly' };
   const W = walls(r);
   if (W.length < 3) return { ok: false as const, error: 'This room outline is too irregular to furnish automatically' };
   const P = polyOf(r);
@@ -219,4 +221,121 @@ export function setUpHotel(keys?: string[]) {
   }
   rt.title = rt.title.replace(/^(Hotel · )?/, 'Hotel · ');
   return { ok: true, rooms: done.filter(d => d.ok).length, results: done };
+}
+
+// ---- the host adds, moves, turns and removes furniture in a room ------------------------------------------------
+
+/** Furniture the host can add, with its footprint (width along the wall, depth) and whether it stands against a wall. */
+export const FURNITURE: Record<string, { label: string; w: number; d: number; wall: boolean; set?: { kind: string; dx: number; dz: number; w: number; d: number; rot: number }[] }> = {
+  bed: { label: 'Bed', w: 1.6, d: 2.0, wall: true },
+  cabinet: { label: 'Nightstand / cabinet', w: 0.6, d: 0.45, wall: true },
+  desk: { label: 'Desk', w: 1.2, d: 0.6, wall: true },
+  sofa: { label: 'Sofa', w: 2.0, d: 0.9, wall: true },
+  armchair: { label: 'Armchair', w: 0.8, d: 0.8, wall: false },
+  shelf: { label: 'Wardrobe / shelf', w: 1.0, d: 0.55, wall: true },
+  table: { label: 'Table', w: 1.2, d: 0.8, wall: false },
+  chair: { label: 'Chair', w: 0.5, d: 0.5, wall: false },
+  dining: { label: 'Dining set (table and 4 chairs)', w: 2.0, d: 1.9, wall: false, set: [
+    { kind: 'table', dx: 0, dz: 0, w: 1.2, d: 0.8, rot: 0 },
+    { kind: 'chair', dx: -0.3, dz: -0.68, w: 0.45, d: 0.45, rot: 0 }, { kind: 'chair', dx: 0.3, dz: -0.68, w: 0.45, d: 0.45, rot: 0 },
+    { kind: 'chair', dx: -0.3, dz: 0.68, w: 0.45, d: 0.45, rot: Math.PI }, { kind: 'chair', dx: 0.3, dz: 0.68, w: 0.45, d: 0.45, rot: Math.PI }] },
+  plant: { label: 'Plant', w: 0.45, d: 0.45, wall: false },
+};
+
+type F = (typeof rt.furniture)[number] & { id?: string; group?: string };
+let nextId = 1;
+const ids = () => { for (const f of rt.furniture as F[]) f.id ??= `f${nextId++}`; return rt.furniture as F[]; };
+const rectPts = (f: { x: number; z: number; w: number; d: number; rot?: number }, grow = 0): V[] => {
+  const r = f.rot ?? 0, u: V = [Math.cos(r), -Math.sin(r)], v: V = [Math.sin(r), Math.cos(r)], hw = f.w / 2 + grow, hd = f.d / 2 + grow;
+  return [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([a, b]) => [f.x + u[0] * a + v[0] * b, f.z + u[1] * a + v[1] * b] as V);
+};
+function overlaps(a: V[], b: V[]) {
+  // separating axis test for two rectangles
+  for (const poly of [a, b]) for (let i = 0; i < 4; i++) {
+    const e = sub(poly[(i + 1) % 4], poly[i]), n: V = [-e[1], e[0]];
+    const pa = a.map(p => p[0] * n[0] + p[1] * n[1]), pb = b.map(p => p[0] * n[0] + p[1] * n[1]);
+    if (Math.max(...pa) < Math.min(...pb) || Math.max(...pb) < Math.min(...pa)) return false;
+  }
+  return true;
+}
+
+export function roomFurniture(key: string) {
+  const r = ROOMS.find((x: any) => x.key === key);
+  if (!r) return [];
+  return ids().filter(f => f.kind !== 'door' && inRoom(r, [f.x, f.z])).map(f => ({ id: f.id!, kind: f.kind, group: f.group, x: f.x, z: f.z, w: f.w, d: f.d, rot: f.rot ?? 0, label: FURNITURE[f.kind]?.label ?? f.kind }));
+}
+
+/** Pieces as placed (a dining set is a table with chairs around it). */
+function pieces(kind: string, x: number, z: number, rot: number, group: string): F[] {
+  const spec = FURNITURE[kind];
+  if (!spec.set) return [{ kind, x, z, w: spec.w, d: spec.d, rot, group } as F];
+  const u: V = [Math.cos(rot), -Math.sin(rot)], v: V = [Math.sin(rot), Math.cos(rot)];
+  return spec.set.map(p => ({ kind: p.kind, x: +(x + u[0] * p.dx + v[0] * p.dz).toFixed(3), z: +(z + u[1] * p.dx + v[1] * p.dz).toFixed(3), w: p.w, d: p.d, rot: +(rot + p.rot).toFixed(4), group } as F));
+}
+
+/** Whether pieces fit: inside the room, clear of walls, other furniture and doors, and the room stays walkable. */
+function fits(r: any, add: F[], ignore: Set<string>) {
+  const P = polyOf(r);
+  const others = ids().filter(f => f.kind !== 'door' && inRoom(r, [f.x, f.z]) && !ignore.has(f.id!));
+  for (const f of add) {
+    const pts = rectPts(f);
+    if (!pts.every(p => inRoom(r, p))) return false;
+    if (others.some(o => overlaps(rectPts(f, 0.03), rectPts(o)))) return false;
+  }
+  const doors: V[] = rt.furniture.filter(f => f.kind === 'door').map(f => [f.x, f.z] as V).filter(p => P.some((a, i) => { const b = P[(i + 1) % P.length] as V; const e = sub(b, a as V); const l2 = e[0] ** 2 + e[1] ** 2; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * e[0] + (p[1] - a[1]) * e[1]) / l2)); return len(sub(p, add2(a as V, mul(e, t)))) < 0.3; }));
+  if (add.some(f => doors.some(q => len(sub([f.x, f.z], q)) - Math.hypot(f.w, f.d) / 2 < 0.9))) return false;
+  return walkable(P as V[], [...others, ...add], doors);
+}
+const add2 = add;
+
+/** Adds furniture to a room at the best free spot (against a wall when it belongs there). */
+export function addFurniture(key: string, kind: string) {
+  const r = ROOMS.find((x: any) => x.key === key);
+  const spec = FURNITURE[kind];
+  if (!r) return { ok: false as const, error: `Unknown room ${key}` };
+  if (!spec) return { ok: false as const, error: `Unknown furniture ${kind}` };
+  const group = `g${nextId++}`;
+  const cands: { x: number; z: number; rot: number; score: number }[] = [];
+  const P = polyOf(r);
+  const c: V = mul(P.reduce((s, p) => add(s, p as V), [0, 0] as V), 1 / P.length);
+  if (spec.wall) {
+    for (const w of walls(r)) for (let t = spec.w / 2 + 0.1; t <= w.len - spec.w / 2 - 0.1; t += 0.25) {
+      const p = along(w, t, spec.d / 2 + 0.03);
+      cands.push({ x: p[0], z: p[1], rot: rotAlong(w), score: len(sub(p, c)) * 0.2 - w.len * 0.05 });
+    }
+  } else {
+    const xs = P.map(p => p[0]), zs = P.map(p => p[1]);
+    for (let x = Math.min(...xs) + 0.5; x < Math.max(...xs); x += 0.3) for (let z = Math.min(...zs) + 0.5; z < Math.max(...zs); z += 0.3)
+      if (inRoom(r, [x, z])) cands.push({ x, z, rot: 0, score: len(sub([x, z], c)) });
+  }
+  cands.sort((a, b) => a.score - b.score);
+  for (const k of cands.slice(0, 400)) {
+    const ps = pieces(kind, +k.x.toFixed(3), +k.z.toFixed(3), +k.rot.toFixed(4), group);
+    if (fits(r, ps, new Set())) {
+      for (const p of ps) p.id = `f${nextId++}`;
+      rt.furniture.push(...ps);
+      LAYOUT.version++;
+      return { ok: true as const, added: ps.map(p => p.id!) };
+    }
+  }
+  return { ok: false as const, error: `No free spot for a ${spec.label.toLowerCase()} in this room that keeps it walkable` };
+}
+
+/** Moves (dx, dz metres) or turns (degrees) a piece, with the rest of its set; refused if it would not fit. */
+export function editFurniture(id: string, op: { dx?: number; dz?: number; turn?: number; remove?: boolean }) {
+  const all = ids();
+  const f = all.find(x => x.id === id);
+  if (!f) return { ok: false as const, error: 'Unknown furniture' };
+  const set = f.group ? all.filter(x => x.group === f.group) : [f];
+  if (op.remove) { rt.furniture = all.filter(x => !set.includes(x)); LAYOUT.version++; return { ok: true as const }; }
+  const r = ROOMS.find((x: any) => inRoom(x, [f.x, f.z]));
+  const a = ((op.turn ?? 0) * Math.PI) / 180, cx = set.reduce((s, x) => s + x.x, 0) / set.length, cz = set.reduce((s, x) => s + x.z, 0) / set.length;
+  const moved = set.map(x => {
+    const rx = x.x - cx, rz = x.z - cz;
+    return { ...x, x: +(cx + rx * Math.cos(a) + rz * Math.sin(a) + (op.dx ?? 0)).toFixed(3), z: +(cz - rx * Math.sin(a) + rz * Math.cos(a) + (op.dz ?? 0)).toFixed(3), rot: +(((x.rot ?? 0) + a)).toFixed(4) };
+  });
+  if (r && !fits(r, moved, new Set(set.map(x => x.id!)))) return { ok: false as const, error: 'It would block the way, hit a wall or overlap other furniture there' };
+  for (const [i, x] of set.entries()) Object.assign(x, moved[i]);
+  LAYOUT.version++;
+  return { ok: true as const };
 }

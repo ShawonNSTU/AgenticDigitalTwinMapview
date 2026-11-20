@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import TwinView from '@/components/TwinView';
 import { DeviceIcon } from '@/components/DevicePalette';
-import DeviceControls, { CMD_LABEL, type Cmd } from '@/components/DeviceControls';
+import { CMD_LABEL, type Cmd } from '@/components/DeviceControls';
+import HoloControl from '@/components/HoloControl';
 import GuestAssistant from '@/components/GuestAssistant';
 import Locator from '@/components/Locator';
 import { send, type FromRenderer } from '@/lib/bridge';
@@ -50,6 +51,14 @@ export default function GuestPage() {
   const [stepUp, setStepUp] = useState<{ id: string; command: string } | null>(null);
   const [stepPin, setStepPin] = useState('');
   const [stepErr, setStepErr] = useState('');
+  // the device whose control is pinned beside it in the 3D room, and where it is on screen
+  const [holo, setHolo] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<{ id: string; x: number; y: number; visible: boolean } | null>(null);
+  const openHolo = useCallback((id: string | null) => {
+    setHolo(id); setAnchor(null);
+    send({ type: 'track', id: id ?? '' });
+    if (id) send({ type: 'walk', action: 'look', id }); else send({ type: 'clearHighlight' });
+  }, []);
   // remember this guest link on the phone, so a location code scanned with the camera finds the way back here
   useEffect(() => { try { localStorage.setItem('twin.guestToken', token); } catch { /* storage unavailable */ } }, [token]);
 
@@ -79,8 +88,9 @@ export default function GuestPage() {
       else if (m.guest === 'arrived') { setWalk(w => ({ ...w, phase: 'arrived', here: m.roomName })); setOverview(false); }
       else if (m.roomName) setWalk(w => ({ ...w, here: m.roomName }));
     }
-    if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); setTimeout(() => cards.current[m.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); }
-  }, []);
+    if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); openHolo(m.id); setTimeout(() => cards.current[m.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); }
+    if (m.type === 'anchor') setAnchor(m);
+  }, [openHolo]);
 
   const run = (id: string) => async (command: string, args: Record<string, unknown> = {}, _c?: boolean, pin?: string) => {
     const r = await fetch(`/api/guest/${token}/devices/${id}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, args, ...(pin ? { pin } : {}) }) });
@@ -104,10 +114,9 @@ export default function GuestPage() {
   useEffect(() => {
     if (tour == null || !stops[tour]) return;
     const d = stops[tour];
-    send({ type: 'walk', action: 'look', id: d.id });
-    setFocus(d.id); setTab('room');
+    setFocus(d.id); setTab('room'); openHolo(d.id);
     setTimeout(() => cards.current[d.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
-  }, [tour, stops]);
+  }, [tour, stops, openHolo]);
 
   if (denied) return (
     <main className="guest-denied"><div className="glass"><span className="logo" /><h2>Guest access</h2><p>{denied}</p><p className="muted">Please ask the front desk for a new QR code.</p></div></main>
@@ -149,7 +158,7 @@ export default function GuestPage() {
         {walk.phase === 'arrived' && tour == null && (
           <div className="guest-walk glass arrived">
             <span className="walk-dot" />
-            <span><b>You’re in {view?.room.name}</b><small>Drag to look around · tap the floor to move · tap a device for its controls</small></span>
+            <span><b>You’re in {view?.room.name}</b><small>Drag to look around · tap the floor to move · tap any device to control it right there</small></span>
             {stops.length > 0 && <button className="pri" onClick={() => setTour(0)}>Take the tour</button>}
           </div>
         )}
@@ -165,6 +174,11 @@ export default function GuestPage() {
             </form>
           </div>
         )}
+        {holo && view?.devices.find(d => d.id === holo) && (() => {
+          const d = view.devices.find(x => x.id === holo)!;
+          return <HoloControl dev={d} anchor={anchor && anchor.id === holo ? anchor : null} run={run(d.id)} onClose={() => openHolo(null)}
+            lockNote={view.allowUnlock ? '' : 'Unlocking is done at the front desk'} />;
+        })()}
         {tour != null && stops[tour] && (
           <div className="tour glass">
             <small>{tour + 1} of {stops.length}</small>
@@ -183,7 +197,7 @@ export default function GuestPage() {
           <div className="guest-devs">
             {view && view.devices.length === 0 && <div className="muted pad">This room has no connected devices.</div>}
             {view?.devices.map(d => (
-              <div key={d.id} ref={el => { cards.current[d.id] = el; }} className={`guest-dev ${focus === d.id ? 'on' : ''} ${d.online ? '' : 'offline'}`} onClick={() => { setFocus(d.id); send({ type: 'walk', action: 'look', id: d.id }); }}>
+              <div key={d.id} ref={el => { cards.current[d.id] = el; }} className={`guest-dev ${focus === d.id ? 'on' : ''} ${holo === d.id ? 'holo-on' : ''} ${d.online ? '' : 'offline'}`} onClick={() => { setFocus(d.id); openHolo(d.id); }}>
                 <div className="guest-dev-head">
                   <span className="dev-ico"><DeviceIcon type={d.type} size={18} /></span>
                   <span className="dev-txt"><b>{d.name}</b><small>{d.label} · {d.id}</small></span>
@@ -193,7 +207,7 @@ export default function GuestPage() {
                 {d.type === 'lock' && view && <div className="muted lock-line">{view.lock.integration === 'smartthings' ? 'Connected lock (SmartThings)' : 'Lock simulator'}{view.allowUnlock ? ` · unlocking needs your PIN; it locks again after ${view.lock.autoRelockSec} s` : ' · unlocking is done at the front desk'}</div>}
                 {d.online && d.finding && d.health !== 'ok' && <div className={`guest-finding ${d.finding.lvl}`}>{d.finding.title}</div>}
                 <div className="guest-status">{d.status.map(s => <span key={s.name}><small>{s.name}</small>{s.value}</span>)}</div>
-                {d.commands.length > 0 && <div onClick={e => e.stopPropagation()}><DeviceControls dev={d} commands={d.commands} run={run(d.id)} disabled={!d.online} /></div>}
+                {d.commands.length > 0 && <button className="holo-open" onClick={e => { e.stopPropagation(); setFocus(d.id); openHolo(holo === d.id ? null : d.id); }}>{holo === d.id ? 'Controlling in the room' : 'Control in the room'}</button>}
               </div>
             ))}
           </div>

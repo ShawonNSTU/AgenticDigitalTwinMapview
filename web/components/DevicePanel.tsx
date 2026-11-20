@@ -8,7 +8,7 @@ type Part = { key: string; name: string; value: string; health: string; inferred
 type Finding = { lvl: string; title: string; conf: string; ev: string[]; steps: { t: string; p: string; go?: string }[]; simulated?: boolean } | null;
 type FaultOpt = { key: string; name: string; what: string; parts: string[] };
 type Active = { key: string; name: string; level: string; severity: number; developing: boolean; parts: string[] } | null;
-type Device = { id: string; type: string; label: string; name: string; health: string; parts: Part[]; finding: Finding; fault: Active; faults: FaultOpt[]; readings: Record<string, unknown>; overrides: Record<string, unknown> | null; online?: boolean };
+type Device = { id: string; type: string; label: string; name: string; health: string; parts: Part[]; finding: Finding; fault: Active; faults: FaultOpt[]; readings: Record<string, unknown>; overrides: Record<string, unknown> | null; online?: boolean; source?: string; reported?: string[] };
 type Rec = { id: string; at: number; by: string; status: string; cause: string; action: string; notes: string };
 
 const LEVELS = [{ key: 'early', name: 'Early' }, { key: 'developing', name: 'Developing' }, { key: 'severe', name: 'Severe' }] as const;
@@ -98,6 +98,11 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
         {onRemove && <button className="danger" onClick={() => onRemove(id)}>Remove</button>}
       </div>}
 
+      <div className={`source-line ${d.source === 'smartthings' ? 'real' : ''}`}>
+        {d.source === 'smartthings'
+          ? <>Connected to SmartThings · live from the device: {d.reported?.length ? d.reported.join(', ') : 'status'}. Component values below are simulated for explanation, not live diagnostics.</>
+          : <>Simulated device: all values come from the simulator (link it to a real device on Integrations).</>}
+      </div>
       {cmds.length > 0 && (
         <section className="ctl-box">
           <div className="lab-head"><b>Controls</b>{d.online === false ? <span className="off-tag">Offline</span> : <span className="muted">what this device supports</span>}</div>

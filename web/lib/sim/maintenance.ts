@@ -9,6 +9,17 @@ export type Status = 'new' | 'acknowledged' | 'investigating' | 'resolved';
 export type Record_ = { id: string; deviceId: string; at: number; by: string; status: Exclude<Status, 'new'>; cause: string; action: string; notes: string; alert: string };
 
 type Seen = { since: number; title: string; level: string };
+/** Who an alert goes to: each technician covers device types (and optionally only some rooms). */
+export type Tech = { id: string; name: string; types: string[]; rooms: string[] };
+const gt = globalThis as unknown as { __techs?: Tech[] };
+const techs: Tech[] = (gt.__techs ??= [
+  { id: 'hvac', name: 'HVAC technician', types: ['ac', 'odu', 'fan', 'purifier', 'fridge', 'temphum'], rooms: [] },
+  { id: 'elec', name: 'Electrical & IT technician', types: ['light', 'tv', 'plug', 'blinds', 'lock', 'camera', 'motion', 'doorbell', 'speaker', 'vacuum', 'washer', 'dryer', 'oven', 'leak'], rooms: [] },
+]);
+export const technicians = () => techs;
+export function setTechnicians(list: Tech[]) { techs.splice(0, techs.length, ...list); return techs; }
+export const assignee = (type: string, room: string) => techs.find(t => t.types.includes(type) && (!t.rooms.length || t.rooms.includes(room))) ?? null;
+
 const g = globalThis as unknown as { __maint?: Record_[]; __seen?: Record<string, Seen>; __events?: Record<string, { at: number; text: string }[]> };
 const records: Record_[] = (g.__maint ??= []);
 const seen: Record<string, Seen> = (g.__seen ??= {});
@@ -42,6 +53,7 @@ export function alerts() {
       parts: s.parts.filter((p: any) => p.health !== 'ok').map((p: any) => ({ key: p.key, name: p.name, value: p.value, health: p.health, inferred: p.inferred })),
       docs: FAULT_DOCS(d.type, fault?.spec.key),
       simulated: !!fault,
+      assignee: (() => { const t = assignee(d.type, d.room); return t ? { id: t.id, name: t.name } : null; })(),
       status: (recs[0]?.status ?? 'new') as Status,
       events: [...(events[d.id] ?? []), ...rt.log.filter(l => l.deviceId === d.id).slice(-5).map(l => ({ at: 0, text: `Command ${l.command} by ${l.by} at ${String(Math.floor(l.at)).padStart(2, '0')}:${String(Math.round((l.at % 1) * 60)).padStart(2, '0')}` }))].slice(-8),
     });

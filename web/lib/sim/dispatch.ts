@@ -2,7 +2,7 @@
 // through dispatch(). A device linked to SmartThings gets the real command (and the twin shows the new state
 // at once, then the device's reported status); any other device runs on the simulator.
 import { byId } from './engine';
-import { runCommand, rt } from './runtime';
+import { runCommand, rt, COMMANDS } from './runtime';
 import * as ST from '@/lib/integrations/smartthings';
 import { audit, scheduleRelock } from './access';
 
@@ -12,6 +12,8 @@ export async function dispatch(id: string, command: string, args: Record<string,
   const d = byId[id];
   if (!d) return { ok: false, error: `Unknown device ${id}` };
   const linked = ST.link(id);
+  if (linked && COMMANDS[d.type]?.[command] && !ST.supported(id, d.type, [{ name: command, args: COMMANDS[d.type][command].args ?? {} }]).length)
+    return { ok: false, error: `${linked.label ?? 'This device'} does not support "${command}"`, via: 'smartthings' };
   // the simulator checks the command, its arguments, confirmation and the offline state, and keeps the twin's
   // state; a real device is then told as well (if the real call fails, the twin goes back)
   const before = rt.overrides[id] ? { ...rt.overrides[id] } : undefined;

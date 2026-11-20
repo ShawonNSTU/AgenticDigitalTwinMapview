@@ -15,6 +15,32 @@ const BODY := {
 const FX := ["light", "ac", "tv", "blinds", "fan", "purifier", "vacuum", "lock", "plug"]
 
 var data: Dictionary
+var _variant := ""
+
+
+## Fitted rooms use a few real variants of a type, known by the device's name: a ceiling cassette AC, a smart
+## bulb in a floor lamp, a roller projector screen (a blinds motor), a TV standing on a unit.
+static func variant(d: Dictionary) -> String:
+	var n := str(d.get("name", "")).get_slice(" · ", 0).to_lower()
+	match str(d.get("type", "")):
+		"ac":
+			return "cassette" if n.begins_with("ceiling") else ""
+		"light":
+			return "lamp" if n.begins_with("floor lamp") else ""
+		"blinds":
+			return "projector" if n.begins_with("projector") else ""
+		"tv":
+			return "stand" if n.begins_with("tv 6") or n.begins_with("tv 7") or n.begins_with("tv 8") else ""
+	return ""
+
+
+static func body_size(d: Dictionary) -> Vector3:
+	match variant(d):
+		"cassette": return Vector3(0.62, 0.07, 0.62)
+		"lamp": return Vector3(0.1, 0.1, 0.1)
+		"projector": return Vector3(1.7, 0.1, 0.09)
+		"stand": return Vector3(1.45, 0.84, 0.05)
+	return BODY.get(str(d.get("type", "")), Vector3(0.2, 0.2, 0.2))
 var fx: DeviceFx  # what the device is doing, shown in the room (light, airflow, screen, blinds...)
 var body: MeshInstance3D
 var body_mat := StandardMaterial3D.new()
@@ -33,9 +59,10 @@ func setup(d: Dictionary) -> DeviceNode:
 	data = d
 	name = d.id
 	# height follows the type and the map's cut-away walls (see Placer.mount_y), whatever height the platform stored
-	position = Vector3(d.position[0], Placer.mount_y(d.type) if Placer.ALL.has(d.type) else float(d.position[1]), d.position[2])
+	position = Vector3(d.position[0], Placer.device_y(d) if Placer.ALL.has(d.type) else float(d.position[1]), d.position[2])
 	rotation.y = d.get("rotationY", 0.0)
-	var size: Vector3 = BODY.get(d.type, Vector3(0.2, 0.2, 0.2))
+	var size: Vector3 = body_size(d)
+	_variant = variant(d)
 
 	body = MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -48,7 +75,7 @@ func setup(d: Dictionary) -> DeviceNode:
 
 	_details(d.type, size)
 	if FX.has(d.type):
-		fx = DeviceFx.new().setup(self, d.type, size)
+		fx = DeviceFx.new().setup(self, d.type, size, _variant)
 		add_child(fx)
 
 	ring = MeshInstance3D.new()
@@ -177,6 +204,18 @@ func _on_input(_cam: Node, e: InputEvent, _pos: Vector3, _n: Vector3, _i: int) -
 func _details(type: String, s: Vector3) -> void:
 	var dark := _m(Color("2a2d33"), 0.2, 0.5)
 	var metal := _m(Color("b7bcc2"), 0.8, 0.3)
+	if _variant == "cassette":
+		for k in 3:
+			_add_box(Vector3(s.x * (0.8 - k * 0.22), 0.006, s.z * (0.8 - k * 0.22)), Vector3(0, -s.y * 0.5 - 0.003 - k * 0.002, 0), dark if k % 2 == 0 else _m(Color("d8dde3")))
+		_add_box(Vector3(0.03, 0.006, 0.012), Vector3(s.x * 0.36, -s.y * 0.5 - 0.004, s.z * 0.36), _glow(Color("3fb950")))
+		return
+	if _variant == "lamp":
+		return
+	if _variant == "stand":
+		_add_box(Vector3(s.x * 0.94, s.y * 0.88, 0.005), Vector3(0, 0, s.z * 0.5 + 0.003), _glow(Color("2b4f8f")))
+		_add_box(Vector3(0.36, 0.015, 0.22), Vector3(0, -s.y * 0.5 - 0.05, 0), dark)
+		_add_box(Vector3(0.05, 0.1, 0.03), Vector3(0, -s.y * 0.5 - 0.02, -0.01), dark)
+		return
 	match type:
 		"ac":
 			for i in 6:

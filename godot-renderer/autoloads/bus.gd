@@ -38,3 +38,6 @@ signal device_dropped(info: Dictionary)   # {deviceType, x, y, z, rotationY, roo
 signal device_moved(info: Dictionary)     # {id, x, y, z, rotationY, room}
 signal walk_changed(info: Dictionary)     # {on, room, roomName}
 signal place_hover(info: Dictionary)      # {room, valid, mount}
+
+signal preview_requested(id: String, readings: Dictionary, text: String)  # guest dragging a 3D control: show the result now
+signal track_requested(id: String)  # report this device's screen position (anchor events) so the host can pin a control to it

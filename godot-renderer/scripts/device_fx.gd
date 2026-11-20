@@ -42,10 +42,14 @@ var _blind_pos := -1.0    # smoothed 0..1 (1 = open)
 var _win_h := 1.35        # window height, scaled like the walls
 
 
-func setup(d: DeviceNode, t: String, s: Vector3) -> DeviceFx:
+var variant := ""
+
+
+func setup(d: DeviceNode, t: String, s: Vector3, v := "") -> DeviceFx:
 	dev = d
 	type = t
 	size = s
+	variant = v
 	_room_key = str(d.data.get("room", ""))
 	match t:
 		"light": _build_light()
@@ -127,7 +131,7 @@ func _process(delta: float) -> void:
 			var k: float = clampf((float(live.get("ct", 3000.0)) - 2700.0) / 3800.0, 0.0, 1.0)
 			var col: Color = Color(1.0, 0.78, 0.52).lerp(Color(0.86, 0.92, 1.0), k)
 			_lamp.light_color = col
-			_lamp.light_energy = _light_level * (2.6 if Store.walk else 3.2)
+			_lamp.light_energy = _light_level * (2.6 if Store.walk else 3.2) * (0.55 if variant == "lamp" else 1.0)
 			_lamp.visible = _light_level > 0.01
 			_glow_mat.emission = col
 			_glow_mat.emission_energy_multiplier = 0.2 + _light_level * 3.0
@@ -152,9 +156,12 @@ func _process(delta: float) -> void:
 			var h: float = _win_h * (1.0 - _blind_pos) + 0.04
 			_slats.scale.y = h
 			_slats.position.y = -h / 2.0
-			(_window.material_override as StandardMaterial3D).emission_energy_multiplier = 0.25 + 1.4 * _blind_pos
-			_sun.visible = _blind_pos > 0.05
-			(_sun.material_override as StandardMaterial3D).albedo_color.a = 0.22 * _blind_pos
+			if _window:
+				(_window.material_override as StandardMaterial3D).emission_energy_multiplier = 0.25 + 1.4 * _blind_pos
+				_sun.visible = _blind_pos > 0.05
+				(_sun.material_override as StandardMaterial3D).albedo_color.a = 0.22 * _blind_pos
+			else:  # projector screen: a soft projected picture once it is mostly down
+				(_slats.material_override as StandardMaterial3D).emission_energy_multiplier = clampf((0.6 - _blind_pos) * 1.2, 0.0, 0.5)
 		"fan":
 			var on: bool = online and bool(live.get("on", false))
 			var rps: float = [0.0, 6.0, 9.0, 13.0][clampi(int(live.get("speed", 2)), 0, 3)] if on else 0.0
@@ -287,6 +294,16 @@ func _build_ac() -> void:
 	_air.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	_air.emission_box_extents = Vector3(size.x * 0.4, 0.01, 0.02)
 	_air.direction = Vector3(0, -0.6, 0.8)
+	if variant == "cassette":  # four-way ceiling cassette: air falls from all sides of the grille
+		_flap.visible = false
+		_air.position = Vector3(0, -size.y * 0.6, 0)
+		_air.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+		_air.emission_ring_axis = Vector3.UP
+		_air.emission_ring_radius = size.x * 0.38
+		_air.emission_ring_inner_radius = size.x * 0.3
+		_air.emission_ring_height = 0.01
+		_air.direction = Vector3(0, -1, 0)
+		_air.spread = 35.0
 	_air.spread = 12.0
 	_tag = Label3D.new()
 	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -320,6 +337,24 @@ func _build_tv() -> void:
 
 func _build_blinds() -> void:
 	_win_h = 1.35 * minf(Store.wall_height / Placer.REAL_STOREY, 1.0)
+	if variant == "projector":
+		_slats = MeshInstance3D.new()
+		var pm := BoxMesh.new()
+		pm.size = Vector3(size.x * 0.96, 1.0, 0.008)
+		_slats.mesh = pm
+		var scr := _mat(Color("f6f3ec"), true)
+		scr.emission = Color(0.85, 0.9, 1.0)
+		scr.emission_energy_multiplier = 0.0
+		_slats.material_override = scr
+		add_child(_slats)
+		var housing := MeshInstance3D.new()
+		var hb := BoxMesh.new()
+		hb.size = Vector3(size.x, 0.1, 0.1)
+		housing.mesh = hb
+		housing.material_override = _mat(Color("e9e6df"))
+		housing.position = Vector3(0, 0.03, 0)
+		add_child(housing)
+		return
 	# the window behind the blind: a glowing pane, brighter as the blind opens
 	_window = MeshInstance3D.new()
 	var wm := BoxMesh.new()

@@ -73,3 +73,23 @@ Guest mode: the page loads the renderer as `/godot/index.html?guest=<token>`. Th
 `/api/guest/<token>/building` and `/floor`, starts the walk from the entrance to the guest's room by itself, opens
 only the rooms on the way, and keeps the guest in the room once there. Map navigation, device placement and the
 internal twin are off for guests.
+
+
+## Guest 3D controls (renderer 0.5.0)
+
+Host → renderer:
+
+| Message | Meaning |
+|---|---|
+| `{type:'track', id}` | Report this device's screen position as `anchor` events (about every 80 ms while it changes); `id:''` stops. Also shows a turning ring of light around the device. |
+| `{type:'preview', id, readings, text?}` | Show these readings on the device for 4 s (a control is being dragged), merged over the live state; `text` floats over the device. |
+
+Renderer → host:
+
+| Message | Meaning |
+|---|---|
+| `{type:'anchor', id, x, y, visible}` | Device position on the renderer viewport, `x`/`y` as 0–1 fractions; `visible` false when it is behind the camera or off screen. |
+
+Device variants (by device name, see `DeviceNode.variant`): "Ceiling AC…" is a ceiling cassette, "Floor lamp…" a
+bulb inside a floor lamp, "Projector screen…" a roller screen (blinds motor), "TV 65"…" a TV on a stand.
+Rooms with `finish: "st-zone"` get the SmartThings Experience Zone finish (panelling, tiles, drop ceiling).

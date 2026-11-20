@@ -16,6 +16,19 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
   const [verify, setVerify] = useState(true);
   const [unlock, setUnlock] = useState(false);
   const [tag, setTag] = useState('');
+  // the room's device types, and which of them this guest may control (all by default)
+  const [types, setTypes] = useState<{ type: string; label: string }[]>([]);
+  const [allowed, setAllowed] = useState<Record<string, boolean>>({});
+  const [acMin, setAcMin] = useState(18);
+  const [acMax, setAcMax] = useState(28);
+  useEffect(() => {
+    fetch('/api/devices').then(r => r.json()).then(x => {
+      const seen = new Map<string, string>();
+      for (const d of x.devices) if (d.room === room && !seen.has(d.type)) seen.set(d.type, d.label);
+      const list = [...seen].map(([type, label]) => ({ type, label }));
+      setTypes(list); setAllowed(Object.fromEntries(list.map(t => [t.type, true])));
+    });
+  }, [room]);
   const [entrance, setEntrance] = useState('');
   const [label, setLabel] = useState('');
   const [entrances, setEntrances] = useState<Entrance[]>([]);
@@ -36,7 +49,8 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
 
   const create = async () => {
     setErr('');
-    const r = await fetch('/api/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room, until: new Date(checkout).getTime(), entrance: entrance || undefined, label: label || undefined, verify, allowUnlock: verify && unlock, tag: tag || undefined }) });
+    const r = await fetch('/api/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room, until: new Date(checkout).getTime(), entrance: entrance || undefined, label: label || undefined, verify, allowUnlock: verify && unlock, tag: tag || undefined,
+        controls: types.every(t => allowed[t.type]) ? undefined : types.filter(t => allowed[t.type]).map(t => t.type), acRange: [acMin, acMax] }) });
     const d = await r.json();
     if (!r.ok) { setErr(d.error ?? 'Could not create the pass'); return; }
     setMade(d); load();
@@ -59,6 +73,13 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
               {entrances.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
             </select></label>
             <label>Location badge (optional: the tag id of the badge or key card the hotel's positioning system tracks)<input value={tag} maxLength={64} placeholder="e.g. BADGE-0042" onChange={e => setTag(e.target.value.trim())} /></label>
+            {types.length > 0 && (
+              <div className="perm">
+                <span className="muted">Room controls the guest may use (others are shown but view-only)</span>
+                <div className="perm-list">{types.map(t => <label key={t.type} className="chk"><input type="checkbox" checked={!!allowed[t.type]} onChange={e => setAllowed(a => ({ ...a, [t.type]: e.target.checked }))} /> {t.label}</label>)}</div>
+                {types.some(t => t.type === 'ac') && <label className="row-lbl">AC temperature allowed <input type="number" min={16} max={30} value={acMin} onChange={e => setAcMin(+e.target.value)} /> to <input type="number" min={16} max={30} value={acMax} onChange={e => setAcMax(+e.target.value)} /> °C</label>}
+              </div>
+            )}
             <label className="chk"><input type="checkbox" checked={verify} onChange={e => setVerify(e.target.checked)} /> Verify identity with a check-in PIN (handed over at the desk)</label>
             <label className={`chk ${verify ? '' : 'dim'}`}><input type="checkbox" disabled={!verify} checked={verify && unlock} onChange={e => setUnlock(e.target.checked)} /> Let the guest unlock this room&apos;s door (hotel policy; uses the SmartThings lock when linked on Integrations)</label>
             {err && <div className="bad-text">{err}</div>}

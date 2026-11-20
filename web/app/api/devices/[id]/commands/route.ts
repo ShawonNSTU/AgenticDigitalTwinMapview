@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { COMMANDS } from '@/lib/sim/runtime';
 import { dispatch } from '@/lib/sim/dispatch';
 import { byId } from '@/lib/sim/engine';
+import { supported } from '@/lib/integrations/smartthings';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const d = byId[id];
   if (!d) return NextResponse.json({ error: `Unknown device ${id}` }, { status: 404 });
   const cmds = COMMANDS[d.type] ?? {};
-  return NextResponse.json({ id, commands: Object.entries(cmds).map(([name, c]) => ({ name, args: c.args ?? {}, needsConfirmation: !!c.confirm })) });
+  // a device linked to SmartThings offers only what the real device supports
+  return NextResponse.json({ id, commands: supported(id, d.type, Object.entries(cmds).map(([name, c]) => ({ name, args: (c.args ?? {}) as Record<string, any>, needsConfirmation: !!c.confirm }))) });
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

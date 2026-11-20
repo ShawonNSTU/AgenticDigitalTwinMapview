@@ -186,6 +186,42 @@ func show_route(start: Vector2, route: PackedVector2Array, dest: String) -> void
 			_route_tag(b, here, Color(0.75, 0.85, 1.0))
 			room_before = here
 	_route_tag(pts[pts.size() - 1], dest, Color(0.45, 0.85, 0.55))
+	_beacon(pts[pts.size() - 1])
+
+
+var _beacon_node: Node3D
+
+
+## A pulsing marker over the destination, seen through walls, so the guest always knows where the room is.
+func _beacon(at: Vector2) -> void:
+	_beacon_node = Node3D.new()
+	_beacon_node.position = Vector3(at.x, 0, at.y)
+	_route_node.add_child(_beacon_node)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.3, 0.9, 0.55, 0.85)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.no_depth_test = true
+	m.render_priority = 2
+	var gem := MeshInstance3D.new()
+	var pm := PrismMesh.new()
+	pm.size = Vector3(0.32, 0.4, 0.32)
+	gem.mesh = pm
+	gem.material_override = m
+	gem.rotation.z = PI  # point down at the room
+	gem.position.y = 2.35
+	_beacon_node.add_child(gem)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.45
+	tm.outer_radius = 0.55
+	ring.mesh = tm
+	var rm := m.duplicate() as StandardMaterial3D
+	rm.no_depth_test = false
+	ring.material_override = rm
+	ring.scale = Vector3(1, 0.1, 1)
+	ring.position.y = 0.03
+	_beacon_node.add_child(ring)
 
 
 func _route_tag(at: Vector2, text: String, col: Color) -> void:
@@ -267,6 +303,10 @@ func go_to_room(key: String) -> bool:
 
 func _process(delta: float) -> void:
 	delta = minf(delta, 0.25)
+	if _beacon_node and is_instance_valid(_beacon_node):
+		var k := 1.0 + 0.15 * sin(Time.get_ticks_msec() / 250.0)
+		_beacon_node.get_child(0).position.y = 2.35 + 0.08 * sin(Time.get_ticks_msec() / 400.0)
+		_beacon_node.get_child(1).scale = Vector3(k, 0.1, k)
 	if _intro > 0.0 and _intro - delta <= 0.0:
 		landed.emit()
 	_intro = maxf(0.0, _intro - delta)

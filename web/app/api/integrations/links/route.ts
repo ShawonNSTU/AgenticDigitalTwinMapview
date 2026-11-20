@@ -11,7 +11,10 @@ export async function POST(req: NextRequest) {
   if (!p.success) return NextResponse.json({ error: p.error.message }, { status: 400 });
   const d = byId[p.data.localId];
   if (!d) return NextResponse.json({ error: `Unknown device ${p.data.localId}` }, { status: 404 });
-  ST.setLink({ localId: d.id, stId: p.data.stId, component: p.data.component ?? 'main', label: p.data.label, type: d.type });
+  const comp = p.data.component ?? 'main';
+  const desc = await ST.describe(p.data.stId, comp).catch(e => ({ error: (e as Error).message }));
+  if ('error' in desc) return NextResponse.json({ error: desc.error }, { status: 502 });
+  ST.setLink({ localId: d.id, stId: p.data.stId, component: comp, label: p.data.label ?? desc.label, type: d.type, capabilities: desc.capabilities });
   const status = await ST.refresh(d.id, d.type).catch(() => null);
   return NextResponse.json({ ok: true, links: ST.links(), status });
 }

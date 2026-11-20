@@ -246,6 +246,21 @@ static func mount_y(t: String) -> float:
 	return size.y * 0.5
 
 
+## Height for one placed device: its type's height, or its variant's (see DeviceNode.variant).
+static func device_y(d: Dictionary) -> float:
+	var t := str(d.get("type", ""))
+	var k := minf(Store.wall_height / REAL_STOREY, 1.0)
+	match DeviceNode.variant(d):
+		"cassette":
+			var h: float = Store.wall_height
+			return h - 0.05 if Store.walk else h + 0.05
+		"lamp":
+			return minf(1.55, Store.wall_height - 0.22) - 0.05  # inside the floor lamp's shade
+		"stand":
+			return (0.58 + 0.42 + 0.05) * k if Store.walk else maxf(0.58 * k + 0.47, 0.6)
+	return mount_y(t)
+
+
 ## Where a device of this type goes for a pointer at p (metres): position, facing, room, and whether it may go there.
 static func solve(t: String, p: Vector2, skip_id := "") -> Dictionary:
 	var r: Dictionary = Store.room_at(p)

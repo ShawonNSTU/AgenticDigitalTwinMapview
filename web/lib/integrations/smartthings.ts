@@ -6,7 +6,7 @@
 // Configure with SMARTTHINGS_TOKEN (and SMARTTHINGS_API for a different base URL, e.g. a test double), or enter a
 // token on /integrations (kept in memory only).
 
-export type Link = { localId: string; stId: string; component: string; label?: string; type: string };
+export type Link = { localId: string; stId: string; component: string; label?: string; type: string; capabilities?: string[]; acModes?: string[] };
 type StCommand = { component: string; capability: string; command: string; arguments: unknown[] };
 
 type State = { token: string; links: Record<string, Link>; status: Record<string, { at: number; readings: Record<string, unknown>; online: boolean }>; lastError: string };
@@ -34,6 +34,13 @@ async function call(path: string, init: RequestInit = {}) {
     throw new Error(`SmartThings: ${msg}`);
   }
   return body;
+}
+
+/** The capabilities a SmartThings device has on a component (GET /devices/{id}), to show only the controls it supports. */
+export async function describe(stId: string, component = 'main') {
+  const d: any = await call(`/devices/${encodeURIComponent(stId)}`);
+  const comp = (d.components ?? []).find((c: any) => c.id === component) ?? d.components?.[0];
+  return { label: d.label ?? d.name ?? stId, capabilities: (comp?.capabilities ?? []).map((c: any) => c.id) as string[] };
 }
 
 /** Devices in the SmartThings account (for linking). */
@@ -120,6 +127,8 @@ export async function refresh(localId: string, type?: string) {
     const s = await call(`/devices/${encodeURIComponent(l.stId)}/status`);
     const health = await call(`/devices/${encodeURIComponent(l.stId)}/health`).catch(() => null);
     st.status[localId] = { at: Date.now(), readings: readingsFrom(type ?? l.type, s, l.component), online: health?.state ? health.state === 'ONLINE' : true };
+    const modes = s?.components?.[l.component]?.airConditionerMode?.supportedAcModes?.value;
+    if (Array.isArray(modes) && modes.length) l.acModes = modes.map((m: string) => (m === 'fanOnly' ? 'fan' : m));
   } catch { st.status[localId] = { at: Date.now(), readings: st.status[localId]?.readings ?? {}, online: false }; }
   return st.status[localId];
 }
@@ -130,4 +139,16 @@ export function realState(localId: string, type: string) {
   const s = st.status[localId];
   if (!s || Date.now() - s.at > 10_000) refresh(localId, type).catch(() => {});
   return s ?? null;
+}
+
+/** The commands a linked device really supports: a command stays only if every SmartThings capability it needs is
+ *  on the device, and the AC's mode list is narrowed to the modes the unit reports. Unlinked: all of them. */
+export function supported<T extends { name: string; args: Record<string, any> }>(localId: string, type: string, cmds: T[]): T[] {
+  const l = st.links[localId];
+  if (!l?.capabilities?.length) return cmds;
+  const caps = new Set(l.capabilities);
+  const sample: Record<string, unknown> = { on: 'true', percent: 50, celsius: 24, mode: 'cool', position: 'swing', hours: 1, kelvin: 3000, source: 'HDMI 1', level: 2 };
+  return cmds
+    .filter(c => { const t = translate(type, c.name, sample, l.component); return !!t && t.every(x => caps.has(x.capability)); })
+    .map(c => (c.name === 'setMode' && l.acModes?.length ? { ...c, args: { ...c.args, mode: (c.args.mode as string[]).filter(m => l.acModes!.includes(m)) } } : c));
 }

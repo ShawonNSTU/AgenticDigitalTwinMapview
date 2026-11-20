@@ -30,6 +30,10 @@ const PALETTE := {
 	"mesh_black": [Color("23262c"), 0.1, 0.7], "soil": [Color("4a3a2c"), 0.0, 0.95],
 	"water": [Color(0.45, 0.72, 0.95, 0.55), 0.0, 0.1], "warn": [Color("f2c94c"), 0.0, 0.5], "locker": [Color("aab7c4"), 0.3, 0.45],
 	"tile": [Color("e8edf2"), 0.0, 0.3], "drinks": [Color("e85d4a"), 0.0, 0.5],
+	"velvet": [Color("9aa1aa"), 0.0, 0.95], "velvet_dark": [Color("5d636c"), 0.0, 0.9], "brass": [Color("c9a24a"), 0.85, 0.3],
+	"shade": [Color("17181b"), 0.1, 0.55], "shade_glow": [Color("ffcf8a"), 0.0, 0.5], "gloss_white": [Color("f4f4f2"), 0.0, 0.18],
+	"book_red": [Color("c0392b"), 0.0, 0.6], "walnut": [Color("6e4a2f"), 0.0, 0.5], "poster": [Color("d8343f"), 0.0, 0.6],
+	"frosted": [Color(0.86, 0.9, 0.93, 0.5), 0.05, 0.15],
 }
 const MODEL_DIR := "res://assets/furniture/kenney/"
 ## Kenney material name -> palette key (the kit's pastel colours read as toys in an office)
@@ -38,8 +42,8 @@ const RECOLOUR := {
 	"metal": "chrome", "metalLight": "porcelain", "metalMedium": "frame", "metalDark": "dark", "plant": "leaf",
 	"_defaultMat": "porcelain", "glass": "glass", "paper": "white", "darkWood": "wood_dark",
 }
-const GLOW := ["led", "console", "display", "slide", "drinks"]
-const TEXTURED := {"wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6}
+const GLOW := ["led", "console", "display", "slide", "drinks", "shade_glow"]
+const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6}
 
 var counts := {}         # kind -> number of items built (for the HUD / tests)
 var _batches := {}       # "mesh|material" -> Array[Transform3D]
@@ -53,8 +57,12 @@ var _models := {}        # model name -> {parts: [[mesh key, Transform3D, materi
 var _swap := {}          # per-item material swaps (e.g. sofa fabric), set by the recipe before _model()
 
 
+var _cur: Dictionary = {}
+
+
 func build(items: Array) -> void:
 	for f in items:
+		_cur = f
 		_item(str(f.get("kind", "")), Vector3(float(f.x), 0, float(f.z)), float(f.w), float(f.d), float(f.get("rot", 0.0)))
 	for key in _batches:
 		var parts: PackedStringArray = key.split("|")
@@ -125,7 +133,7 @@ func _mat(k: String) -> StandardMaterial3D:
 	if TEXTURED.has(k):
 		# subtle grain/weave so large surfaces don't look flat; world triplanar keeps scale constant on instanced parts
 		var n := FastNoiseLite.new()
-		n.frequency = 0.08 if k == "wood" else 0.4
+		n.frequency = 0.08 if k in ["wood", "walnut"] else 0.4
 		n.fractal_octaves = 3
 		var nt := NoiseTexture2D.new()
 		nt.noise = n
@@ -138,7 +146,7 @@ func _mat(k: String) -> StandardMaterial3D:
 		m.albedo_texture = nt
 		m.uv1_triplanar = true
 		m.uv1_world_triplanar = true
-		m.uv1_scale = (Vector3.ONE / float(TEXTURED[k])) * (Vector3(1, 1, 6) if k == "wood" else Vector3.ONE)
+		m.uv1_scale = (Vector3.ONE / float(TEXTURED[k])) * (Vector3(1, 1, 6) if k in ["wood", "walnut"] else Vector3.ONE)
 	_mats[k] = m
 	return m
 
@@ -442,6 +450,68 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			for k in 3:
 				_bm("led" if k < 2 else "rail", Vector3(w * 0.12 + k * 0.05, ph * 0.86, d / 2 + 0.008), Vector3(0.025, 0.025, 0.008), "cyl")
 			_bm("chrome", Vector3(w * 0.06, ph * 0.5, d / 2 + 0.012), Vector3(0.02, 0.09, 0.015))
+		"tufted_sofa":
+			# grey velvet two-seater: rounded back and arms, buttoned back, two cushions, slim dark legs
+			var sh := 0.42
+			_bm("velvet", Vector3(0, 0.28, 0.02), Vector3(w * 0.86, 0.2, d * 0.78))
+			_bm("velvet", Vector3(0, 0.6, -d * 0.36), Vector3(w * 0.98, 0.5, d * 0.24), "cyl" if false else "box")
+			for sx in [-1, 1]:
+				_bm("velvet", Vector3(sx * w * 0.45, 0.43, 0), Vector3(w * 0.1, 0.42, d * 0.95))
+				_bm("velvet_dark", Vector3(sx * w * 0.22, sh + 0.16, -d * 0.2), Vector3(0.42, 0.36, 0.12))
+				for lz in [-1, 1]:
+					_bm("dark", Vector3(sx * w * 0.42, 0.06, lz * d * 0.38), Vector3(0.03, 0.12, 0.03), "cyl")
+			for i in 7:
+				for j in 2:
+					_bm("velvet_dark", Vector3(-w * 0.42 + i * w * 0.14, 0.52 + j * 0.16, -d * 0.235), Vector3(0.025, 0.025, 0.012), "sphere")
+		"tv_unit":
+			# walnut TV unit: open shelves in the middle, drawers either side, on splayed legs
+			_bm("walnut", Vector3(0, 0.56, 0), Vector3(w, 0.035, d))
+			_bm("walnut", Vector3(0, 0.12, 0), Vector3(w * 0.96, 0.03, d * 0.92))
+			_bm("walnut", Vector3(0, 0.32, -d * 0.1), Vector3(w * 0.5, 0.025, d * 0.7))
+			for sx in [-1, 1]:
+				_bm("walnut", Vector3(sx * w * 0.36, 0.34, 0), Vector3(w * 0.27, 0.42, d * 0.92))
+				_bm("dark", Vector3(sx * w * 0.36, 0.34, d * 0.465), Vector3(w * 0.12, 0.012, 0.01))
+				_bm("walnut", Vector3(sx * w * 0.24, 0.05, d * 0.35), Vector3(0.04, 0.1, 0.04))
+				_bm("walnut", Vector3(sx * w * 0.24, 0.05, -d * 0.35), Vector3(0.04, 0.1, 0.04))
+		"coffee_table":
+			_bm("walnut", Vector3(0, 0.43, 0), Vector3(w, 0.04, d))
+			_bm("walnut", Vector3(0, 0.12, d * 0.05), Vector3(w * 0.9, 0.03, d * 0.8))
+			for sx in [-1, 1]:
+				_bm("walnut", Vector3(sx * w * 0.46, 0.22, 0), Vector3(0.05, 0.42, d * 0.95))
+			_bm("dark", Vector3(w * 0.15, 0.46, -d * 0.1), Vector3(0.05, 0.015, 0.17))  # the TV remote
+		"floor_lamp":
+			# brass pole on a round base, black drum shade lit gold inside (lower on the cut-away map)
+			var top := minf(1.55, h - 0.22)
+			_bm("brass", Vector3(0, 0.012, 0), Vector3(0.36, 0.024, 0.36), "cyl")
+			_bm("brass", Vector3(0, top / 2, 0), Vector3(0.025, top, 0.025), "cyl")
+			_bm("frosted", Vector3(0, top * 0.7, 0), Vector3(0.06, 0.18, 0.06), "cyl")
+			_bm("shade", Vector3(0, top, 0), Vector3(0.5, 0.3, 0.5), "cyl")
+			_bm("shade_glow", Vector3(0, top - 0.01, 0), Vector3(0.46, 0.29, 0.46), "cyl")
+		"bookcase_white":
+			# white bookcase: closed cupboard below, open shelves above with red and white books
+			var bh := minf(h - 0.15, 1.95)
+			_bm("gloss_white", Vector3(0, 0.36, 0), Vector3(w, 0.72, d))
+			for sx in [-0.25, 0.25]:
+				_bm("chrome", Vector3(sx * w * 0.2, 0.5, d / 2 + 0.01), Vector3(0.015, 0.12, 0.015))
+			_bm("gloss_white", Vector3(0, bh - 0.015, 0), Vector3(w, 0.03, d))
+			for sx in [-1, 0, 1]:
+				_bm("gloss_white", Vector3(sx * (w / 2 - 0.015), (bh + 0.72) / 2, 0), Vector3(0.03, bh - 0.72, d))
+			for k in 3:
+				var y := 0.72 + (k + 1) * (bh - 0.72) / 3.0
+				_bm("gloss_white", Vector3(0, y - 0.015, 0), Vector3(w, 0.025, d))
+			for k in 3:
+				var y0 := 0.74 + k * (bh - 0.72) / 3.0
+				for b in 5:
+					var red := (b + k) % 3 != 0
+					_bm("book_red" if red else "white", Vector3(-w * 0.4 + b * 0.05 + (0.5 * w if k == 1 else 0.0), y0 + 0.12, -d * 0.05), Vector3(0.035, 0.24, d * 0.7))
+			_bm("dark", Vector3(w * 0.22, 0.74 + 2 * (bh - 0.72) / 3.0 + 0.03, 0), Vector3(0.3, 0.04, 0.18))  # the router
+		"poster":
+			# framed print at eye height on the wall it faces away from
+			_bm("white", Vector3(0, 1.55, 0), Vector3(w, w * 1.3, 0.025))
+			_bm("poster", Vector3(0, 1.62, 0.014), Vector3(w * 0.8, w * 0.55, 0.005))
+			_bm("dark", Vector3(-w * 0.1, 1.3, 0.014), Vector3(w * 0.5, w * 0.25, 0.005))
+		"monitor":
+			_setup(-w * 0.15, d)
 		"plant":
 			_swap = {"wood": "pot", "woodDark": "soil"}
 			_model("pottedPlant", Vector3.ZERO, w, d, maxf(0.9, w * 2.2))
@@ -458,7 +528,10 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 				var hinge := Vector3(side * w / 2, 0, 0)
 				# open 70° on the map; flat against the wall while walking, so the doorway is clear
 				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(92.0 if Store.walk else 70.0) * side), hinge)
-				_emit("box", "door", _ir * leaf * Transform3D(Basis.from_scale(Vector3(lw - 0.02, lh, 0.04)), Vector3(-side * lw / 2, lh / 2, 0)))
+				var glass_door: bool = _cur.get("glass", false)
+				_emit("box", "frosted" if glass_door else "door", _ir * leaf * Transform3D(Basis.from_scale(Vector3(lw - 0.02, lh, 0.012 if glass_door else 0.04)), Vector3(-side * lw / 2, lh / 2, 0)))
+				if glass_door:  # pull handle and a frosted band
+					_emit("box", "chrome", _ir * leaf * Transform3D(Basis.from_scale(Vector3(0.02, 0.5, 0.06)), Vector3(-side * (lw - 0.1), 1.0, 0)))
 				_emit("box", "metal", _ir * leaf * Transform3D(Basis.from_scale(Vector3(0.12, 0.025, 0.06)), Vector3(-side * (lw - 0.12), 0.95, 0)))
 				for k in 9:  # quarter-circle swing arc on the floor
 					var a := deg_to_rad(90.0) * (k + 0.5) / 9.0

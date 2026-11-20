@@ -29,7 +29,7 @@ export async function GET() {
         if (h !== last) {
           last = h; send('health', f.devices.map(d => ({ id: d.id, health: d.health, fault: (d as { fault?: string }).fault ?? null })));
           const now = alerts();
-          for (const a of now) if (!known.has(a.key)) send('alert', { key: a.key, deviceId: a.deviceId, label: a.label, roomName: a.roomName, level: a.level, title: a.title });
+          for (const a of now) if (!known.has(a.key)) send('alert', { key: a.key, deviceId: a.deviceId, label: a.label, roomName: a.roomName, level: a.level, title: a.title, assignee: a.assignee });
           known = new Set(now.map(a => a.key));
         }
       };

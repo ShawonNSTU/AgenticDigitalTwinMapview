@@ -1,12 +1,13 @@
 // Guest passes: a link (shown as a QR code) that lets a visitor walk from an entrance to one room and
 // see and control only the devices in that room. Everything a guest's browser loads goes through
 // /api/guest/<token>/..., which filters by the pass; nothing else is reachable with a token.
+import { guestReady, GUEST_HIDDEN } from './stzone';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { DEV, ROOMS, TYPES, LAYOUT, byId } from './engine';
 import { buildingState, floor, device, COMMANDS, rt } from './runtime';
 import { dispatch } from './dispatch';
 import { audit, markStepUp, stepUpFresh, unlocksRecently, policy } from './access';
-import { info as stInfo } from '@/lib/integrations/smartthings';
+import { info as stInfo, supported } from '@/lib/integrations/smartthings';
 import { bindTag, fixOf } from './positioning';
 
 export type GuestPass = {
@@ -20,6 +21,8 @@ export type GuestPass = {
   revoked: boolean;
   pin: string;         // check-in PIN the host hands over ('' = no verification)
   allowUnlock: boolean; // hotel policy: the verified guest may unlock their own room's door
+  controls: string[];  // device types the guest may control ([] = all in the room); others are view-only
+  acRange: [number, number]; // AC set-point limits for this guest
   failed: number;      // wrong PIN attempts (5 locks the pass)
 };
 
@@ -59,15 +62,16 @@ export function entranceRooms() {
     .sort((a, b) => (/lift|elevator|lobby|reception|entrance|entry|foyer/i.test(a.name) ? 0 : 1) - (/lift|elevator|lobby|reception|entrance|entry|foyer/i.test(b.name) ? 0 : 1));
 }
 
-export function createPass(room: string, hours: number, entrance = '', label = '', opts: { until?: number; verify?: boolean; allowUnlock?: boolean; tag?: string } = {}) {
+export function createPass(room: string, hours: number, entrance = '', label = '', opts: { until?: number; verify?: boolean; allowUnlock?: boolean; tag?: string; controls?: string[]; acRange?: [number, number] } = {}) {
   if (!roomOf(room)) throw new Error(`Unknown room ${room}`);
+  if (!guestReady(room)) throw new Error('This room has no SmartThings devices for a guest yet: run Hotel setup for it first');
   if (entrance && !roomOf(entrance)) throw new Error(`Unknown entrance ${entrance}`);
   const now = Date.now();
   const expiresAt = opts.until && opts.until > now ? opts.until : now + hours * 3600_000;
   if (expiresAt - now > 31 * 24 * 3600_000) throw new Error('A stay can be at most 31 days');
   const pin = opts.verify ? String(100000 + (randomBytes(4).readUInt32BE() % 900000)) : '';
   if (opts.allowUnlock && !pin) throw new Error('Unlocking needs identity verification (a check-in PIN)');
-  const p: GuestPass = { token: randomBytes(18).toString('base64url'), room, entrance, label: label.slice(0, 60), layout: rt.planGen ?? 0, createdAt: now, expiresAt, revoked: false, pin, allowUnlock: !!opts.allowUnlock, failed: 0 };
+  const p: GuestPass = { token: randomBytes(18).toString('base64url'), room, entrance, label: label.slice(0, 60), layout: rt.planGen ?? 0, createdAt: now, expiresAt, revoked: false, pin, allowUnlock: !!opts.allowUnlock, failed: 0, controls: opts.controls ?? [], acRange: opts.acRange && opts.acRange[0] < opts.acRange[1] ? [Math.max(16, opts.acRange[0]), Math.min(30, opts.acRange[1])] : [16, 30] };
   passes[p.token] = p;
   if (opts.tag) bindTag(opts.tag.slice(0, 64), p.token); // the guest's location badge in the hotel's positioning system
   return describe(p);
@@ -100,17 +104,20 @@ export function listPasses(room?: string) {
 }
 
 function describe(p: GuestPass) {
-  return { token: p.token, room: p.room, roomName: roomName(roomOf(p.room)), entrance: p.entrance, entranceName: p.entrance ? roomName(roomOf(p.entrance)) : '', label: p.label, createdAt: p.createdAt, expiresAt: p.expiresAt, path: `/guest/${p.token}`, pin: p.pin, allowUnlock: p.allowUnlock };
+  return { controls: p.controls, acRange: p.acRange, token: p.token, room: p.room, roomName: roomName(roomOf(p.room)), entrance: p.entrance, entranceName: p.entrance ? roomName(roomOf(p.entrance)) : '', label: p.label, createdAt: p.createdAt, expiresAt: p.expiresAt, path: `/guest/${p.token}`, pin: p.pin, allowUnlock: p.allowUnlock };
 }
 
 /** Commands a guest may run on a device: everything that needs no confirmation (no unlocking, no stopping a wash). */
-export function guestCommands(type: string, p?: GuestPass) {
-  return Object.entries(COMMANDS[type] ?? {})
+export function guestCommands(type: string, p?: GuestPass, id?: string) {
+  // the host's choice of controls for this guest (others are view-only), then what the real device supports
+  if (p?.controls?.length && !p.controls.includes(type)) return [];
+  const list = Object.entries(COMMANDS[type] ?? {})
     .filter(([name, c]) => !c.confirm || (type === 'lock' && name === 'unlock' && !!p?.allowUnlock && !!p?.pin))
-    .map(([name, c]) => ({ name, args: c.args ?? {}, ...(c.confirm ? { confirm: true } : {}) }));
+    .map(([name, c]) => ({ name, args: (name === 'setTemperature' && p ? { celsius: p.acRange } : c.args ?? {}) as Record<string, any>, ...(c.confirm ? { confirm: true } : {}) }));
+  return id ? supported(id, type, list) : list;
 }
 
-const inRoom = (p: GuestPass) => DEV.filter((d: any) => d.room === p.room);
+const inRoom = (p: GuestPass) => DEV.filter((d: any) => d.room === p.room && !GUEST_HIDDEN.includes(d.type));
 
 /** What the guest page shows: the room, its devices with their state and allowed commands. */
 export function guestView(p: GuestPass) {
@@ -131,7 +138,7 @@ export function guestView(p: GuestPass) {
         readings: s.readings, overrides: s.overrides ?? {},
         status: s.parts.slice(0, 3).map((x: any) => ({ name: x.name, value: x.value, health: x.health })),
         finding: s.finding ? { title: (s.finding as any).title, lvl: (s.finding as any).lvl } : null,
-        commands: guestCommands(d.type, p),
+        commands: guestCommands(d.type, p, d.id),
       };
     }),
   };
@@ -141,23 +148,27 @@ export function guestView(p: GuestPass) {
  *  guest room's devices, no plan image and no printed notes. */
 export function guestBuilding(p: GuestPass) {
   const b = buildingState();
-  return { ...b, devices: b.devices.filter(d => d.room === p.room), notes: [], plan: null, guest: { room: p.room, entrance: p.entrance } };
+  return { ...b, devices: b.devices.filter(d => d.room === p.room && !GUEST_HIDDEN.includes(d.type)), notes: [], plan: null, guest: { room: p.room, entrance: p.entrance } };
 }
 
 export function guestFloor(p: GuestPass) {
   const f = floor();
   const me = fixOf(p.token);
-  return { ...f, devices: f.devices.filter(d => d.room === p.room), ...(me ? { me } : {}) };
+  return { ...f, devices: f.devices.filter((d: any) => d.room === p.room && !GUEST_HIDDEN.includes(d.type)), ...(me ? { me } : {}) };
 }
 
 export async function guestCommand(p: GuestPass, id: string, command: string, args: Record<string, unknown>, pin?: string) {
   const d = byId[id];
-  if (!d || d.room !== p.room) return { status: 403, body: { ok: false, error: 'This device is not in your room.' } };
-  const allowed = guestCommands(d.type, p).find(c => c.name === command);
+  if (!d || d.room !== p.room || GUEST_HIDDEN.includes(d.type)) return { status: 403, body: { ok: false, error: 'This device is not in your room.' } };
+  const allowed = guestCommands(d.type, p, id).find(c => c.name === command);
   const who = `guest ${p.label || p.token.slice(0, 6)}`;
   if (!allowed) {
     if (command === 'unlock') audit({ deviceId: id, room: d.room, action: 'unlock', by: who, ok: false, reason: 'not allowed by the pass', via: 'simulator' });
     return { status: 403, body: { ok: false, error: `Guests can't use "${command}" on this device.` } };
+  }
+  if (command === 'setTemperature') {
+    const c = Number(args.celsius);
+    if (!(c >= p.acRange[0] && c <= p.acRange[1])) return { status: 403, body: { ok: false, error: `The hotel allows ${p.acRange[0]}–${p.acRange[1]} °C in this room.` } };
   }
   if (command === 'unlock') {
     // the hotel's access policy: identity re-checked recently, not too many unlocks, within the stay

@@ -9,6 +9,7 @@ type Alert = {
   reported: string[]; confidence: string; steps: { t: string; p: string }[]; parts: { key: string; name: string; value: string; health: string; inferred: boolean }[];
   docs: { title: string; fault: { name: string; what: string } | null; parts: { key: string; name: string; measured: boolean }[] }; simulated: boolean;
   status: 'new' | 'acknowledged' | 'investigating' | 'resolved'; events: { at: number; text: string }[];
+  assignee: { id: string; name: string } | null;
 };
 type Rec = { id: string; at: number; by: string; status: string; cause: string; action: string; notes: string };
 
@@ -31,6 +32,14 @@ export default function TechPage() {
   const [summing, setSumming] = useState(false);
   const [notify, setNotify] = useState(true); // hides the button until the browser's permission is known (no SSR mismatch)
   const known = useRef(new Set<string>());
+  const [techs, setTechs] = useState<{ id: string; name: string }[]>([]);
+  const [me, setMe] = useState('');   // which technician is using this console ('' = everyone's alerts)
+  const meRef = useRef('');
+  useEffect(() => {
+    fetch('/api/technicians').then(r => r.json()).then(x => setTechs(x.technicians));
+    try { const m = localStorage.getItem('twin.tech') ?? ''; setMe(m); meRef.current = m; } catch { /* storage unavailable */ }
+  }, []);
+  const chooseMe = (id: string) => { setMe(id); meRef.current = id; try { localStorage.setItem('twin.tech', id); } catch { /* storage unavailable */ } };
 
   const load = useCallback(() => fetch('/api/alerts').then(r => r.json()).then(x => {
     setAlerts(x.alerts);
@@ -41,6 +50,7 @@ export default function TechPage() {
     const es = new EventSource('/api/events');
     es.addEventListener('alert', e => {
       const a = JSON.parse((e as MessageEvent).data);
+      if (meRef.current && a.assignee?.id !== meRef.current) { load(); return; }  // someone else's alert
       setToast(`New alert · ${a.deviceId} ${a.label} in ${a.roomName}: ${a.title}`);
       setTimeout(() => setToast(''), 6000);
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(`${a.deviceId} · ${a.roomName}`, { body: a.title });
@@ -92,13 +102,14 @@ export default function TechPage() {
     setSumming(false);
   };
 
-  const shown = alerts.filter(x => filter === 'all' || x.status !== 'resolved');
+  const shown = alerts.filter(x => (filter === 'all' || x.status !== 'resolved') && (!me || x.assignee?.id === me));
   return (
     <main className="app tech">
       <header className="topbar">
         <div className="brand"><span className="logo" /><div><b>Technician console</b><small>Alerts · investigation · maintenance</small></div></div>
         <div className="stats">
           <span className={`stat ${alerts.some(x => x.level === 'fault') ? 'warn' : 'good'}`}><b>{alerts.filter(x => x.status !== 'resolved').length}</b> open alerts</span>
+          <select aria-label="Technician" value={me} onChange={e => chooseMe(e.target.value)}><option value="">All technicians</option>{techs.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
           {!notify && <button className="ghost" onClick={() => Notification.requestPermission().then(p => setNotify(p === 'granted'))}>Turn on notifications</button>}
           <a href="/"><button className="ghost">Floor map</button></a>
         </div>
@@ -111,7 +122,7 @@ export default function TechPage() {
           {shown.map(x => (
             <button key={x.key} className={`alert-row ${x.level} ${sel === x.deviceId ? 'on' : ''}`} onClick={() => setSel(x.deviceId)}>
               <span className="dev-ico"><DeviceIcon type={x.type} size={16} /></span>
-              <span className="grow"><b>{x.deviceId} · {x.title}</b><small>{x.roomName} · {ago(x.since)}{x.simulated ? ' · simulated' : ''}</small></span>
+              <span className="grow"><b>{x.deviceId} · {x.title}</b><small>{x.roomName} · {ago(x.since)}{x.assignee ? ` · ${x.assignee.name}` : ''}{x.simulated ? ' · simulated' : ''}</small></span>
               <em className={`st ${x.status}`}>{x.status}</em>
             </button>
           ))}
@@ -123,7 +134,7 @@ export default function TechPage() {
           <div className="panel">
             <div className="dev-head">
               <span className="dev-ico big"><DeviceIcon type={a.type} size={26} /></span>
-              <div className="grow"><b>{a.deviceId} · {a.label}</b><div className="muted">{a.roomName} · raised {ago(a.since)}</div></div>
+              <div className="grow"><b>{a.deviceId} · {a.label}</b><div className="muted">{a.roomName} · raised {ago(a.since)}{a.assignee ? ` · assigned to ${a.assignee.name}` : ' · unassigned'}</div></div>
               <span className={`badge ${a.level}`}>{a.level === 'fault' ? 'Fault' : 'Watch'}</span>
             </div>
             <div className="btns">

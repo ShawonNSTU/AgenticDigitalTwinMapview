@@ -8,11 +8,12 @@ import MapToolbar from '@/components/MapToolbar';
 import MapNav from '@/components/MapNav';
 import WalkHud from '@/components/WalkHud';
 import GuestQr from '@/components/GuestQr';
+import RoomFurniture from '@/components/RoomFurniture';
 import { send, RENDERER_VERSION, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
 type Row = { id: string; type: string; label: string; room: string; name: string; health: string; fault?: string };
-type Room = { key: string; name: string; label?: string; zone?: string };
+type Room = { key: string; name: string; label?: string; zone?: string; finish?: string };
 type Toast = { id: number; text: string; kind: 'ok' | 'bad' };
 
 const json = (r: Response) => r.json();
@@ -32,6 +33,7 @@ export default function Home() {
   const [walk, setWalk] = useState<{ on: boolean; room?: string; roomName?: string; note?: string }>({ on: false });
   const [roomSel, setRoomSel] = useState<{ room: string; roomName: string } | null>(null); // a room clicked on the map
   const [qrFor, setQrFor] = useState<{ room: string; roomName: string } | null>(null);
+  const [furnish, setFurnish] = useState(false);
   const [floorShown, setFloorShown] = useState(false);
   const [stale, setStale] = useState(''); // the 3D renderer export is older than this page // the renderer has built the floor (not just started)
   // the "no devices yet" hint can be closed; remembered in this browser
@@ -147,6 +149,9 @@ export default function Home() {
     return [...g.entries()].sort((a, b) => roomName(a[0]).localeCompare(roomName(b[0])));
   }, [devices, roomName]);
   const zoneOf = (key: string) => rooms.find(r => r.key === key)?.zone;
+  // the SmartThings Experience Zone comes fitted; other rooms are guest-ready once Hotel setup gave them a door lock
+  const fitted = (key: string) => !!rooms.find(r => r.key === key)?.finish;
+  const guestReady = (key: string) => fitted(key) || devices.some(d => d.room === key && d.type === 'lock');
 
   return (
     <main className="app">
@@ -164,7 +169,7 @@ export default function Home() {
       </header>
       <section className="stage" ref={stage}>
         <TwinView onEvent={onEvent} ready={ready && floorShown} />
-        {walk.on ? <WalkHud room={walk.roomName ?? ''} note={walk.note} rooms={rooms.map(r => ({ key: r.key, name: r.name }))} onQr={walk.room && walk.room !== 'out' ? () => setQrFor({ room: walk.room!, roomName: walk.roomName ?? walk.room! }) : undefined} /> : (
+        {walk.on ? <WalkHud room={walk.roomName ?? ''} note={walk.note} rooms={rooms.map(r => ({ key: r.key, name: r.name }))} onQr={walk.room && walk.room !== 'out' && guestReady(walk.room) ? () => setQrFor({ room: walk.room!, roomName: walk.roomName ?? walk.room! }) : undefined} /> : (
           <>
             <DevicePalette stage={stage} hover={hover} counts={counts} />
             <MapToolbar />
@@ -184,11 +189,18 @@ export default function Home() {
             <span className="muted">Room</span>
             <b>{roomSel.roomName}</b>
             <span className="muted">{devices.filter(d => d.room === roomSel.room).length} SmartThings devices</span>
+            {fitted(roomSel.room)
+              ? <span className="ready-chip">SmartThings devices installed · ready for guests</span>
+              : guestReady(roomSel.room)
+                ? <span className="ready-chip">Hotel setup done · ready for guests</span>
+                : <span className="muted small">Guest access needs this room's devices first: use “Set up as guest room”.</span>}
             <div className="row">
               <button onClick={() => { send({ type: 'walk', action: 'start', room: roomSel.room }); }}>Walk in</button>
-              <button onClick={() => setupRoom(roomSel.room)}>Set up as guest room</button>
-              <button className="pri" onClick={() => setQrFor(roomSel)}>Guest QR code</button>
+              {!fitted(roomSel.room) && <button className={guestReady(roomSel.room) ? '' : 'pri'} onClick={() => setupRoom(roomSel.room)}>Set up as guest room</button>}
+              <button className={furnish ? 'on' : ''} onClick={() => setFurnish(!furnish)}>Furniture</button>
+              <button className="pri" disabled={!guestReady(roomSel.room)} title={guestReady(roomSel.room) ? '' : 'Run Hotel setup for this room first'} onClick={() => setQrFor(roomSel)}>Guest QR code</button>
             </div>
+            {furnish && <RoomFurniture room={roomSel.room} />}
           </div>
         )}
         {qrFor && <GuestQr room={qrFor.room} roomName={qrFor.roomName} onClose={() => setQrFor(null)} />}

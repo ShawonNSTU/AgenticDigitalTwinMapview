@@ -25,7 +25,10 @@ func build() -> void:
 		mat.albedo_color = Color(r.color).lerp(Color("d9dde3"), 0.55)
 		mat.roughness = 0.9
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		_finish(mat, str(r.name).to_lower())
+		if str(r.get("finish", "")) == "st-zone":
+			_zone_floor(mat)
+		else:
+			_finish(mat, str(r.name).to_lower())
 		_slabs[r.key] = mat
 		_slab(poly, mat)
 		if Store.room_allowed(r.key):
@@ -52,14 +55,15 @@ func build() -> void:
 			if t > 0.0 and t < length and p.distance_to(a + u * t) < 0.25 and absf(across.dot(u)) > 0.9:
 				gaps.append([t - float(dr.w) / 2, t + float(dr.w) / 2])
 		gaps.sort_custom(func(g1, g2): return g1[0] < g2[0])
+		# an outside wall (a room on one side only) gets windows
+		var nrm := Vector2(-u.y, u.x)
+		var mid_s := (a + b) / 2
+		var exterior := Store.room_at(mid_s + nrm * 0.3).is_empty() != Store.room_at(mid_s - nrm * 0.3).is_empty()
 		var start := -WALL / 2
 		for g in gaps + [[length + WALL / 2, length + WALL / 2]]:
 			var end: float = g[0]
 			if end - start > 0.02:
-				var mid := a + u * ((start + end) / 2)
-				var w := _box(Vector3(mid.x, h / 2, mid.y), Vector3(end - start, h, WALL), wall_mat)
-				w.rotation.y = -atan2(u.y, u.x)
-				_walls.append(w)
+				_wall_run(a, u, start, end, h, wall_mat, exterior)
 				wall_pieces.append([a + u * maxf(start, 0.0), a + u * minf(end, length)])
 			if g[1] > g[0] and h > Walker.LINTEL + 0.05:
 				# full-height walls (walk mode): the wall closes over the door opening
@@ -69,6 +73,9 @@ func build() -> void:
 				_walls.append(lt)
 				lintels.append([a + u * g[0], a + u * g[1]])
 			start = maxf(start, g[1])
+	for r in Store.rooms:
+		if str(r.get("finish", "")) == "st-zone":
+			_zone_walls(r, h, doors)
 	if Store.walk:
 		_ceilings(h)
 	if Store.outdoor_pad.has("x"):
@@ -215,9 +222,14 @@ func _note(n: Dictionary) -> void:
 func set_walls_faded(on: bool) -> void:
 	if _walls.is_empty():
 		return
-	var m: StandardMaterial3D = _walls[0].material_override
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if on else BaseMaterial3D.TRANSPARENCY_DISABLED
-	m.albedo_color.a = 0.07 if on else 1.0
+	var seen := {}
+	for w in _walls:
+		var m: StandardMaterial3D = w.material_override
+		if seen.has(m) or m == _glass:
+			continue
+		seen[m] = true
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if on else BaseMaterial3D.TRANSPARENCY_DISABLED
+		m.albedo_color.a = 0.07 if on else 1.0
 	# focus mode for an opened twin: labels step back and a dark veil lies over the floor so the twin reads
 	for c in get_children():
 		if c is Label3D:
@@ -239,6 +251,213 @@ func set_walls_faded(on: bool) -> void:
 		_veil_tw.kill()
 	_veil_tw = create_tween()
 	_veil_tw.tween_property(veil_mat, "albedo_color:a", 0.72 if on else 0.0, 0.5)
+
+
+var _glass: StandardMaterial3D
+
+
+## One stretch of wall from `start` to `end` metres along the edge. Outside walls get windows: about every
+## 3 m a 1.2 m wide window (sill and head at real heights, scaled like the walls) with glass between.
+func _wall_run(a: Vector2, u: Vector2, start: float, end: float, h: float, mat: StandardMaterial3D, exterior: bool) -> void:
+	var rot := -atan2(u.y, u.x)
+	var piece := func(t0: float, t1: float, y0: float, y1: float, m: StandardMaterial3D, depth: float) -> void:
+		if t1 - t0 < 0.01 or y1 - y0 < 0.01:
+			return
+		var c := a + u * ((t0 + t1) / 2)
+		var w := _box(Vector3(c.x, (y0 + y1) / 2, c.y), Vector3(t1 - t0, y1 - y0, depth), m)
+		w.rotation.y = rot
+		_walls.append(w)
+	var usable := end - start - 1.2
+	var count := int(floor((usable + 1.8) / 3.0)) if exterior and usable > 1.2 else 0
+	if count <= 0:
+		piece.call(start, end, 0.0, h, mat, WALL)
+		return
+	if _glass == null:
+		_glass = StandardMaterial3D.new()
+		_glass.albedo_color = Color(0.62, 0.8, 0.95, 0.38)
+		_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_glass.roughness = 0.05
+		_glass.metallic = 0.3
+		_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var k := minf(h / Placer.REAL_STOREY, 1.0)
+	var sill := 0.9 * k
+	var head := minf(2.1 * k, h - 0.05)
+	var step := (end - start) / count
+	var t := start
+	for i in count:
+		var cw := start + step * (i + 0.5)
+		var w0 := cw - 0.6
+		var w1 := cw + 0.6
+		piece.call(t, w0, 0.0, h, mat, WALL)
+		piece.call(w0, w1, 0.0, sill, mat, WALL)
+		piece.call(w0, w1, head, h, mat, WALL)
+		piece.call(w0, w1, sill, head, _glass, 0.03)
+		t = w1
+	piece.call(t, end, 0.0, h, mat, WALL)
+
+
+# ---- the SmartThings Experience Zone: wood-panelled walls, cream floor tiles, drop ceiling (see web/lib/sim/stzone.ts)
+
+static func _grid_tex(px: int, base: Color, line: Color, lw: int, rows := 1) -> ImageTexture:
+	var img := Image.create(px, px, false, Image.FORMAT_RGB8)
+	img.fill(base)
+	for i in px:
+		for j in lw:
+			img.set_pixel(i, j, line)
+			img.set_pixel(j, i, line)
+		for rr in range(1, rows):
+			for j in lw:
+				img.set_pixel(i, rr * px / rows + j, line)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+func _zone_floor(mat: StandardMaterial3D) -> void:
+	mat.albedo_color = Color("efe6d2")
+	mat.albedo_texture = _grid_tex(64, Color(1, 1, 1), Color(0.8, 0.77, 0.7), 1)
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3.ONE / 0.6  # 600 mm porcelain tiles
+	mat.roughness = 0.22
+	mat.metallic_specular = 0.7
+
+
+var _panel_mat: StandardMaterial3D
+
+
+## Wood cladding on the inside of every wall of the room (big panels with dark grooves), a dark skirting, and
+## nothing across the door opening.
+func _zone_walls(r: Dictionary, h: float, doors: Array) -> void:
+	if _panel_mat == null:
+		_panel_mat = StandardMaterial3D.new()
+		_panel_mat.albedo_color = Color("9b6b40")
+		_panel_mat.roughness = 0.38
+		var tex := _grid_tex(128, Color(1, 1, 1), Color(0.45, 0.33, 0.22), 2, 2)
+		var n := FastNoiseLite.new()
+		n.frequency = 0.05
+		n.fractal_octaves = 3
+		var grain := NoiseTexture2D.new()
+		grain.noise = n
+		grain.width = 256
+		grain.height = 64
+		grain.seamless = true
+		grain.color_ramp = Gradient.new()
+		grain.color_ramp.set_color(0, Color(0.84, 0.78, 0.72))
+		grain.color_ramp.set_color(1, Color(1, 1, 1))
+		_panel_mat.albedo_texture = tex
+		_panel_mat.detail_enabled = true
+		_panel_mat.detail_albedo = grain
+		_panel_mat.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+		_panel_mat.uv1_triplanar = true
+		_panel_mat.uv1_world_triplanar = true
+		_panel_mat.uv1_scale = Vector3(1.0 / 2.4, 1.0 / 1.2, 1.0 / 2.4)  # 1.2 m x 0.6 m panels
+		_panel_mat.uv2_triplanar = true
+		_panel_mat.uv2_world_triplanar = true
+		_panel_mat.uv2_scale = Vector3(0.35, 3.0, 0.35)  # grain runs along the panels
+	var skirt := StandardMaterial3D.new()
+	skirt.albedo_color = Color("3a2418")
+	skirt.roughness = 0.5
+	var poly := PlanGeo.room_poly(r)
+	var centre := Vector2.ZERO
+	for p in poly:
+		centre += p
+	centre /= poly.size()
+	for i in poly.size():
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[(i + 1) % poly.size()]
+		var length := a.distance_to(b)
+		if length < 0.2:
+			continue
+		var u := (b - a) / length
+		var nrm := Vector2(-u.y, u.x)
+		if Geometry2D.is_point_in_polygon((a + b) / 2 + nrm * 0.2, poly) == false:
+			nrm = -nrm
+		var off := WALL / 2 + 0.012
+		var gaps: Array = []
+		for dr in doors:
+			var p := Vector2(float(dr.x), float(dr.z))
+			var t := (p - a).dot(u)
+			if t > -0.3 and t < length + 0.3 and absf((p - a).dot(nrm)) < 0.3:
+				gaps.append([t - float(dr.w) / 2 - 0.05, t + float(dr.w) / 2 + 0.05])
+		var start := off
+		for g in gaps + [[length - off, length - off]]:
+			var end: float = minf(g[0], length - off)
+			if end - start > 0.05:
+				var c := a + u * ((start + end) / 2) + nrm * off
+				var pnl := _box(Vector3(c.x, h / 2, c.y), Vector3(end - start, h, 0.024), _panel_mat)
+				pnl.rotation.y = -atan2(u.y, u.x)
+				_walls.append(pnl)
+				var c2 := a + u * ((start + end) / 2) + nrm * (off + 0.018)
+				var sk := _box(Vector3(c2.x, 0.05, c2.y), Vector3(end - start, 0.1, 0.014), skirt)
+				sk.rotation.y = -atan2(u.y, u.x)
+				_walls.append(sk)
+			start = maxf(start, g[1])
+
+
+func _zone_ceiling_mat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color("f1efe9")
+	m.albedo_texture = _grid_tex(64, Color(1, 1, 1), Color(0.72, 0.72, 0.7), 2)
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE / 0.6  # 600 mm ceiling tiles
+	m.roughness = 1.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+
+## Drop-ceiling fittings: LED light panels and square AC diffusers set into the grid, and the lowered white band
+## along the projector wall where the spot bulbs hang.
+func _zone_ceiling(r: Dictionary, h: float) -> void:
+	var poly := PlanGeo.room_poly(r)
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for p in poly:
+		lo = lo.min(p)
+		hi = hi.max(p)
+	var sz := hi - lo
+	var panel := StandardMaterial3D.new()
+	panel.albedo_color = Color(1, 1, 1)
+	panel.emission_enabled = true
+	panel.emission = Color(1.0, 0.98, 0.94)
+	panel.emission_energy_multiplier = 1.6
+	var frame := StandardMaterial3D.new()
+	frame.albedo_color = Color("dcdcd8")
+	var grille := StandardMaterial3D.new()
+	grille.albedo_color = Color("c9cbcc")
+	grille.metallic = 0.4
+	grille.roughness = 0.5
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color("2b2e33")
+	var fit := func(f: Vector2) -> Vector3:
+		# snap to the 600 mm grid inside the room
+		var p := lo + sz * f
+		p = Vector2(lo.x + 0.3 + snappedf(p.x - lo.x - 0.3, 0.6), lo.y + 0.3 + snappedf(p.y - lo.y - 0.3, 0.6))
+		return Vector3(p.x, h - 0.012, p.y)
+	for f in [Vector2(0.3, 0.3), Vector2(0.72, 0.3), Vector2(0.3, 0.75), Vector2(0.72, 0.75)]:
+		var c: Vector3 = fit.call(f)
+		ceilings.add_child(_ceil_box(c, Vector3(0.6, 0.02, 0.6), frame))
+		ceilings.add_child(_ceil_box(c + Vector3(0, -0.006, 0), Vector3(0.56, 0.02, 0.56), panel))
+	for f in [Vector2(0.52, 0.52), Vector2(0.52, 0.12)]:
+		var c: Vector3 = fit.call(f)
+		ceilings.add_child(_ceil_box(c, Vector3(0.6, 0.02, 0.6), frame))
+		for k in 4:  # concentric square louvres
+			var s := 0.54 - k * 0.11
+			ceilings.add_child(_ceil_box(c + Vector3(0, -0.012 - k * 0.012, 0), Vector3(s, 0.012, s), grille if k % 2 == 0 else dark))
+	# lowered band (bulkhead) along the room's west edge
+	var bw := minf(0.55, sz.x * 0.15)
+	ceilings.add_child(_ceil_box(Vector3(lo.x + bw / 2 + WALL / 2, h - 0.14, (lo.y + hi.y) / 2), Vector3(bw, 0.28, sz.y - WALL), frame))
+
+
+func _ceil_box(c: Vector3, s: Vector3, m: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = s
+	mi.mesh = bm
+	mi.material_override = m
+	mi.position = c
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
 
 
 ## Ceilings for the walk-through: one per room at the wall top, facing down, casting no shadow.
@@ -267,6 +486,9 @@ func _ceilings(h: float) -> void:
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		m.name = "Ceiling_" + str(r.key)
 		ceilings.add_child(m)
+		if str(r.get("finish", "")) == "st-zone":
+			m.material_override = _zone_ceiling_mat()
+			_zone_ceiling(r, h)
 
 
 ## Floor slab for any simple polygon: triangulated top face plus side faces.
