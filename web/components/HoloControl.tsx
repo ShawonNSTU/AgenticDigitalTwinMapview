@@ -8,8 +8,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { send } from '@/lib/bridge';
 import DeviceControls, { type Cmd, type Run } from '@/components/DeviceControls';
+import { StTile, type StProfile } from '@/components/StZone';
 
-export type HoloDev = { id: string; type: string; name: string; label: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; commands: Cmd[] };
+export type HoloDev = { id: string; type: string; name: string; label: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; commands: Cmd[]; st?: StProfile };
 type Anchor = { x: number; y: number; visible: boolean } | null;
 
 const num = (v: unknown, d: number) => (typeof v === 'number' ? v : v != null && !isNaN(Number(v)) ? Number(v) : d);
@@ -41,7 +42,8 @@ export default function HoloControl({ dev, anchor, run, onClose, lockNote }: { d
   if (held.current && last.current) style = last.current; else last.current = style;
 
   let body: React.ReactNode;
-  if (!dev.online) body = <p className="holo-off">Not responding. Hotel staff have been alerted.</p>;
+  if (dev.st) body = <StTile dev={dev} run={run} big />;
+  else if (!dev.online) body = <p className="holo-off">Not responding. Hotel staff have been alerted.</p>;
   else if (dev.type === 'ac' && cmd('setTemperature')) body = <ClimateDial dev={dev} val={val} cmd={cmd} run={run} preview={preview} />;
   else if (dev.type === 'light' && cmd('setLevel')) body = <LightBeam val={val} cmd={cmd} run={run} preview={preview} />;
   else if (dev.type === 'blinds' && cmd('setPosition')) body = <Roller val={val} cmd={cmd} run={run} preview={preview} projector={/projector/i.test(dev.name)} curtain={/roller shade|curtain/i.test(dev.name)} />;
@@ -54,8 +56,9 @@ export default function HoloControl({ dev, anchor, run, onClose, lockNote }: { d
   return (
     <>
       {a && <span className="holo-pin" style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%` }} />}
-      <div className={`holo glass ${right ? 'r' : 'l'}`} style={style} role="dialog" aria-label={`${dev.name} controls`} onPointerDownCapture={() => { held.current = true; }}>
-        <header><b>{dev.name}</b><small>{dev.label}</small><button className="hint-close" aria-label="Close" onClick={onClose}>✕</button></header>
+      <div className={`holo glass ${right ? 'r' : 'l'} ${dev.st ? 'st-holo' : ''}`} style={style} role="dialog" aria-label={`${dev.name} controls`} onPointerDownCapture={() => { held.current = true; }}>
+        {dev.st ? <button className="hint-close st-close" aria-label="Close" onClick={onClose}>✕</button>
+          : <header><b>{dev.name}</b><small>{dev.label}</small><button className="hint-close" aria-label="Close" onClick={onClose}>✕</button></header>}
         {body}
       </div>
     </>

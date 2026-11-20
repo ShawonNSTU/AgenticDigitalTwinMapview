@@ -142,6 +142,8 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   dev('temphum', side - 0.35, 0.04, IN, 'Temp & humidity');
   dev('camera', 0.75, D - 0.12, face([u[0] - n[0], u[1] - n[1]]), 'Indoor camera 1');
   dev('camera', L - 0.12, 0.2, face([n[0] - u[0], n[1] - u[1]]), 'Indoor camera 2');
+  for (const k of Object.keys(ST_PROFILE)) delete ST_PROFILE[k];
+  for (const [name, id] of Object.entries(ids)) if (PROFILES[name]) ST_PROFILE[id] = PROFILES[name];
   // the curtain motor only moves while its switch is on
   if (ids['aqara roller shade control'] && ids['blinds switch']) REQUIRES[ids['aqara roller shade control']] = ids['blinds switch'];
   return true;
@@ -149,6 +151,31 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
 
 /** Devices that only work while another one is on (the curtain motor and its switch): id -> id of the switch. */
 export const REQUIRES: Record<string, string> = ((globalThis as any).__twinRequires ??= {});
+
+/** How each of the zone's SmartThings app devices works, as the app shows it: a colour bulb (level, scenes,
+ *  colours), a switch, or the roller shade; and the app's room it is listed under. id -> profile. */
+export type StProfile = { kind: 'color' | 'switch' | 'shade'; group: string; where: string };
+export const ST_PROFILE: Record<string, StProfile> = ((globalThis as any).__twinStProfile ??= {});
+const PROFILES: Record<string, Omit<StProfile, 'where'> & { where: string }> = {
+  'aqara roller shade control': { kind: 'shade', group: 'Dining room', where: 'White roller curtain' },
+  'blinds switch': { kind: 'switch', group: 'Living room', where: 'Powers the curtain motor' },
+  'Desk lamp': { kind: 'color', group: 'Living room', where: 'On the desk' },
+  'Left window': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, left' },
+  'Light 1': { kind: 'color', group: 'Living room', where: 'Behind the main TV' },
+  'Light 2': { kind: 'color', group: 'Living room', where: 'Above the TV' },
+  'Light 3': { kind: 'color', group: 'Living room', where: 'Left, above the shelf' },
+  'Light 4': { kind: 'color', group: 'Living room', where: 'Between the curtain and the shelf' },
+  'Right window': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, right' },
+  'TV lamp': { kind: 'switch', group: 'Living room', where: 'Main ceiling lights' },
+  'Light 5': { kind: 'color', group: 'Bedroom', where: 'Door entrance' },
+  'side lamp (dining room)': { kind: 'switch', group: 'Dining room', where: 'Big standing lamp' },
+};
+/** Commands each kind offers (the rest of a light's commands are hidden, as the app does). */
+export const ST_KIND_COMMANDS: Record<StProfile['kind'], string[]> = {
+  color: ['power', 'setLevel', 'setColorTemperature', 'setColor'],
+  switch: ['power'],
+  shade: ['open', 'close', 'setPosition'],
+};
 
 /** Device types a guest neither sees nor controls (privacy). */
 export const GUEST_HIDDEN = ['camera'];

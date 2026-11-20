@@ -43,6 +43,7 @@ var _win_h := 1.35        # window height, scaled like the walls
 
 
 var variant := ""
+var _cur_col := Color(1.0, 0.85, 0.65)
 
 
 func setup(d: DeviceNode, t: String, s: Vector3, v := "") -> DeviceFx:
@@ -130,6 +131,11 @@ func _process(delta: float) -> void:
 			_light_level = lerpf(_light_level, target, 1.0 - exp(-4.0 * delta))
 			var k: float = clampf((float(live.get("ct", 3000.0)) - 2700.0) / 3800.0, 0.0, 1.0)
 			var col: Color = Color(1.0, 0.78, 0.52).lerp(Color(0.86, 0.92, 1.0), k)
+			var hex := str(live.get("col", ""))
+			if hex.begins_with("#") and hex.length() == 7:  # a colour bulb set to a colour
+				col = Color.html(hex)
+			_cur_col = _cur_col.lerp(col, 1.0 - exp(-6.0 * delta))
+			col = _cur_col
 			_lamp.light_color = col
 			_lamp.light_energy = _light_level * (2.6 if Store.walk else 3.2) * {"lamp": 0.55, "desk": 0.35, "window": 0.45}.get(variant, 1.0)
 			if variant == "panel" and FloorBuilder.current:

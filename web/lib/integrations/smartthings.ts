@@ -68,6 +68,14 @@ export function translate(type: string, command: string, a: Record<string, unkno
     case 'ac.power': case 'tv.power': case 'fan.power': case 'plug.power': case 'purifier.power': return [c('switch', on ? 'on' : 'off')];
     case 'light.power': return [c('switch', on ? 'on' : 'off')];
     case 'light.setLevel': return Number(a.percent) <= 0 ? [c('switch', 'off')] : [c('switch', 'on'), c('switchLevel', 'setLevel', [Math.round(Number(a.percent))])];
+    case 'light.setColor': {
+      // SmartThings colorControl takes hue and saturation on a 0-100 scale
+      const hex = String(({ pink: '#ff6fae', purple: '#8b5cf6', blue: '#3b82f6', cyan: '#22d3ee', green: '#22c55e', amber: '#f59e0b', red: '#ef4444' } as Record<string, string>)[String(a.color)] ?? '#ffffff');
+      const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+      let h = 0; if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      return [c('switch', 'on'), c('colorControl', 'setColor', [{ hue: Math.round(((h * 60 + 360) % 360) / 3.6), saturation: Math.round((mx ? d / mx : 0) * 100) }])];
+    }
     case 'light.setColorTemperature': return [c('colorTemperature', 'setColorTemperature', [Math.round(Number(a.kelvin))])];
     case 'ac.setTemperature': return [c('thermostatCoolingSetpoint', 'setCoolingSetpoint', [Number(a.celsius)])];
     case 'ac.setMode': return [c('airConditionerMode', 'setAirConditionerMode', [String(a.mode) === 'fan' ? 'fanOnly' : String(a.mode)])];
@@ -147,7 +155,7 @@ export function supported<T extends { name: string; args: Record<string, any> }>
   const l = st.links[localId];
   if (!l?.capabilities?.length) return cmds;
   const caps = new Set(l.capabilities);
-  const sample: Record<string, unknown> = { on: 'true', percent: 50, celsius: 24, mode: 'cool', position: 'swing', hours: 1, kelvin: 3000, source: 'HDMI 1', level: 2 };
+  const sample: Record<string, unknown> = { on: 'true', percent: 50, celsius: 24, mode: 'cool', position: 'swing', hours: 1, kelvin: 3000, source: 'HDMI 1', level: 2, color: 'pink' };
   return cmds
     .filter(c => { const t = translate(type, c.name, sample, l.component); return !!t && t.every(x => caps.has(x.capability)); })
     .map(c => (c.name === 'setMode' && l.acModes?.length ? { ...c, args: { ...c.args, mode: (c.args.mode as string[]).filter(m => l.acModes!.includes(m)) } } : c));

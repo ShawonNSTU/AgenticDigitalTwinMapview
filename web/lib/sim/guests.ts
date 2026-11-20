@@ -1,7 +1,7 @@
 // Guest passes: a link (shown as a QR code) that lets a visitor walk from an entrance to one room and
 // see and control only the devices in that room. Everything a guest's browser loads goes through
 // /api/guest/<token>/..., which filters by the pass; nothing else is reachable with a token.
-import { guestReady, GUEST_HIDDEN } from './stzone';
+import { guestReady, GUEST_HIDDEN, ST_PROFILE, ST_KIND_COMMANDS } from './stzone';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { DEV, ROOMS, TYPES, LAYOUT, byId } from './engine';
 import { buildingState, floor, device, COMMANDS, rt } from './runtime';
@@ -114,7 +114,9 @@ export function guestCommands(type: string, p?: GuestPass, id?: string) {
   const list = Object.entries(COMMANDS[type] ?? {})
     .filter(([name, c]) => !c.confirm || (type === 'lock' && name === 'unlock' && !!p?.allowUnlock && !!p?.pin))
     .map(([name, c]) => ({ name, args: (name === 'setTemperature' && p ? { celsius: p.acRange } : c.args ?? {}) as Record<string, any>, ...(c.confirm ? { confirm: true } : {}) }));
-  return id ? supported(id, type, list) : list;
+  const prof = id ? ST_PROFILE[id] : undefined;
+  const own = prof ? list.filter(c => ST_KIND_COMMANDS[prof.kind].includes(c.name)) : list;
+  return id ? supported(id, type, own) : own;
 }
 
 const inRoom = (p: GuestPass) => DEV.filter((d: any) => d.room === p.room && !GUEST_HIDDEN.includes(d.type));
@@ -139,6 +141,7 @@ export function guestView(p: GuestPass) {
         status: s.parts.slice(0, 3).map((x: any) => ({ name: x.name, value: x.value, health: x.health })),
         finding: s.finding ? { title: (s.finding as any).title, lvl: (s.finding as any).lvl } : null,
         commands: guestCommands(d.type, p, d.id),
+        ...(ST_PROFILE[d.id] ? { st: ST_PROFILE[d.id] } : {}),
       };
     }),
   };

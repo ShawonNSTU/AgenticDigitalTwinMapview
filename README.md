@@ -70,7 +70,13 @@ Proof of concept with three features:
    you drag up or down with a warm-to-daylight strip and scenes, a roller you pull for blinds and the projector
    screen, a TV remote, a speed ring for the purifier or fan and a hold-to-unlock ring for the door. While a
    control is dragged the room already shows the result and the new value floats over the device; the command is
-   sent when the guest lets go. The room reacts in 3D: lights brighten or dim the room (with colour), the AC
+   sent when the guest lets go. In the SmartThings Experience Zone the room's SmartThings app devices are shown
+   the way the SmartThings app shows them, grouped under the app's rooms (Living room, Bedroom, Dining room):
+   colour bulbs (Light 1-5, Desk lamp) have a brightness bar that glows in the light's colour, Night / Relax / Read
+   / Day scenes and colour pills (pink, purple, and more on a colour strip); TV lamp, Left and Right window, side
+   lamp and blinds switch are on/off switches; the Aqara roller shade has a shade-level slider drawn as a rolling
+   curtain. Tapping a tile's name turns the 3D view to the device and pins the same tile, larger, beside it. The
+   zone's other devices (AC, TVs, purifier, lock) keep the controls above. The room reacts in 3D: lights brighten or dim the room (with colour), the AC
    blows air coloured by mode and swings its louver, the floor tints cool or warm, the TV screen plays, blinds go up
    and let daylight in, the fan spins and sweeps, the purifier ring shows air quality, the vacuum cleans the room,
    the AC cools the room over time, offline devices go grey.

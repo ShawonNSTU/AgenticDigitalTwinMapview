@@ -5,11 +5,12 @@ import TwinView from '@/components/TwinView';
 import { DeviceIcon } from '@/components/DevicePalette';
 import { CMD_LABEL, type Cmd } from '@/components/DeviceControls';
 import HoloControl from '@/components/HoloControl';
+import { StDashboard, type StProfile } from '@/components/StZone';
 import GuestAssistant from '@/components/GuestAssistant';
 import Locator from '@/components/Locator';
 import { send, type FromRenderer } from '@/lib/bridge';
 
-type Dev = { id: string; type: string; label: string; name: string; health: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; status: { name: string; value: string; health: string }[]; finding: { title: string; lvl: string } | null; commands: Cmd[] };
+type Dev = { id: string; type: string; label: string; name: string; health: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; status: { name: string; value: string; health: string }[]; finding: { title: string; lvl: string } | null; commands: Cmd[]; st?: StProfile };
 type View = { lock: { integration: string; autoRelockSec: number }; room: { key: string; name: string }; entrance: { key: string; name: string } | null; entrances: { key: string; name: string }[]; title: string; guestName: string; allowUnlock: boolean; expiresAt: number; devices: Dev[] };
 type Walk = { phase: 'loading' | 'walking' | 'arrived'; from?: string; to?: string; metres?: number; here?: string };
 
@@ -196,7 +197,9 @@ export default function GuestPage() {
         {tab === 'assistant' ? <GuestAssistant token={token} onUi={a => { if (a.type === 'highlight' && a.ids) send({ type: 'highlight', ids: a.ids }); }} /> : (
           <div className="guest-devs">
             {view && view.devices.length === 0 && <div className="muted pad">This room has no connected devices.</div>}
-            {view?.devices.map(d => (
+            {view && view.devices.some(d => d.st) && <StDashboard devices={view.devices.filter(d => d.st)} run={run} focus={holo} onOpen={id => { setFocus(id); openHolo(id); }} />}
+            {view && view.devices.some(d => d.st) && view.devices.some(d => !d.st) && <h4 className="st-other">Other devices in the room</h4>}
+            {view?.devices.filter(d => !d.st).map(d => (
               <div key={d.id} ref={el => { cards.current[d.id] = el; }} className={`guest-dev ${focus === d.id ? 'on' : ''} ${holo === d.id ? 'holo-on' : ''} ${d.online ? '' : 'offline'}`} onClick={() => { setFocus(d.id); openHolo(d.id); }}>
                 <div className="guest-dev-head">
                   <span className="dev-ico"><DeviceIcon type={d.type} size={18} /></span>

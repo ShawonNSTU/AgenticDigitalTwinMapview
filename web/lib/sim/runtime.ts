@@ -79,7 +79,7 @@ export function device(id: string, t = tick()) {
 /** Readings the floor view needs for every refrigerant circuit, sent with each /api/floor poll. */
 const LIVE: Record<string, string[]> = {
   ac: ['on', 'fan', 'air', 'evIn', 'evOut', 'sh', 'room', 'set', 'mode', 'swing', 'online'], odu: ['hz', 'dis', 'suc', 'lp', 'hp', 'fan'],
-  light: ['lv', 'ct', 'online'], tv: ['on', 'vol', 'input', 'online'], fan: ['on', 'speed', 'osc', 'online'], blinds: ['pos', 'online'],
+  light: ['lv', 'ct', 'col', 'online'], tv: ['on', 'vol', 'input', 'online'], fan: ['on', 'speed', 'osc', 'online'], blinds: ['pos', 'online'],
   purifier: ['on', 'fan', 'pm', 'online'], vacuum: ['state', 'batt', 'online'], lock: ['locked', 'online'], plug: ['on', 'online'],
   temphum: ['temp', 'hum', 'online'],
 };
@@ -102,6 +102,9 @@ export function floor(t = tick()) {
 /* ---------------- device commands ---------------- */
 // Whitelisted commands per device type. `confirm` commands must be confirmed by the user first
 // (the agent asks; the API rejects them unless confirmed=true).
+/** Colour presets for colour bulbs (hex as the 3D view shows them). */
+export const LIGHT_COLORS: Record<string, string> = { pink: '#ff6fae', purple: '#8b5cf6', blue: '#3b82f6', cyan: '#22d3ee', green: '#22c55e', amber: '#f59e0b', red: '#ef4444' };
+
 export const COMMANDS: Record<string, Record<string, { args?: Record<string, [number, number] | string[]>; confirm?: boolean; apply: (a: any, cur: any) => Override }>> = {
   ac: {
     power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
@@ -114,7 +117,9 @@ export const COMMANDS: Record<string, Record<string, { args?: Record<string, [nu
   light: {
     power: { args: { on: ['true', 'false'] }, apply: (a, cur) => (a.on === true || a.on === 'true') ? { lv: cur?.lastLv || 80 } : { lv: 0, lastLv: cur?.lv || 80 } },
     setLevel: { args: { percent: [0, 100] }, apply: a => ({ lv: +a.percent }) },
-    setColorTemperature: { args: { kelvin: [2700, 6500] }, apply: a => ({ ct: +a.kelvin }) },
+    setColorTemperature: { args: { kelvin: [2700, 6500] }, apply: a => ({ ct: +a.kelvin, col: '' }) },
+    // colour bulbs: a named colour (the SmartThings app's colour presets); white comes back with setColorTemperature
+    setColor: { args: { color: Object.keys(LIGHT_COLORS) }, apply: a => ({ col: LIGHT_COLORS[String(a.color)] ?? '' }) },
   },
   tv: {
     power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
