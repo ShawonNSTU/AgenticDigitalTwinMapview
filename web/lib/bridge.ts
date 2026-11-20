@@ -14,7 +14,7 @@ export type ToRenderer =
   | { type: 'setScenario'; key: string }
   | { type: 'resetView' }
   | { type: 'setInsets'; left: number; right: number; top: number; bottom: number }
-  | { type: 'camera'; action: 'zoomIn' | 'zoomOut' | 'fit' | 'top' | 'perspective' | 'toggleTop' | 'rotateLeft' | 'rotateRight' | 'reset' }
+  | { type: 'camera'; action: 'zoomIn' | 'zoomOut' | 'fit' | 'top' | 'perspective' | 'toggleTop' | 'rotateLeft' | 'rotateRight' | 'tiltUp' | 'tiltDown' | 'north' | 'reset' }
   | { type: 'dragStart'; deviceType: string }
   | { type: 'dragMove'; u: number; v: number }
   | { type: 'dragEnd'; u: number; v: number; drop: boolean }
@@ -25,7 +25,10 @@ export type ToRenderer =
 export type Placement = { x: number; y: number; z: number; rotationY: number; room: string };
 
 export type FromRenderer =
-  | { type: 'ready'; version: string }
+  | { type: 'ready'; version: string; view?: [number, number] }
+  | { type: 'viewport'; view: [number, number] }
+  | { type: 'floorBuilt'; rooms: number; devices: number }
+  | { type: 'camera'; yaw: number; pitch: number; distance: number; top: boolean }
   | { type: 'deviceClicked'; id: string }
   | { type: 'partClicked'; id: string; part: string }
   | { type: 'deviceClosed' }

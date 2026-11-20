@@ -11,7 +11,6 @@ extends Node3D
 ##   gas line    = brightness follows discharge temperature (74 °C nominal)
 ## Colours: liquid #4c8dff, gas #ff8a3d. trace() brightens one circuit and dims the rest.
 
-const CEILING := 2.55
 const LANE := 0.09
 const RADIUS := 0.022
 const LIQUID := Color("4c8dff")
@@ -65,11 +64,12 @@ func build() -> void:
 			route = [entry, Vector2(j2.x, entry.y), j2]  # disconnected plan: fall back to an L-shaped run
 		var i: int = lane.get(odu.id, 0)
 		lane[odu.id] = i + 1
-		var ac := Vector3(d.position[0], d.position[1], d.position[2])
+		var ac := Vector3(d.position[0], Placer.mount_y("ac"), d.position[2])
 		var run := {"length": 0.0, "odu": odu.id}
 		for side in ["liquid", "gas"]:
-			var y := CEILING + LANE * i + (0.045 if side == "gas" else 0.0)
-			var pts: Array = [Vector3(o2.x, 0.45, o2.y), Vector3(o2.x, y, o2.y)]
+			# pipe runs just above the cut-away walls (the model's ceiling level), stacked in lanes per outdoor unit
+			var y: float = Store.wall_height + 0.16 + LANE * i + (0.045 if side == "gas" else 0.0)
+			var pts: Array = [Vector3(o2.x, Placer.mount_y("odu") + 0.1, o2.y), Vector3(o2.x, y, o2.y)]
 			for p in route:
 				pts.append(Vector3(p.x, y, p.y))
 			pts.append(Vector3(ac.x, ac.y + 0.14, ac.z))

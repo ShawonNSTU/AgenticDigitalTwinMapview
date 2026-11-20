@@ -113,6 +113,39 @@ func _run() -> void:
 	await _wait(2.5)
 	await _shot("3_floor_with_devices")
 	log.append("devices on the floor: %d" % Store.devices.size())
+	# aiming at a wall between two rooms picks the room on the camera's side, not the one behind the wall
+	main.rig.reset(0.01)
+	await _wait(0.5)
+	var cam: Camera3D = main.rig.cam
+	var good := 0
+	var tried := 0
+	for sg in PlanGeo.wall_segments(Store.rooms):
+		if tried >= 16:
+			break
+		var a: Vector2 = sg[0]
+		var b: Vector2 = sg[1]
+		if a.distance_to(b) < 2.0:
+			continue
+		var mid := (a + b) * 0.5
+		var e := (b - a).normalized()
+		var nrm := Vector2(-e.y, e.x)
+		var r1: Dictionary = Store.room_at(mid + nrm * 0.4)
+		var r2: Dictionary = Store.room_at(mid - nrm * 0.4)
+		if r1.is_empty() or r2.is_empty() or r1.key == r2.key:
+			continue
+		var cam2 := Vector2(cam.global_position.x, cam.global_position.z)
+		var near_r: Dictionary = r1 if (cam2 - mid).dot(nrm) > 0.0 else r2
+		var wp := Vector3(mid.x, Store.wall_height * 0.7, mid.y)
+		if cam.is_position_behind(wp):
+			continue
+		var p = Placer.pointer_floor(cam, cam.unproject_position(wp))
+		tried += 1
+		var got: String = Store.room_at(p).get("key", "out") if p != null else "none"
+		if got == near_r.key:
+			good += 1
+		else:
+			log.append("wall aim: %s|%s wall, camera side %s, got %s" % [r1.key, r2.key, near_r.key, got])
+	log.append("wall aim: %d/%d picked the room on the camera's side" % [good, tried])
 	# move one: the first AC goes to the other side of its room
 	var first: Dictionary = Store.devices[0]
 	Bridge.handle({"type": "startMove", "id": first.id})

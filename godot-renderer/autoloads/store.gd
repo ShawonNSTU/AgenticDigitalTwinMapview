@@ -131,6 +131,7 @@ func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteAr
 		return
 	if not _announced:
 		_announced = true  # the platform runs the same sample home we bundle: build it now
+		print("[store] layout: platform runs the bundled sample (version %d)" % layout_version)
 		Bus.layout_changed.emit()
 	set_time(float(data.get("time", t)))
 	set_scenario(str(data.get("scenario", scenario)))
@@ -230,6 +231,7 @@ func _finish_layout(tex: Texture2D) -> void:
 	_apply_layout(b.get("rooms", []), b.get("devices", []), b.get("outdoorPad", {}), float(b.get("wallHeight", wall_height)))
 	layout_version = int(b.get("version", 0))
 	_announced = true
+	print("[store] layout: version %d, %d rooms" % [layout_version, rooms.size()])
 	Bus.layout_changed.emit()
 
 

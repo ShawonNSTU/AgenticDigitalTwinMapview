@@ -20,7 +20,7 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `setTime` | `t` (hours, 6–22) | scene clock (sun, HUD, time-driven effects) |
 | `setScenario` | `key: normal \| filter \| refrig \| washer` | closes any open device, refreshes flow |
 | `resetView` | | close, clear, camera home |
-| `camera` | `action`: `zoomIn`, `zoomOut`, `fit`, `top`, `perspective`, `toggleTop`, `rotateLeft`, `rotateRight`, `reset` | navigation: zoom, fit the whole floor, plan view, rotate 45° |
+| `camera` | `action`: `zoomIn`, `zoomOut`, `fit`, `top`, `perspective`, `toggleTop`, `rotateLeft`, `rotateRight`, `tiltUp`, `tiltDown`, `reset` | navigation: zoom, fit the whole floor, plan view, turn 45°, tilt 12° |
 | `setInsets` | `left`, `right`, `top`, `bottom` (px) | screen space covered by the page's overlays; fits keep the floor clear of them and re-fit until the user moves the view |
 | `dragStart` | `deviceType` | a palette tile is dragged over the map: a see-through device follows the pointer |
 | `dragMove` | `u`, `v` (pointer, 0–1 across the map) | the device snaps where that type is installed (wall, door, ceiling, floor); the room is outlined green, or red if it can't go there |
@@ -34,7 +34,10 @@ Every message is `{ source: "twin-renderer", type, ...fields }`.
 
 | type | fields | when |
 |---|---|---|
-| `ready` | `version` | first frame after the scene is built |
+| `ready` | `version`, `view: [w, h]` | first frame after the engine starts |
+| `floorBuilt` | `rooms`, `devices` | a floor (layout) has been built and is on screen |
+| `viewport` | `view: [w, h]` | the canvas was resized |
+| `camera` | `yaw`, `pitch` (degrees), `distance` (m), `top` | the view changed (at most 4 per second) |
 | `deviceClicked` | `id` | click on a device (drags are ignored) |
 | `partClicked` | `id`, `part` | click on a part of an opened device |
 | `deviceClosed` | | the open device was closed (Esc, back, scenario change) |

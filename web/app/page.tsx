@@ -27,6 +27,7 @@ export default function Home() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [floorShown, setFloorShown] = useState(false); // the renderer has built the floor (not just started)
   // the "no devices yet" hint can be closed; remembered in this browser
   const [hintClosed, setHintClosed] = useState(false);
   // Tell the renderer which parts of the map the overlays cover, so "fit" keeps the floor clear of them.
@@ -79,6 +80,7 @@ export default function Home() {
 
   const onEvent = useCallback(async (m: FromRenderer) => {
     if (m.type === 'ready') setReady(true);
+    if (m.type === 'floorBuilt') setFloorShown(true);
     if (m.type === 'deviceClicked') setSel(m.id);
     if (m.type === 'partClicked') setSel(m.id);
     if (m.type === 'deviceClosed') setSel(null);
@@ -133,7 +135,7 @@ export default function Home() {
         </div>
       </header>
       <section className="stage" ref={stage}>
-        <TwinView onEvent={onEvent} ready={ready} />
+        <TwinView onEvent={onEvent} ready={ready && floorShown} />
         <DevicePalette stage={stage} hover={hover} counts={counts} />
         <MapToolbar />
         <MapNav />

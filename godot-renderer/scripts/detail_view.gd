@@ -47,6 +47,74 @@ static func _json(path: String) -> Dictionary:
 	return JSON.parse_string(f.get_as_text()) if f else {}
 
 
+# ---------------------------------------------------------------- label declutter
+## Labels are drawn on top of everything at a fixed screen size, so close parts would pile their labels up. A few
+## times a second the visible labels are projected to the screen and laid out greedily by importance; a label
+## that would overlap one already placed fades out (it comes back when you zoom in, turn, or focus its part).
+## Importance: the focused part, then parts in fault, on watch, the live flow values, other part names, ports.
+var _declutter_in := 0.0
+
+
+func _process(delta: float) -> void:
+	if twin == null:
+		return
+	_declutter_in -= delta
+	if _declutter_in <= 0.0:
+		_declutter_in = 0.12
+		_declutter()
+
+
+func _declutter() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var vp := get_viewport().get_visible_rect().size
+	var px_per_unit := vp.y / (2.0 * tan(deg_to_rad(cam.fov) * 0.5))
+	var items: Array = []
+	for k in _parts:
+		var e: Dictionary = _parts[k]
+		var l: Label3D = e.label
+		if l and l.visible:
+			var h: String = _health.get(k, "ok")
+			var pr := 100 if k == _focus else (80 if h == "fault" else (70 if h == "watch" else 40))
+			items.append([pr, l])
+	for f in _flows:
+		var t: Label3D = f.get("tag")
+		if t and is_instance_valid(t) and t.visible:
+			items.append([55, t])
+	if _flow_root:
+		for c in _flow_root.get_children():
+			if c is Label3D and c.has_meta("declutter") and c.visible:
+				items.append([20, c])
+	items.sort_custom(func(a, b): return a[0] > b[0])
+	var kept: Array[Rect2] = []
+	for it in items:
+		var l: Label3D = it[1]
+		var at := l.global_position
+		if cam.is_position_behind(at):
+			l.transparency = 1.0
+			continue
+		var c := cam.unproject_position(at)
+		var sc := l.global_transform.basis.get_scale().y
+		var line_px := l.font_size * l.pixel_size * sc * px_per_unit
+		var lines := l.text.split("\n")
+		var chars := 0
+		for ln in lines:
+			chars = maxi(chars, ln.length())
+		var size := Vector2(chars * line_px * 0.56 + 6.0, lines.size() * line_px * 1.15 + 4.0)
+		var r := Rect2(c - size * 0.5, size)
+		var clash := false
+		for o in kept:
+			if o.intersects(r):
+				clash = true
+				break
+		if clash and it[0] < 100:
+			l.transparency = 1.0
+		else:
+			l.transparency = 0.0
+			kept.append(r)
+
+
 func scale_factor() -> float:
 	return TWIN / maxf(_body.x, maxf(_body.y, _body.z))
 
@@ -104,8 +172,8 @@ func _make_part(p: Dictionary, local: Vector3, size: Vector3, l: Array, out: Vec
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
-	label.font_size = 24
-	label.pixel_size = 0.0006 / scale_factor()  # labels sit in the scaled twin; keep one on-screen size for every device
+	label.font_size = 28
+	label.pixel_size = 0.00033 / scale_factor()  # labels sit in the scaled twin; keep one on-screen size for every device
 	label.outline_size = 8
 	label.visible = false  # labels show once exploded, to avoid a pile-up inside the shell
 	twin.add_child(label)
@@ -277,8 +345,9 @@ func _build_ports() -> void:
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		l.no_depth_test = true
 		l.fixed_size = true
-		l.font_size = 16
-		l.pixel_size = 0.0005
+		l.font_size = 20
+		l.pixel_size = 0.00028
+		l.set_meta("declutter", 0)
 		l.outline_size = 6
 		l.modulate = col.lightened(0.5)
 		_flow_root.add_child(l)
@@ -337,8 +406,8 @@ func _build_flows() -> void:
 			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			tag.no_depth_test = true
 			tag.fixed_size = true
-			tag.font_size = 20
-			tag.pixel_size = 0.0005
+			tag.font_size = 24
+			tag.pixel_size = 0.0003
 			tag.outline_size = 6
 			tag.modulate = color.lightened(0.45)
 			holder.add_child(tag)

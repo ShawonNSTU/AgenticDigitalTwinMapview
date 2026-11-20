@@ -5,16 +5,30 @@ extends Node3D
 ## (startMove, then the pointer inside the 3D view; click to put it down, Esc to cancel).
 ##
 ## While dragging, a see-through copy of the device follows the pointer and snaps the way that type is
-## installed: wall units (AC, TV, camera, sensors, plug) go flat on the nearest wall of the room, facing
-## in; door lock and doorbell go beside the nearest door; floor units stand where they are dropped, facing
-## the room; lights go on the ceiling. The room under the pointer is outlined, green if the device can go
+## installed: wall units (AC, TV, camera, sensors, plug, blinds) go flat on a wall of the room, facing in, clear
+## of doors and corners (blinds prefer an outside wall); door lock and doorbell go beside the nearest door;
+## appliances (fridge, washer, dryer, oven) stand with their back to the nearest wall; free-standing units
+## (purifier, speaker, vacuum, leak sensor) stand where dropped; lights go on the ceiling; outdoor units go
+## outside or in a plant room. Floor units are kept out of furniture and other devices.
+##
+## The pointer ray meets the walls before the floor, so pointing at a wall picks that wall, in the room on the
+## camera's side (not the room behind it); an outside wall seen from outside picks the room it encloses. The room under the pointer is outlined, green if the device can go
 ## there, red if not. On drop the renderer reports the placement to the host, which adds it to the platform.
+##
+## Heights: the map shows walls cut away at Store.wall_height (about 1.15 m), so mounting heights are real
+## heights scaled to that cut: a wall AC sits near the top of the cut wall, a thermostat at mid height, lights at
+## the cut plane (the ceiling of the cut-away model). mount_y() is used for every device the map shows.
 
-const MOUNT := {"ac": 2.15, "odu": 0.35, "light": 2.6, "tv": 1.2, "speaker": 0.55, "blinds": 1.7, "fridge": 0.9, "oven": 0.45,
-	"vacuum": 0.06, "camera": 2.2, "doorbell": 1.3, "lock": 1.0, "washer": 0.45, "dryer": 0.45, "leak": 0.02, "temphum": 1.5,
-	"motion": 2.2, "plug": 0.35, "purifier": 0.3}
+const REAL_STOREY := 2.8   # metres: the real floor-to-ceiling height the scaled mounting heights refer to
+## Real mounting height of the device's centre on a wall (metres above the floor).
+const WALL_Y := {"ac": 2.35, "tv": 1.3, "blinds": 2.05, "camera": 2.45, "temphum": 1.5, "motion": 2.35, "plug": 0.3,
+	"doorbell": 1.4, "lock": 1.0}
 const WALL := ["ac", "tv", "blinds", "camera", "temphum", "motion", "plug"]
 const DOOR := ["lock", "doorbell"]
+const AGAINST_WALL := ["fridge", "washer", "dryer", "oven"]
+const FREE_FLOOR := ["purifier", "speaker", "vacuum", "leak"]
+const ALL := WALL + DOOR + AGAINST_WALL + FREE_FLOOR + ["light", "odu"]
+const OUTDOOR_ROOMS := "outdoor|balcony|terrace|roof|plant|a/c|ac room|yard|garden|patio|deck"
 const OK_COL := Color("3fb950")
 const BAD_COL := Color("f85149")
 
@@ -60,7 +74,7 @@ func start(new_type: String, id := "") -> void:
 		if d.is_empty():
 			return
 		new_type = d.type
-	if not MOUNT.has(new_type):
+	if not ALL.has(new_type):
 		return
 	type = new_type
 	_ghost = DeviceNode.new()
@@ -138,25 +152,68 @@ func _screen(uv: Vector2) -> Vector2:
 	return uv * get_viewport().get_visible_rect().size
 
 
-## Pointer (viewport pixels) -> point on the floor.
+## Pointer (viewport pixels) -> point on the floor. A wall in front of the floor point wins: the point is put just
+## inside the wall on the camera's side, so the device goes to the room the user is looking into.
 func _update(screen: Vector2) -> void:
 	if rig == null or rig.cam == null:
 		return
-	var o := rig.cam.project_ray_origin(screen)
-	var dir := rig.cam.project_ray_normal(screen)
-	if absf(dir.y) < 1e-4:
-		return
-	var t := -o.y / dir.y
-	if t < 0:
+	var p = pointer_floor(rig.cam, screen)
+	if p == null:
 		visible = false
 		return
-	var hit := o + dir * t
-	_update_at(Vector2(hit.x, hit.z))
+	_update_at(p)
+
+
+static var _segs: Array = []
+static var _segs_rooms := -1
+
+
+static func pointer_floor(cam: Camera3D, screen: Vector2) -> Variant:
+	var o := cam.project_ray_origin(screen)
+	var dir := cam.project_ray_normal(screen)
+	var t_floor := INF
+	if dir.y < -1e-4:
+		t_floor = -o.y / dir.y
+	if Store.rooms.hash() != _segs_rooms:
+		_segs = PlanGeo.wall_segments(Store.rooms)
+		_segs_rooms = Store.rooms.hash()
+	var h: float = Store.wall_height
+	var best := t_floor
+	var hit_n := Vector2.ZERO
+	for s in _segs:
+		var a: Vector2 = s[0]
+		var b: Vector2 = s[1]
+		var e := b - a
+		var n := Vector2(-e.y, e.x).normalized()
+		var denom := dir.x * n.x + dir.z * n.y
+		if absf(denom) < 1e-6:
+			continue
+		var t := ((a.x - o.x) * n.x + (a.y - o.z) * n.y) / denom
+		if t <= 0.0 or t >= best:
+			continue
+		var q := o + dir * t
+		if q.y < 0.0 or q.y > h:
+			continue
+		var along := (Vector2(q.x, q.z) - a).dot(e) / e.length_squared()
+		if along < 0.0 or along > 1.0:
+			continue
+		best = t
+		hit_n = n if denom < 0.0 else -n  # the wall side facing the camera
+	if best == INF:
+		return null
+	var hit := o + dir * best
+	var p := Vector2(hit.x, hit.z)
+	if hit_n == Vector2.ZERO:
+		return p
+	# the room on the camera's side of the wall; an outside wall seen from outside means the room behind it
+	var near := p + hit_n * 0.12
+	var far := p - hit_n * 0.12
+	return near if not Store.room_at(near).is_empty() or Store.room_at(far).is_empty() else far
 
 
 func _update_at(p: Vector2) -> void:
 	visible = true
-	place = solve(type, p)
+	place = solve(type, p, move_id)
 	var col := OK_COL if place.valid else BAD_COL
 	_mark_mat.albedo_color = Color(col, 0.55)
 	_ghost_mat.albedo_color = Color(col.lerp(Color.WHITE, 0.35), 0.85)
@@ -174,16 +231,31 @@ func _update_at(p: Vector2) -> void:
 	Bus.place_hover.emit({"room": r.get("key", "out"), "roomName": Store.room_label(r), "valid": place.valid, "mount": place.mount})
 
 
-## Where a device of this type goes for a pointer at p (metres): position, facing, room, and whether it may go there.
-static func solve(t: String, p: Vector2) -> Dictionary:
-	var r: Dictionary = Store.room_at(p)
-	var y: float = MOUNT.get(t, 1.0)
+## Height (y of the device centre) for a type on this map: wall units scaled to the cut-away walls, lights at the
+## cut plane, floor units standing on the floor.
+static func mount_y(t: String) -> float:
 	var size: Vector3 = DeviceNode.BODY.get(t, Vector3(0.2, 0.2, 0.2))
-	var out := {"x": p.x, "y": y, "z": p.y, "rotationY": 0.0, "room": r.get("key", "out"), "room_dict": r, "valid": not r.is_empty(), "mount": "on the floor"}
+	var h: float = Store.wall_height
+	if t == "light":
+		return h + size.y * 0.5 + 0.02
+	if WALL_Y.has(t):
+		var k := minf(h / REAL_STOREY, 1.0)
+		var y: float = WALL_Y[t] * k
+		return clampf(y, size.y * 0.5 + 0.03, maxf(h - size.y * 0.5 - 0.02, size.y * 0.5 + 0.03))
+	return size.y * 0.5
+
+
+## Where a device of this type goes for a pointer at p (metres): position, facing, room, and whether it may go there.
+static func solve(t: String, p: Vector2, skip_id := "") -> Dictionary:
+	var r: Dictionary = Store.room_at(p)
+	var size: Vector3 = DeviceNode.BODY.get(t, Vector3(0.2, 0.2, 0.2))
+	var out := {"x": p.x, "y": mount_y(t), "z": p.y, "rotationY": 0.0, "room": r.get("key", "out"), "room_dict": r, "valid": not r.is_empty(), "mount": "on the floor"}
 	if t == "odu":
-		out.valid = true  # outdoor units go outside the rooms (or in a plant room)
 		out.mount = "outdoor unit"
-		out.y = size.y * 0.5
+		var name := Store.room_label(r).to_lower() if not r.is_empty() else ""
+		out.valid = r.is_empty() or RegEx.create_from_string(OUTDOOR_ROOMS).search(name) != null
+		if not out.valid:
+			out.mount = "outdoor units go outside or in a plant room"
 		if not r.is_empty():
 			out.rotationY = _face_centre(r, p)
 		return out
@@ -199,36 +271,147 @@ static func solve(t: String, p: Vector2) -> Dictionary:
 			out.rotationY = dd.rot
 			out.mount = "beside the door"
 			return out
-	if WALL.has(t) or DOOR.has(t):
-		var best := INF
-		var q := p
-		var n := Vector2.ZERO
-		for k in poly.size():
-			var a := poly[k]
-			var b := poly[(k + 1) % poly.size()]
-			var c := Geometry2D.get_closest_point_to_segment(p, a, b)
-			var dist := c.distance_to(p)
-			if dist < best and a.distance_to(b) > 0.3:
-				best = dist
-				q = c
-				var e := (b - a).normalized()
-				n = Vector2(-e.y, e.x)
-				if not Geometry2D.is_point_in_polygon(c + n * 0.15, poly):
-					n = -n
-		# keep clear of corners so the unit sits on the wall, not across two walls
-		var pos := q + n * (0.1 + size.z * 0.5)
-		out.x = pos.x
-		out.z = pos.y
-		out.rotationY = atan2(n.x, n.y)
-		out.mount = "on the wall"
+	if WALL.has(t) or DOOR.has(t) or AGAINST_WALL.has(t):
+		var w := _on_wall(t, p, poly, size, skip_id)
+		if w.is_empty():
+			out.valid = false
+			out.mount = "no free wall here"
+			return out
+		out.x = w.pos.x
+		out.z = w.pos.y
+		out.rotationY = w.rot
+		out.mount = "against the wall" if AGAINST_WALL.has(t) else ("on the window wall" if t == "blinds" and w.outside else "on the wall")
 		return out
 	if t == "light":
 		out.mount = "on the ceiling"
 	elif t == "leak":
 		out.mount = "on the floor (by water)"
-	out.y = maxf(y, size.y * 0.5)
-	out.rotationY = _face_centre(r, p)
+	# free-standing: nudge out of furniture and other devices, staying in the room
+	var free = _free_spot(p, size, poly, skip_id, t != "light")
+	if free == null:
+		out.valid = false
+		out.mount = "no free floor here"
+		return out
+	out.x = (free as Vector2).x
+	out.z = (free as Vector2).y
+	out.rotationY = _face_centre(r, free)
 	return out
+
+
+## A spot on a wall of the room near p: on the wall the pointer is nearest to (or, for blinds, an outside wall
+## within 2.5 m), slid along the wall to clear doors, corners, furniture and other devices. {} if none.
+static func _on_wall(t: String, p: Vector2, poly: PackedVector2Array, size: Vector3, skip_id: String) -> Dictionary:
+	var edges: Array = []
+	for k in poly.size():
+		var a := poly[k]
+		var b := poly[(k + 1) % poly.size()]
+		var L := a.distance_to(b)
+		if L < size.x + 0.2:
+			continue
+		var e := (b - a) / L
+		var n := Vector2(-e.y, e.x)
+		var mid := (a + b) * 0.5
+		if not Geometry2D.is_point_in_polygon(mid + n * 0.15, poly):
+			n = -n
+		var c := Geometry2D.get_closest_point_to_segment(p, a, b)
+		var outside := Store.room_at(mid - n * 0.3).is_empty()
+		edges.append({"a": a, "b": b, "e": e, "n": n, "L": L, "c": c, "d": c.distance_to(p), "outside": outside})
+	if edges.is_empty():
+		return {}
+	edges.sort_custom(func(x, y): return x.d < y.d)
+	if t == "blinds":
+		var win := edges.filter(func(x): return x.outside and x.d < 2.5)
+		if not win.is_empty():
+			edges = win + edges
+	for ed in edges.slice(0, 3):
+		var u0: float = (ed.c - ed.a).dot(ed.e)
+		var margin: float = size.x * 0.5 + 0.12
+		# try the pointer's spot, then step outward along the wall both ways
+		for step in 31:
+			var off := int((step + 1) / 2.0) * 0.15 * (1.0 if step % 2 == 1 else -1.0)
+			var u := clampf(u0 + off, margin, ed.L - margin)
+			if margin > ed.L - margin:
+				break
+			var on: Vector2 = ed.a + ed.e * u
+			if _near_door_gap(on, ed.e, size.x * 0.5 + 0.1):
+				continue
+			var back := 0.04 + 0.01 + size.z * 0.5  # half wall + gap + half depth
+			var pos: Vector2 = on + ed.n * back
+			var rot := atan2(ed.n.x, ed.n.y)
+			if _blocked(pos, Vector2(size.x, size.z), rot, skip_id, AGAINST_WALL.has(t)):
+				continue
+			return {"pos": pos, "rot": rot, "outside": ed.outside}
+	return {}
+
+
+## Is there a door opening within `half` metres along this wall direction?
+static func _near_door_gap(on: Vector2, e: Vector2, half: float) -> bool:
+	for f in Store.furniture:
+		if f.get("kind", "") != "door":
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		var across := Vector2(cos(float(f.get("rot", 0.0))), -sin(float(f.get("rot", 0.0))))
+		if absf(across.dot(e)) < 0.9 or absf((c - on).cross(e)) > 0.3:
+			continue
+		if absf((c - on).dot(e)) < float(f.w) * 0.5 + half:
+			return true
+	return false
+
+
+## Nearest free spot for a footprint near p, inside the room (spiral search up to 2.5 m). null if none.
+static func _free_spot(p: Vector2, size: Vector3, poly: PackedVector2Array, skip_id: String, floor_level: bool) -> Variant:
+	var fp := Vector2(size.x, size.z)
+	for ring in 18:
+		var rad := ring * 0.15
+		var n := 1 if ring == 0 else 8 + ring * 2
+		for i in n:
+			var a := TAU * i / n
+			var q := p + Vector2(cos(a), sin(a)) * rad
+			if not _inside(q, fp, poly):
+				continue
+			if not _blocked(q, fp, 0.0, skip_id, floor_level):
+				return q
+	return null
+
+
+static func _inside(q: Vector2, fp: Vector2, poly: PackedVector2Array) -> bool:
+	var hx := fp.x * 0.5 + 0.06
+	var hz := fp.y * 0.5 + 0.06
+	for c in [q, q + Vector2(hx, hz), q + Vector2(-hx, hz), q + Vector2(hx, -hz), q + Vector2(-hx, -hz)]:
+		if not Geometry2D.is_point_in_polygon(c, poly):
+			return false
+	return true
+
+
+## Does a footprint (centre, size along/across, rotation) overlap furniture (when on the floor) or another device?
+static func _blocked(q: Vector2, fp: Vector2, rot: float, skip_id: String, floor_level: bool) -> bool:
+	var mine := _rect(q, fp, rot)
+	if floor_level:
+		for f in Store.furniture:
+			var k: String = f.get("kind", "")
+			if k == "door" or k == "rug" or k == "railing":
+				continue
+			if _overlap(mine, _rect(Vector2(float(f.x), float(f.z)), Vector2(float(f.w), float(f.d)), float(f.get("rot", 0.0)))):
+				return true
+	for d in Store.devices:
+		if d.id == skip_id or d.id == "Ghost":
+			continue
+		var ds: Vector3 = DeviceNode.BODY.get(d.type, Vector3(0.2, 0.2, 0.2))
+		var dp := Vector2(float(d.position[0]), float(d.position[2]))
+		if dp.distance_to(q) < (maxf(ds.x, ds.z) + maxf(fp.x, fp.y)) * 0.5 + 0.05:
+			if not floor_level or not WALL.has(d.type):
+				return true
+	return false
+
+
+static func _rect(c: Vector2, sz: Vector2, rot: float) -> PackedVector2Array:
+	var u := Vector2(cos(rot), -sin(rot)) * sz.x * 0.5
+	var v := Vector2(sin(rot), cos(rot)) * sz.y * 0.5
+	return PackedVector2Array([c - u - v, c + u - v, c + u + v, c - u + v])
+
+
+static func _overlap(a: PackedVector2Array, b: PackedVector2Array) -> bool:
+	return not Geometry2D.intersect_polygons(a, b).is_empty()
 
 
 static func _face_centre(r: Dictionary, p: Vector2) -> float:

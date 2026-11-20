@@ -116,6 +116,7 @@ func _build_world(animate: bool) -> void:
 	_on_time(Store.t)
 	if animate:
 		_play_plan_to_3d()
+	Bridge.emit_event({"type": "floorBuilt", "rooms": Store.rooms.size(), "devices": Store.devices.size()})
 
 
 func _make_devices() -> void:

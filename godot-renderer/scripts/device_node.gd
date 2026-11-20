@@ -30,7 +30,8 @@ static var dense := false
 func setup(d: Dictionary) -> DeviceNode:
 	data = d
 	name = d.id
-	position = Vector3(d.position[0], d.position[1], d.position[2])
+	# height follows the type and the map's cut-away walls (see Placer.mount_y), whatever height the platform stored
+	position = Vector3(d.position[0], Placer.mount_y(d.type) if Placer.ALL.has(d.type) else float(d.position[1]), d.position[2])
 	rotation.y = d.get("rotationY", 0.0)
 	var size: Vector3 = BODY.get(d.type, Vector3(0.2, 0.2, 0.2))
 

@@ -2,9 +2,13 @@ class_name CameraRig
 extends Node3D
 ## Orbit camera sized to the floor.
 ##
-## Mouse: left-drag orbit, right/middle-drag pan, wheel zooms toward the point under the cursor.
-## Touch: one finger orbits, two fingers pinch-zoom and pan.
-## Keys: arrows/WASD pan, +/- zoom, Q/E rotate, F fit the floor, T top view, Home reset.
+## Mouse: left-drag orbits (any direction: sideways turns, up/down tilts), right/middle-drag or Shift+drag pans,
+## wheel zooms toward the point under the cursor, double-click zooms to a spot.
+## Trackpad: two-finger scroll zooms, sideways two-finger swipe turns, Shift+scroll tilts, pinch zooms.
+## Touch: one finger orbits; two fingers pinch to zoom, move to pan and twist to turn; double tap zooms in.
+## Keys: arrows/WASD pan, +/- zoom, Q/E turn, R/V tilt, F fit the floor, T top view, Home reset.
+## Touch is handled from the touch events only: the mouse events Godot emulates from touch are ignored here
+## (they still reach device picking), so a finger never drives the camera twice.
 ##
 ## set_bounds() takes the floor's extent; the zoom range, the far plane, the pan limits and the "fit" distance all
 ## follow from it and from the window's shape, so any plan (a 10 m flat or a 120 m office floor) fits on screen
@@ -31,7 +35,6 @@ var _home := {}
 var _drag := 0
 var _tw: Tween
 var _touches := {}
-var _pinch := 0.0
 var _keys := Vector3.ZERO
 
 ## Pixels moved during the current/last mouse drag; device clicks ignore drags.
@@ -181,7 +184,19 @@ func _clamp_target(t: Vector3) -> Vector3:
 	return Vector3(clampf(t.x, b.position.x, b.end.x), t.y, clampf(t.z, b.position.y, b.end.y))
 
 
+var _report_in := 0.0
+var _reported := Vector3.INF
+
+
 func _process(delta: float) -> void:
+	# tell the host page where the camera looks (compass, tests): yaw/pitch in degrees, distance in metres
+	_report_in -= delta
+	if _report_in <= 0.0:
+		_report_in = 0.25
+		var v := Vector3(snappedf(rad_to_deg(yaw), 0.1), snappedf(rad_to_deg(pitch), 0.1), snappedf(distance, 0.01))
+		if v != _reported:
+			_reported = v
+			Bridge.emit_event({"type": "camera", "yaw": v.x, "pitch": v.y, "distance": v.z, "top": is_top})
 	if _tw and _tw.is_running():
 		return
 	if _keys != Vector3.ZERO:
@@ -265,6 +280,13 @@ func rotate_step(degrees: float, secs := 0.5) -> void:
 	fly_to(_goal_target if not (_tw and _tw.is_running()) else target, distance, NAN, yaw + deg_to_rad(degrees), secs)
 
 
+## Tilt the view: positive looks more from above, negative more from the side.
+func tilt_step(degrees: float, secs := 0.35) -> void:
+	user_moved = true
+	var p := clampf(pitch - deg_to_rad(degrees), deg_to_rad(PITCH_MIN), deg_to_rad(PITCH_MAX))
+	fly_to(_goal_target if not (_tw and _tw.is_running()) else target, distance, p, NAN, secs)
+
+
 ## Top view (plan view, north up) or back to the 3D angle.
 func top_view(on: bool, secs := 0.7) -> void:
 	user_moved = on
@@ -289,6 +311,9 @@ func command(action: String) -> void:
 		"toggleTop": top_view(not is_top)
 		"rotateLeft": rotate_step(-45.0)
 		"rotateRight": rotate_step(45.0)
+		"north": fly_to(_goal_target, distance, NAN, 0.0, 0.5)
+		"tiltUp": tilt_step(-12.0)
+		"tiltDown": tilt_step(12.0)
 
 
 # ---------------------------------------------------------------- input
@@ -320,51 +345,107 @@ func _zoom_at(screen: Vector2, factor: float) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
+	# touch drives the camera through the touch events below; ignore the mouse events emulated from it
+	if (e is InputEventMouseButton or e is InputEventMouseMotion) and e.device == InputEvent.DEVICE_ID_EMULATION:
+		return
 	if e is InputEventMouseButton:
-		if e.button_index == MOUSE_BUTTON_WHEEL_UP and e.pressed:
-			_zoom_at(e.position, 0.85 if not e.ctrl_pressed else 0.95)
-		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN and e.pressed:
-			_zoom_at(e.position, 1.0 / 0.85 if not e.ctrl_pressed else 1.0 / 0.95)
-		elif e.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
-			if e.pressed:
-				_drag = e.button_index
-				drag_px = 0.0
-				if e.double_click and e.button_index == MOUSE_BUTTON_LEFT:
-					var hit = ground_at(e.position)
-					if hit != null:
-						var h: Vector3 = hit
-						fly_to(_clamp_target(Vector3(h.x, 0, h.z)), maxf(distance * 0.55, 3.0), NAN, NAN, 0.6)
-			else:
-				_drag = 0
-	elif e is InputEventMagnifyGesture:
-		_zoom_at(e.position, 1.0 / e.factor)
-	elif e is InputEventPanGesture:
-		_pan(e.delta * 12.0)
-	elif e is InputEventMouseMotion and _drag != 0:
+		var shift: bool = e.shift_pressed
+		match e.button_index:
+			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
+				if not e.pressed:
+					return
+				var sgn := 1.0 if e.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
+				var amount: float = e.factor if e.factor > 0.0 else 1.0
+				if shift:
+					_tilt(-sgn * 2.5 * amount)
+				else:
+					_zoom_at(e.position, pow(0.85 if not e.ctrl_pressed else 0.92, sgn * clampf(amount, 0.1, 3.0)))
+			MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT:
+				if e.pressed:
+					var amount: float = e.factor if e.factor > 0.0 else 1.0
+					_turn((1.0 if e.button_index == MOUSE_BUTTON_WHEEL_RIGHT else -1.0) * 3.0 * clampf(amount, 0.1, 3.0))
+			MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE:
+				if e.pressed:
+					_drag = e.button_index
+					drag_px = 0.0
+					if e.double_click and e.button_index == MOUSE_BUTTON_LEFT:
+						_zoom_to(e.position)
+				elif e.button_index == _drag:
+					_drag = 0
+	elif e is InputEventMouseMotion:
+		if _drag == 0:
+			return
+		# the button was released outside the view (no release event came): stop dragging
+		if e.button_mask == 0:
+			_drag = 0
+			return
 		drag_px += e.relative.length()
 		if _drag == MOUSE_BUTTON_LEFT and not e.shift_pressed:
 			_orbit(e.relative)
 		else:
 			_pan(e.relative)
+	elif e is InputEventMagnifyGesture:
+		_zoom_at(e.position, 1.0 / e.factor)
+	elif e is InputEventPanGesture:
+		# trackpad two-finger swipe (native builds): sideways turns, up/down tilts
+		_turn(e.delta.x * 2.0)
+		_tilt(e.delta.y * 2.0)
 	elif e is InputEventScreenTouch:
-		if e.pressed:
-			_touches[e.index] = e.position
-		else:
-			_touches.erase(e.index)
-		_pinch = 0.0
+		_touch(e)
 	elif e is InputEventScreenDrag:
-		_touches[e.index] = e.position
-		if _touches.size() == 1:
-			_orbit(e.relative)
-		elif _touches.size() == 2:
-			var p: Array = _touches.values()
-			var d: float = (p[0] as Vector2).distance_to(p[1])
-			if _pinch > 0.0 and d > 1.0:
-				_zoom_at(((p[0] as Vector2) + (p[1] as Vector2)) * 0.5, _pinch / d)
-			_pinch = d
-			_pan(e.relative * 0.5)
+		_touch_drag(e)
 	elif e is InputEventKey and not e.echo:
 		_key(e)
+
+
+func _zoom_to(screen: Vector2) -> void:
+	var hit = ground_at(screen)
+	if hit != null:
+		var h: Vector3 = hit
+		user_moved = true
+		fly_to(_clamp_target(Vector3(h.x, 0, h.z)), maxf(distance * 0.55, 3.0), NAN, NAN, 0.6)
+
+
+# ---------------------------------------------------------------- touch
+
+func _touch(e: InputEventScreenTouch) -> void:
+	if e.pressed:
+		_touches[e.index] = e.position
+		if _touches.size() == 1:
+			drag_px = 0.0
+			if e.double_tap:
+				_zoom_to(e.position)
+	else:
+		_touches.erase(e.index)
+
+
+## One finger orbits. Two fingers: the change in their spacing zooms, the move of their midpoint pans and the
+## change in the angle between them turns the view.
+func _touch_drag(e: InputEventScreenDrag) -> void:
+	if not _touches.has(e.index):
+		_touches[e.index] = e.position - e.relative
+	var before: Dictionary = _touches.duplicate()
+	_touches[e.index] = e.position
+	drag_px += e.relative.length()
+	if _touches.size() == 1:
+		_orbit(e.relative)
+		return
+	if _touches.size() != 2:
+		return
+	var keys := _touches.keys()
+	var a0: Vector2 = before[keys[0]]
+	var b0: Vector2 = before[keys[1]]
+	var a1: Vector2 = _touches[keys[0]]
+	var b1: Vector2 = _touches[keys[1]]
+	var d0 := a0.distance_to(b0)
+	var d1 := a1.distance_to(b1)
+	var mid1 := (a1 + b1) * 0.5
+	if d0 > 8.0 and d1 > 8.0:
+		_zoom_at(mid1, d0 / d1)
+	_pan(mid1 - (a0 + b0) * 0.5)
+	var turn := wrapf((b1 - a1).angle() - (b0 - a0).angle(), -PI, PI)
+	if absf(turn) > 0.0005:
+		_turn(rad_to_deg(-turn))
 
 
 func _key(e: InputEventKey) -> void:
@@ -381,6 +462,8 @@ func _key(e: InputEventKey) -> void:
 		KEY_MINUS, KEY_KP_SUBTRACT: zoom_step(-1.0)
 		KEY_Q: rotate_step(-45.0)
 		KEY_E: rotate_step(45.0)
+		KEY_R: tilt_step(12.0)
+		KEY_V: tilt_step(-12.0)
 		KEY_F: fit()
 		KEY_T: top_view(not is_top)
 		KEY_HOME: reset()
@@ -394,6 +477,27 @@ func _orbit(rel: Vector2) -> void:
 		_goal_target = target
 	yaw -= rel.x * 0.006
 	pitch -= rel.y * 0.006
+	_apply()
+
+
+## Turn about the vertical axis / tilt, by degrees, immediately (gestures).
+func _turn(degrees: float) -> void:
+	if _tw and _tw.is_running():
+		_tw.kill()
+		_goal_distance = distance
+		_goal_target = target
+	user_moved = true
+	yaw -= deg_to_rad(degrees)
+	_apply()
+
+
+func _tilt(degrees: float) -> void:
+	if _tw and _tw.is_running():
+		_tw.kill()
+		_goal_distance = distance
+		_goal_target = target
+	user_moved = true
+	pitch -= deg_to_rad(degrees)
 	_apply()
 
 
