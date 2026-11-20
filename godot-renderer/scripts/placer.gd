@@ -237,7 +237,8 @@ static func mount_y(t: String) -> float:
 	var size: Vector3 = DeviceNode.BODY.get(t, Vector3(0.2, 0.2, 0.2))
 	var h: float = Store.wall_height
 	if t == "light":
-		return h + size.y * 0.5 + 0.02
+		# map view: on top of the cut-away walls; walk-through: hanging just under the ceiling
+		return h - size.y * 0.5 - 0.02 if Store.walk else h + size.y * 0.5 + 0.02
 	if WALL_Y.has(t):
 		var k := minf(h / REAL_STOREY, 1.0)
 		var y: float = WALL_Y[t] * k

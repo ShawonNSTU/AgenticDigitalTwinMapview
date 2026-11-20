@@ -61,7 +61,7 @@ func setup(d: Dictionary) -> DeviceNode:
 	label = Label3D.new()
 	label.text = d.id
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.no_depth_test = true
+	label.no_depth_test = not Store.walk  # walking: walls hide the labels of devices in other rooms
 	label.fixed_size = true
 	label.font_size = 24
 	label.pixel_size = 0.0006

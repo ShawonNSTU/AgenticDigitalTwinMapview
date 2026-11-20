@@ -28,6 +28,11 @@ Map navigation works on any floor size (the camera is sized to the floor): zoom 
 fit the whole floor, plan (2D) view and 45° rotation, from the controls on the right of the map, the mouse, touch
 or the keyboard (arrows/WASD, + −, Q E, F, T).
 
+Walk through: the walking-person button drops you to eye height inside the floor. Walls reach the ceiling and
+you enter rooms through their doorways (rooms the plan leaves closed get a doorway on their clearest shared
+wall). Drag to look, click or tap the floor to walk there along the shortest route, or use W A S D, the wheel,
+a two-finger pinch or the on-screen stick; "Walk to a room" follows the route for you; Esc goes back to the map.
+
 All device data is simulated.
 
 | Folder | What | Stack |
@@ -109,6 +114,7 @@ cd web && npm run test:faults                           # every fault × severit
 cd godot-renderer && godot --headless --path . -- --smoke   # drives every bridge command
 cd godot-renderer && godot --path . -- --camera=/tmp/camera # fit, zoom range, plan view, rotate, pan limits on 8 m to 300 m floors
 cd godot-renderer && godot --path . -- --place=/tmp/place   # drag and drop 21 devices (platform running)
+cd godot-renderer && godot --path . -- --walk=/tmp/walk     # walk-through: every room reachable, routes through doorways, no wall crossing
 ```
 
 ## Status

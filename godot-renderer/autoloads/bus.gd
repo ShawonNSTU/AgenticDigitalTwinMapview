@@ -12,6 +12,7 @@ signal trace_requested(from_id: String)
 signal layer_changed(layer: String, on: bool)
 signal reset_view_requested
 signal camera_requested(action: String)  # zoomIn, zoomOut, fit, top, perspective, toggleTop, rotateLeft, rotateRight, reset
+signal walk_requested(action: String, msg: Dictionary)  # start, stop, toggle, goto {room}, stick {x, y}
 signal insets_changed(left: float, right: float, top: float, bottom: float)  # host overlays, px
 
 # State changes
@@ -34,4 +35,5 @@ signal part_clicked(id: String, part: String)
 signal device_closed
 signal device_dropped(info: Dictionary)   # {deviceType, x, y, z, rotationY, room} — host adds it to the platform
 signal device_moved(info: Dictionary)     # {id, x, y, z, rotationY, room}
+signal walk_changed(info: Dictionary)     # {on, room, roomName}
 signal place_hover(info: Dictionary)      # {room, valid, mount}

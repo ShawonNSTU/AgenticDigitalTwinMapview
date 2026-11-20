@@ -6,6 +6,7 @@ import ChatPanel from '@/components/ChatPanel';
 import DevicePalette, { DeviceIcon, type Hover } from '@/components/DevicePalette';
 import MapToolbar from '@/components/MapToolbar';
 import MapNav from '@/components/MapNav';
+import WalkHud from '@/components/WalkHud';
 import { send, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
@@ -27,6 +28,7 @@ export default function Home() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [walk, setWalk] = useState<{ on: boolean; roomName?: string; note?: string }>({ on: false });
   const [floorShown, setFloorShown] = useState(false); // the renderer has built the floor (not just started)
   // the "no devices yet" hint can be closed; remembered in this browser
   const [hintClosed, setHintClosed] = useState(false);
@@ -50,7 +52,7 @@ export default function Home() {
     const pal = el.querySelector('.palette');
     if (pal) ro.observe(pal);
     return () => ro.disconnect();
-  }, [ready]);
+  }, [ready, walk.on]);
   useEffect(() => { try { setHintClosed(localStorage.getItem('twin.hintClosed') === '1'); } catch { /* storage unavailable */ } }, []);
   const closeHint = () => { setHintClosed(true); try { localStorage.setItem('twin.hintClosed', '1'); } catch { /* storage unavailable */ } };
   const stage = useRef<HTMLElement>(null);
@@ -84,6 +86,11 @@ export default function Home() {
     if (m.type === 'deviceClicked') setSel(m.id);
     if (m.type === 'partClicked') setSel(m.id);
     if (m.type === 'deviceClosed') setSel(null);
+    if (m.type === 'walk') {
+      setWalk(w => ({ on: m.on, roomName: m.roomName ?? w.roomName, note: m.note }));
+      if (m.on) setSel(null);
+      if (m.note) setTimeout(() => setWalk(w => ({ ...w, note: undefined })), 3500);
+    }
     if (m.type === 'placeHover') setHover({ roomName: m.roomName, valid: m.valid, mount: m.mount });
     if (m.type === 'dropDevice') {
       setHover(null);
@@ -136,10 +143,14 @@ export default function Home() {
       </header>
       <section className="stage" ref={stage}>
         <TwinView onEvent={onEvent} ready={ready && floorShown} />
-        <DevicePalette stage={stage} hover={hover} counts={counts} />
-        <MapToolbar />
-        <MapNav />
-        {ready && devices.length === 0 && !hintClosed && (
+        {walk.on ? <WalkHud room={walk.roomName ?? ''} note={walk.note} rooms={rooms.map(r => ({ key: r.key, name: r.name }))} /> : (
+          <>
+            <DevicePalette stage={stage} hover={hover} counts={counts} />
+            <MapToolbar />
+            <MapNav />
+          </>
+        )}
+        {!walk.on && ready && devices.length === 0 && !hintClosed && (
           <div className="empty-hint glass">
             <button className="hint-close" aria-label="Close" title="Close" onClick={closeHint}>✕</button>
             <b>This floor has no SmartThings devices yet</b>

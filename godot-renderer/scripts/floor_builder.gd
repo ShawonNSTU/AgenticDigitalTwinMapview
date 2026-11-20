@@ -7,6 +7,8 @@ const WALL := 0.08
 
 var _slabs := {}  # room key -> StandardMaterial3D
 var _walls: Array = []
+var wall_pieces: Array = []  # [a, b] on the floor for every built wall piece (door gaps left out)
+var lintels: Array = []      # [a, b] over each door gap (walk mode only: the walls reach the ceiling)
 var _veil: MeshInstance3D
 var _veil_tw: Tween
 var _plan_mat: StandardMaterial3D
@@ -52,7 +54,17 @@ func build() -> void:
 				var w := _box(Vector3(mid.x, h / 2, mid.y), Vector3(end - start, h, WALL), wall_mat)
 				w.rotation.y = -atan2(u.y, u.x)
 				_walls.append(w)
+				wall_pieces.append([a + u * maxf(start, 0.0), a + u * minf(end, length)])
+			if g[1] > g[0] and h > Walker.LINTEL + 0.05:
+				# full-height walls (walk mode): the wall closes over the door opening
+				var gm: Vector2 = a + u * ((g[0] + g[1]) / 2)
+				var lt := _box(Vector3(gm.x, (Walker.LINTEL + h) / 2, gm.y), Vector3(g[1] - g[0], h - Walker.LINTEL, WALL), wall_mat)
+				lt.rotation.y = -atan2(u.y, u.x)
+				_walls.append(lt)
+				lintels.append([a + u * g[0], a + u * g[1]])
 			start = maxf(start, g[1])
+	if Store.walk:
+		_ceilings(h)
 	if Store.outdoor_pad.has("x"):
 		var pad := StandardMaterial3D.new()
 		pad.albedo_color = Color("9aa3ad")
@@ -220,6 +232,30 @@ func set_walls_faded(on: bool) -> void:
 		_veil_tw.kill()
 	_veil_tw = create_tween()
 	_veil_tw.tween_property(veil_mat, "albedo_color:a", 0.72 if on else 0.0, 0.5)
+
+
+## Ceilings for the walk-through: one per room at the wall top, facing down, casting no shadow.
+func _ceilings(h: float) -> void:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color("e9ebee")
+	mat.roughness = 1.0
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for r in Store.rooms:
+		var poly := PlanGeo.room_poly(r)
+		var tris := Geometry2D.triangulate_polygon(poly)
+		if tris.is_empty():
+			continue
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		st.set_normal(Vector3.DOWN)
+		for i in tris:
+			st.add_vertex(Vector3(poly[i].x, h, poly[i].y))
+		var m := MeshInstance3D.new()
+		m.mesh = st.commit()
+		m.material_override = mat
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		m.name = "Ceiling_" + str(r.key)
+		add_child(m)
 
 
 ## Floor slab for any simple polygon: triangulated top face plus side faces.

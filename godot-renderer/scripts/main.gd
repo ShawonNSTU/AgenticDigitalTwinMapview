@@ -17,6 +17,11 @@ var legend: Label
 var placer: Placer
 var _highlight: Array = []
 var _pending_focus := ""  # a device the host asked to focus before it arrived from the platform
+var env: Environment
+var walker: Walker        # first-person walk-through, or null on the map
+var _walk_saved := {}     # map wall height and plan furniture, restored when the walk ends
+var _walk_build := false  # the world is being rebuilt to enter or leave the walk
+const WALK_HEIGHT := 2.7  # metres, floor to ceiling while walking
 
 
 func _ready() -> void:
@@ -52,7 +57,10 @@ func _ready() -> void:
 	Bus.trace_requested.connect(_on_trace)
 	Bus.layer_changed.connect(_on_layer)
 	Bus.reset_view_requested.connect(_on_reset)
-	Bus.camera_requested.connect(func(action): rig.command(action))
+	Bus.camera_requested.connect(func(action):
+		if walker == null:
+			rig.command(action))
+	Bus.walk_requested.connect(_on_walk)
 	Bus.insets_changed.connect(func(l, r, t, b): rig.set_insets(l, r, t, b))
 	Bus.time_changed.connect(_on_time)
 	Bus.scenario_changed.connect(_on_scenario)
@@ -70,6 +78,10 @@ func _ready() -> void:
 			var g := Node.new()
 			g.set_script(load("res://tests/twin_gallery.gd"))
 			add_child(g)
+		if a.begins_with("--walk="):
+			var wt := Node.new()
+			wt.set_script(load("res://tests/walk_test.gd"))
+			add_child(wt)
 		if a.begins_with("--camera="):
 			var ct := Node.new()
 			ct.set_script(load("res://tests/camera_test.gd"))
@@ -85,6 +97,8 @@ func _ready() -> void:
 
 
 func _build_world(animate: bool) -> void:
+	if walker and not _walk_build:
+		_end_walk_state(false)  # a new plan arrived while walking: back to the map (keep the new layout)
 	if world:
 		Store.open_id = ""
 		world.free()
@@ -214,7 +228,7 @@ func _on_scenario(_key: String) -> void:
 
 
 func _environment() -> void:
-	var env := Environment.new()
+	env = Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color("0b0e12")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -300,6 +314,8 @@ func _on_focus(id: String) -> void:
 func _on_open(id: String, part: String) -> void:
 	if world == null:
 		return
+	if walker:
+		stop_walk(false)  # the twin opens on the map
 	if not devices.has(id):
 		return
 	if placer.active():
@@ -360,10 +376,120 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e.is_action_pressed("toggle_piping"):
 		piping.visible = not piping.visible
 	elif e.is_action_pressed("back"):
-		if placer and placer.active():
+		if walker:
+			stop_walk()
+		elif placer and placer.active():
 			placer.cancel()
 		elif detail.device:
 			_on_close()
 		else:
 			Bus.highlight_cleared.emit()
 			rig.reset()
+
+
+# --- Walk-through ---------------------------------------------------------------------------------------
+
+func _on_walk(action: String, msg: Dictionary) -> void:
+	match action:
+		"start": start_walk(str(msg.get("room", "")))
+		"stop": stop_walk()
+		"toggle":
+			if walker:
+				stop_walk()
+			else:
+				start_walk(str(msg.get("room", "")))
+		"goto":
+			if walker == null:
+				start_walk(str(msg.get("room", "")))
+			elif not walker.go_to_room(str(msg.get("room", ""))):
+				Bridge.emit_event({"type": "walk", "on": true, "room": walker.room_key, "roomName": Store.room_label(Store.room_at(walker.p)), "note": "No way in from here"})
+		"stick":
+			if walker:
+				walker.joy = Vector2(float(msg.get("x", 0)), float(msg.get("y", 0))).limit_length(1.0)
+
+
+## Steps into the floor: walls grow to full height with ceilings and lintels, doorways are added to rooms
+## the plan left closed, and the camera drops from the map view to eye height where the view was centred.
+func start_walk(room_key := "") -> void:
+	if world == null or walker:
+		return
+	_on_close()
+	if placer.active():
+		placer.cancel()
+	var from := rig.cam.global_transform
+	var fwd := -from.basis.z
+	var look_yaw := atan2(-fwd.x, -fwd.z)
+	var start = Placer.pointer_floor(rig.cam, get_viewport().get_visible_rect().size / 2)
+	if start == null or Store.room_at(start).is_empty():
+		start = Vector2(rig.target.x, rig.target.z)
+	if Store.room_at(start).is_empty():
+		start = _busiest_room_point()
+	if room_key != "" and not Store.room(room_key).is_empty():
+		start = PlanGeo.interior_point(PlanGeo.room_poly(Store.room(room_key)))
+	_walk_saved = {"h": Store.wall_height, "furniture": Store.furniture}
+	Store.walk = true
+	Store.wall_height = WALK_HEIGHT
+	Store.furniture = Store.furniture + WalkNav.auto_doors(Store.rooms, Store.furniture)
+	_walk_build = true
+	_build_world(false)
+	_walk_build = false
+	rig.set_process_unhandled_input(false)
+	env.ambient_light_energy = 0.72
+	sun.light_energy = 0.25
+	walker = Walker.new()
+	walker.name = "Walker"
+	world.add_child(walker)
+	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look_yaw, from)
+	walker._track_room()
+
+
+## Back to the map, looking down at where the walk ended.
+func stop_walk(fly := true) -> void:
+	if walker == null:
+		return
+	var p := walker.p
+	var y := walker.yaw
+	_end_walk_state()
+	_walk_build = true
+	_build_world(false)
+	_walk_build = false
+	rig.jump(Vector3(p.x, 0, p.y), 2.5, deg_to_rad(-12.0), y)
+	if fly:
+		rig.fly_to(Vector3(p.x, 0, p.y), clampf(rig.home_distance * 0.45, 8.0, 40.0), deg_to_rad(-52.0), y, 1.3)
+
+
+func _end_walk_state(restore := true) -> void:
+	if walker == null:
+		return
+	walker = null
+	if Store.walk:
+		Store.walk = false
+		if restore and _walk_saved.has("h"):
+			Store.wall_height = _walk_saved.h
+			Store.furniture = _walk_saved.furniture
+	_walk_saved = {}
+	rig.set_process_unhandled_input(true)
+	rig.cam.current = true
+	env.ambient_light_energy = 0.55
+	sun.light_energy = SUN
+	Bus.walk_changed.emit({"on": false})
+
+
+## Inside the room with the most doors (usually the corridor), for when the view points at nothing.
+func _busiest_room_point() -> Vector2:
+	var best: Dictionary = Store.rooms[0]
+	var most := -1
+	for r in Store.rooms:
+		var poly := PlanGeo.room_poly(r)
+		var n := 0
+		for f in Store.furniture:
+			if f.get("kind", "") == "door":
+				var c := Vector2(float(f.x), float(f.z))
+				for i in poly.size():
+					if c.distance_to(Geometry2D.get_closest_point_to_segment(c, poly[i], poly[(i + 1) % poly.size()])) < 0.3:
+						n += 1
+						break
+		if n > most:
+			most = n
+			best = r
+	return PlanGeo.interior_point(PlanGeo.room_poly(best))

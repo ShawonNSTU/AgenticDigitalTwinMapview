@@ -35,6 +35,11 @@ export default function MapNav() {
         <button title="Tilt: look more from the side (V)" aria-label="Tilt down" onClick={() => cam('tiltUp')}><I d='<path d="M6 9l6 6 6-6"/>' /></button>
       </div>
       <div className="nav-group glass">
+        <button className="walk-btn" title="Walk through the floor at eye height (enter rooms through their doors)" aria-label="Walk through" onClick={() => send({ type: 'walk', action: 'start' })}>
+          <I d='<circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 3v3M7 12l3-4 4 1 3 3M11 15l1-6"/>' />
+        </button>
+      </div>
+      <div className="nav-group glass">
         <button className={keys ? 'on' : ''} title="Mouse and keyboard controls" aria-label="Controls" onClick={() => setKeys(!keys)}><b>?</b></button>
       </div>
       {keys && (
@@ -49,6 +54,7 @@ export default function MapNav() {
             <dt>Zoom to a spot</dt><dd>Double-click the floor</dd>
             <dt>Whole floor</dt><dd>F</dd>
             <dt>Plan view</dt><dd>T</dd>
+            <dt>Walk through</dt><dd>The walking-person button: walk the floor at eye height</dd>
           </dl>
           <span className="muted">Click the map first so it receives keys.</span>
         </div>

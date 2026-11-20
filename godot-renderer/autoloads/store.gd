@@ -13,6 +13,7 @@ var by_id: Dictionary = {}
 var types: Dictionary = {}
 var outdoor_pad: Dictionary = {}
 var wall_height := 1.15
+var walk := false  # first-person walk-through: full-height walls, ceilings, lights under the ceiling
 
 var t := 10.0
 var scenario := "normal"

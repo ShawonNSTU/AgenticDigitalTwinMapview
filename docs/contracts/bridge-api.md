@@ -27,6 +27,7 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `dragEnd` | `u`, `v`, `drop` | `drop: true` reports `dropDevice`; `false` cancels |
 | `startMove` | `id` | the placed device follows the pointer inside the map; click puts it down (`moveDevice`), right-click or Esc cancels |
 | `refreshDevices` | | poll the platform now (the page just added, moved or removed a device) |
+| `walk` | `action`: `start`, `stop`, `toggle`, `goto` (`room`), `stick` (`x`, `y` in −1..1) | first-person walk-through: `start` drops to eye height where the view is centred (or in `room`); walls reach the ceiling and rooms are entered through doorways; `goto` walks the route to a room; `stick` is the on-screen joystick (`y` −1 walks forward, `x` turns) |
 
 ## Renderer → host
 
@@ -41,6 +42,7 @@ Every message is `{ source: "twin-renderer", type, ...fields }`.
 | `deviceClicked` | `id` | click on a device (drags are ignored) |
 | `partClicked` | `id`, `part` | click on a part of an opened device |
 | `deviceClosed` | | the open device was closed (Esc, back, scenario change) |
+| `walk` | `on`, `room`, `roomName`, `note` | walk-through started (`on: true`), entered another room, or ended (`on: false`); `note` when a room can't be reached |
 | `placeHover` | `room`, `roomName`, `valid`, `mount` | while dragging: the room under the pointer and how the device would be mounted |
 | `dropDevice` | `deviceType`, `x`, `y`, `z`, `rotationY`, `room` | a device was dropped; the page adds it with `POST /api/devices` |
 | `moveDevice` | `id`, `x`, `y`, `z`, `rotationY`, `room` | a placed device was put down somewhere else; the page saves it with `PATCH /api/devices/:id` |

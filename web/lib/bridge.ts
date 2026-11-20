@@ -19,7 +19,8 @@ export type ToRenderer =
   | { type: 'dragMove'; u: number; v: number }
   | { type: 'dragEnd'; u: number; v: number; drop: boolean }
   | { type: 'startMove'; id: string }
-  | { type: 'refreshDevices' };
+  | { type: 'refreshDevices' }
+  | { type: 'walk'; action: 'start' | 'stop' | 'toggle' | 'goto' | 'stick'; room?: string; x?: number; y?: number };
 
 /** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */
 export type Placement = { x: number; y: number; z: number; rotationY: number; room: string };
@@ -34,7 +35,8 @@ export type FromRenderer =
   | { type: 'deviceClosed' }
   | ({ type: 'dropDevice'; deviceType: string } & Placement)
   | ({ type: 'moveDevice'; id: string } & Placement)
-  | { type: 'placeHover'; room: string; roomName: string; valid: boolean; mount: string };
+  | { type: 'placeHover'; room: string; roomName: string; valid: boolean; mount: string }
+  | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string };
 
 let frame: HTMLIFrameElement | null = null;
 const queue: ToRenderer[] = [];

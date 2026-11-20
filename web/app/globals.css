@@ -197,3 +197,22 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .switch input:checked + span { background:var(--acc); } .switch input:checked + span::after { transform:translateX(14px); }
 .switch em { font-style:normal; color:var(--muted); font-size:11.5px; }
 @media (max-width: 900px) { .setup-body { grid-template-columns:1fr; grid-template-rows:55vh auto; } }
+
+/* walk-through */
+.walk-bar { position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:6; display:flex; align-items:center; gap:10px; padding:7px 8px 7px 14px; max-width:calc(100% - 28px); }
+.walk-dot { width:9px; height:9px; border-radius:50%; background:var(--acc); box-shadow:0 0 0 4px var(--acc-bg); flex:none; }
+.walk-where { display:flex; flex-direction:column; line-height:1.15; min-width:120px; max-width:260px; }
+.walk-where small { color:var(--muted); font-size:11px; }
+.walk-where b { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.walk-bar select { max-width:200px; padding:6px 8px; }
+.walk-bar button.ghost { width:32px; padding:6px 0; }
+.walk-note { position:absolute; left:50%; top:70px; transform:translateX(-50%); z-index:6; padding:8px 14px; font-size:12.5px; color:var(--warn, #b45309); }
+.walk-help { position:absolute; right:14px; top:14px; z-index:6; width:300px; padding:12px 14px; font-size:12.5px; }
+.walk-help dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:8px 0 0; }
+.walk-help dt { color:var(--muted); } .walk-help dd { margin:0; }
+.walk-stick { position:absolute; left:22px; bottom:22px; z-index:6; width:112px; height:112px; border-radius:50%; display:grid; place-items:center; touch-action:none; cursor:grab;
+  background:radial-gradient(circle, rgba(255,255,255,.55), rgba(255,255,255,.25)); border:1px solid rgba(255,255,255,.7); box-shadow:var(--shadow-lg); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+.walk-stick:active { cursor:grabbing; }
+.walk-knob { width:44px; height:44px; border-radius:50%; background:linear-gradient(180deg, #3b82f6, var(--acc)); box-shadow:0 4px 12px rgba(37,99,235,.35); pointer-events:none; transition:transform .05s; }
+.walk-btn { color:var(--acc-dark) !important; }
+@media (max-width: 700px) { .walk-help { left:14px; right:14px; width:auto; top:70px; } .walk-bar select { max-width:120px; } }
