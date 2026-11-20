@@ -681,7 +681,10 @@ func start_walk(room_key := "") -> void:
 	if Store.room_at(start).is_empty():
 		start = _busiest_room_point()
 	if room_key != "" and not Store.room(room_key).is_empty():
-		start = PlanGeo.interior_point(PlanGeo.room_poly(Store.room(room_key)))
+		# step in through the room's door and look across the room, the way you would on entering it
+		var entry := _room_entry(Store.room(room_key))
+		start = entry[0]
+		look_yaw = entry[1]
 	_walk_saved = {"h": Store.wall_height, "furniture": Store.furniture}
 	Store.walk = true
 	Store.wall_height = WALK_HEIGHT
@@ -889,8 +892,38 @@ func _guest_arrived() -> void:
 	if walker == null or _guest_room == "" or walker.room_key != _guest_room:
 		return
 	walker.confine(Store.room(_guest_room))
+	# turn to take in the whole room
+	var c := PlanGeo.interior_point(PlanGeo.room_poly(Store.room(_guest_room)))
+	walker.look_at_point(Vector3(c.x, walker.eye - 0.25, c.y))
 	walker.hide_route()
 	Bus.walk_changed.emit({"on": true, "guest": "arrived", "room": _guest_room, "roomName": Store.room_label(Store.room(_guest_room))})
+
+
+## Where to stand on entering a room and which way to look: just inside its door (clear of the furniture),
+## facing the far side of the room. Without a door: the room's middle, facing its longer side.
+func _room_entry(r: Dictionary) -> Array:
+	var poly := PlanGeo.room_poly(r)
+	var mid := PlanGeo.interior_point(poly)
+	var bb := Rect2(poly[0], Vector2.ZERO)
+	for v in poly:
+		bb = bb.expand(v)
+	var centre := bb.get_center()
+	if not Geometry2D.is_point_in_polygon(centre, poly):
+		centre = mid
+	for f in Store.furniture:
+		if f.get("kind", "") != "door":
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		var nn := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))
+		for side in [1.0, -1.0]:
+			var inside: Vector2 = c + nn * side * 1.35
+			if Geometry2D.is_point_in_polygon(inside, poly) and not Geometry2D.is_point_in_polygon(c - nn * side * 0.85, poly):
+				# look across the room to its far side
+				var far := centre + (centre - c).normalized() * 0.6 * minf(bb.size.x, bb.size.y)
+				var d := far - inside
+				return [inside, atan2(-d.x, -d.y)]
+	var d2 := Vector2(1, 0) if bb.size.x >= bb.size.y else Vector2(0, 1)
+	return [mid, atan2(-d2.x, -d2.y)]
 
 
 ## A live position fix (RTLS badge, location QR code or step tracking): snap it to walkable floor (map

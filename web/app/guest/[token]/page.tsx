@@ -5,7 +5,7 @@ import TwinView from '@/components/TwinView';
 import { DeviceIcon } from '@/components/DevicePalette';
 import { CMD_LABEL, type Cmd } from '@/components/DeviceControls';
 import HoloControl from '@/components/HoloControl';
-import { StDashboard, type StProfile } from '@/components/StZone';
+import { stStatus, type StProfile } from '@/components/StZone';
 import GuestAssistant from '@/components/GuestAssistant';
 import Locator from '@/components/Locator';
 import { send, type FromRenderer } from '@/lib/bridge';
@@ -197,9 +197,7 @@ export default function GuestPage() {
         {tab === 'assistant' ? <GuestAssistant token={token} onUi={a => { if (a.type === 'highlight' && a.ids) send({ type: 'highlight', ids: a.ids }); }} /> : (
           <div className="guest-devs">
             {view && view.devices.length === 0 && <div className="muted pad">This room has no connected devices.</div>}
-            {view && view.devices.some(d => d.st) && <StDashboard devices={view.devices.filter(d => d.st)} run={run} focus={holo} onOpen={id => { setFocus(id); openHolo(id); }} />}
-            {view && view.devices.some(d => d.st) && view.devices.some(d => !d.st) && <h4 className="st-other">Other devices in the room</h4>}
-            {view?.devices.filter(d => !d.st).map(d => (
+            {view?.devices.map(d => (
               <div key={d.id} ref={el => { cards.current[d.id] = el; }} className={`guest-dev ${focus === d.id ? 'on' : ''} ${holo === d.id ? 'holo-on' : ''} ${d.online ? '' : 'offline'}`} onClick={() => { setFocus(d.id); openHolo(d.id); }}>
                 <div className="guest-dev-head">
                   <span className="dev-ico"><DeviceIcon type={d.type} size={18} /></span>
@@ -209,7 +207,9 @@ export default function GuestPage() {
                 {!d.online && <div className="guest-finding fault">Not responding. Hotel staff have been alerted.</div>}
                 {d.type === 'lock' && view && <div className="muted lock-line">{view.lock.integration === 'smartthings' ? 'Connected lock (SmartThings)' : 'Lock simulator'}{view.allowUnlock ? ` · unlocking needs your PIN; it locks again after ${view.lock.autoRelockSec} s` : ' · unlocking is done at the front desk'}</div>}
                 {d.online && d.finding && d.health !== 'ok' && <div className={`guest-finding ${d.finding.lvl}`}>{d.finding.title}</div>}
-                <div className="guest-status">{d.status.map(s => <span key={s.name}><small>{s.name}</small>{s.value}</span>)}</div>
+                {d.st
+                  ? <div className="guest-status"><span><small>{d.st.where}</small>{stStatus(d)}</span></div>
+                  : <div className="guest-status">{d.status.map(s => <span key={s.name}><small>{s.name}</small>{s.value}</span>)}</div>}
                 {d.commands.length > 0 && <button className="holo-open" onClick={e => { e.stopPropagation(); setFocus(d.id); openHolo(holo === d.id ? null : d.id); }}>{holo === d.id ? 'Controlling in the room' : 'Control in the room'}</button>}
               </div>
             ))}

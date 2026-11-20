@@ -1,10 +1,10 @@
 'use client';
-// Controls for the SmartThings Experience Zone's SmartThings app devices, laid out like the SmartThings app (one
-// tile per device, grouped under the app's rooms) and made livelier: the tile itself is the brightness or shade
-// slider and glows in the light's colour, scene and colour chips change the room at once, switches flip with a
-// tap, and the roller shade is drawn rolling. Every drag shows its result in the 3D room straight away (preview)
-// and is sent when the guest lets go. The same tile, larger and with a colour ring, is pinned beside the device
-// in 3D. Other devices keep their own controls (HoloControl).
+// The 3D control for the SmartThings Experience Zone's SmartThings app devices: a SmartThings app tile, pinned
+// beside the device in the 3D room, made livelier: the tile itself is the brightness or shade slider and glows
+// in the light's colour, scene and colour chips change the room at once, switches flip with a tap, and the
+// roller shade is drawn rolling. Every drag shows its result in the room straight away (preview) and is sent
+// when the guest lets go. The guest side panel shows states only (stStatus). Other devices keep their own 3D
+// controls (HoloControl).
 import { useEffect, useRef, useState } from 'react';
 import { send } from '@/lib/bridge';
 import type { Cmd } from '@/components/DeviceControls';
@@ -13,7 +13,6 @@ export type StProfile = { kind: 'color' | 'switch' | 'shade'; group: string; whe
 export type StDev = { id: string; type: string; name: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; commands: Cmd[]; st?: StProfile };
 type RunFn = (command: string, args?: Record<string, unknown>) => unknown;
 
-const GROUP_ORDER = ['Living room', 'Bedroom', 'Dining room'];
 const SCENES = [
   { key: 'night', label: 'Night', lv: 12, k: 2700, icon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z' },
   { key: 'relax', label: 'Relax', lv: 40, k: 2700, icon: 'M3 18h18M6 18a6 6 0 0 1 12 0M12 6V4M5.6 9.6 4.2 8.2M18.4 9.6l1.4-1.4' },
@@ -153,24 +152,11 @@ export function StTile({ dev, run, big = false, onOpen }: { dev: StDev; run: Run
   );
 }
 
-/** The zone's SmartThings app devices, grouped as in the app. */
-export function StDashboard({ devices, run, focus, onOpen }: { devices: StDev[]; run: (id: string) => RunFn; focus: string | null; onOpen: (id: string) => void }) {
-  const groups = [...new Set(devices.map(d => d.st!.group))].sort((a, b) => (GROUP_ORDER.indexOf(a) + 99) % 99 - (GROUP_ORDER.indexOf(b) + 99) % 99);
-  const lightsOn = devices.filter(d => d.type === 'light' && num(d.readings.lv, 0) > 0).length;
-  const allOff = () => devices.filter(d => d.type === 'light' && num(d.readings.lv, 0) > 0).forEach(d => { preview(d.id, { lv: 0 }); run(d.id)('power', { on: 'false' }); });
-  return (
-    <div className="st-dash">
-      <div className="st-top"><span><b>SmartThings</b><small>{lightsOn} light{lightsOn === 1 ? '' : 's'} on</small></span>{lightsOn > 0 && <button className="st-chip" onClick={allOff}>All lights off</button>}</div>
-      {groups.map(g => (
-        <section key={g}>
-          <h4>{g}</h4>
-          <div className="st-grid">
-            {devices.filter(d => d.st!.group === g).map(d => (
-              <div key={d.id} className={focus === d.id ? 'st-focus' : ''}><StTile dev={d} run={run(d.id)} onOpen={() => onOpen(d.id)} /></div>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
+/** The state line the SmartThings app shows for a device (the guest side panel shows states only). */
+export function stStatus(dev: StDev) {
+  if (!dev.online) return 'Offline';
+  const r = { ...dev.readings, ...(dev.overrides ?? {}) } as Record<string, unknown>;
+  if (dev.st?.kind === 'shade') { const p = Math.round(num(r.pos, 100)); return p >= 98 ? 'Open' : p <= 2 ? 'Closed' : `${100 - p}% closed`; }
+  if (dev.type === 'light') { const lv = Math.round(num(r.lv, 0)); if (lv <= 0) return 'Off'; return dev.st?.kind === 'color' ? `On · ${lv}%${typeof r.col === 'string' && r.col ? ' · colour' : ''}` : 'On'; }
+  return r.on === true || r.on === 'true' ? 'On' : 'Off';
 }

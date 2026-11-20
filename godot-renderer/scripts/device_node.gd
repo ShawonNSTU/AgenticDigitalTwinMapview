@@ -48,10 +48,11 @@ static func body_size(d: Dictionary) -> Vector3:
 	match variant(d):
 		"cassette": return Vector3(0.62, 0.07, 0.62)
 		"lamp": return Vector3(0.1, 0.1, 0.1)
-		"projector", "curtain": return Vector3(1.7, 0.1, 0.09)
+		"projector": return Vector3(1.7, 0.1, 0.09)
+		"curtain": return Vector3(1.4, 0.1, 0.09)
 		"desk": return Vector3(0.1, 0.1, 0.1)
 		"panel": return Vector3(0.16, 0.04, 0.16)
-		"window": return Vector3(0.72, 0.04, 0.03)
+		"window": return Vector3(0.6, 0.04, 0.03)
 		"stand": return Vector3(1.45, 0.84, 0.05)
 	return BODY.get(str(d.get("type", "")), Vector3(0.2, 0.2, 0.2))
 var fx: DeviceFx  # what the device is doing, shown in the room (light, airflow, screen, blinds...)

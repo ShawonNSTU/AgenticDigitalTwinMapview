@@ -50,7 +50,7 @@ func begin(pieces: Array, lintels: Array, start: Vector2, start_yaw: float, from
 	p = nav.nearest_free(start, 200)
 	yaw = start_yaw
 	cam = Camera3D.new()
-	cam.fov = 72.0
+	_fit_fov()
 	cam.near = 0.05
 	cam.far = 500.0
 	add_child(cam)
@@ -301,8 +301,28 @@ func go_to_room(key: String) -> bool:
 	return target != Vector2.INF and go_to(target)
 
 
+## A natural wide-angle view inside rooms: at least about 100° across (a phone camera's main lens), whatever the
+## shape of the 3D area; a narrow or upright window gets a taller view rather than a cropped one.
+var _fov_for := Vector2.ZERO
+
+
+func _fit_fov() -> void:
+	if cam == null:
+		return
+	var vs := get_viewport().get_visible_rect().size
+	if vs == _fov_for or vs.y <= 0.0:
+		return
+	_fov_for = vs
+	var aspect := vs.x / vs.y
+	var across := deg_to_rad(100.0)
+	var v := rad_to_deg(2.0 * atan(tan(across / 2.0) / aspect))
+	cam.keep_aspect = Camera3D.KEEP_HEIGHT
+	cam.fov = clampf(v, 68.0, 100.0)
+
+
 func _process(delta: float) -> void:
 	delta = minf(delta, 0.25)
+	_fit_fov()
 	if _beacon_node and is_instance_valid(_beacon_node):
 		var k := 1.0 + 0.15 * sin(Time.get_ticks_msec() / 250.0)
 		_beacon_node.get_child(0).position.y = 2.35 + 0.08 * sin(Time.get_ticks_msec() / 400.0)

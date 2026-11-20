@@ -35,6 +35,7 @@ func _run() -> void:
 	await _shot("m_room")
 	Bridge.handle({"type": "walk", "action": "start", "room": room})
 	await get_tree().create_timer(4.0).timeout
+	await _shot("w_entry")  # the view on entering the room
 	for k in 4:
 		main.walker.yaw += PI / 2
 		main.walker._apply()
