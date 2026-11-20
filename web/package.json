@@ -8,7 +8,7 @@
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "test:faults": "tsx tests/faults.test.mts",
-    "export:renderer": "cd ../godot-renderer && ${GODOT:-godot} --headless --path . --export-release Web"
+    "export:renderer": "node scripts/export-renderer.mjs"
   },
   "dependencies": {
     "next": "latest",
