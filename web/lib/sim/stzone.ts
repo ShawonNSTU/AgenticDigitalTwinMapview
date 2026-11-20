@@ -222,36 +222,68 @@ function growZone(r: any, furniture: any[]) {
 }
 
 /**
- * The 4th floor's lift lobby. The fire-safety drawing leaves it out (it is outside the floor's own boundary), but
- * it fills the notch in that boundary above the small cafeteria and the gym, west of the main cafeteria (photos:
- * three steel lifts on one long wall, three panelled lift doors on the other, blue walls, wood-plank floor, an
- * oval lit ceiling, glass double doors with frosted side panels and an EXIT sign into the main cafeteria at the
- * far end, water bottles stacked beside them). Guests arrive here.
+ * The 4th floor's lift lobby, in Zone D: six lift shafts in two rows of three (the drawing's large boxes, traced as
+ * workstations) with the lobby between them (its four ceiling squares were traced as tables). L1-L3 (north row)
+ * have steel doors, L4-L6 (south row) panelled ones (photos). The lobby's west side has a door that is always
+ * open onto the passage, and straight across the passage the glass double doors of the main cafeteria (frosted
+ * side panels, EXIT sign over them, water bottles stacked beside them). Guests arrive here.
  */
 export const LOBBY_FINISH = 'lift-lobby';
 function fitLiftLobby(rt: { furniture: any[] }) {
   if ((ROOMS as any[]).some(r => r.key === 'lift-lobby')) return;
-  const small = (ROOMS as any[]).find(r => /cafeteria \(6/i.test(String(r.name)));
-  const main = (ROOMS as any[]).find(r => /cafeteria \(208/i.test(String(r.name)));
-  if (!small || !main) return;
-  const x0 = small.x[0], x1 = main.x[0], z1 = small.z[0];
-  const z0 = +(main.z[0] - 0.95).toFixed(3);       // the drawing's outer line, about 4 m deep
-  if (x1 - x0 < 5 || z1 - z0 < 3) return;
-  const L = x1 - x0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-  (ROOMS as any[]).push({ key: 'lift-lobby', name: 'Lift Lobby', label: 'Lift Lobby', x: [x0, x1], z: [z0, z1],
-    poly: [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], color: '#9fb0e6', labelAt: [cx, cz], zone: small.zone ?? 'A', finish: LOBBY_FINISH });
-  const doorZ = +(((Math.max(z0, main.z[0]) + z1) / 2)).toFixed(3);
-  const items: Item[] = [
-    { kind: 'door', x: x1, z: doorZ, w: 1.8, d: 0.17, rot: -Math.PI / 2, glass: true, room: 'lift-lobby' },
-    { kind: 'exit_sign', x: x1 - 0.08, z: doorZ, w: 0.5, d: 0.08, rot: -Math.PI / 2, room: 'lift-lobby' },
-    { kind: 'water_bottles', x: x1 - 0.55, z: z0 + 0.45, w: 0.9, d: 0.6, rot: 0, room: 'lift-lobby' },
-  ];
-  for (const f of [0.2, 0.45, 0.7]) {
-    const x = +(x0 + L * f).toFixed(3);
-    items.push({ kind: 'lift_door', x, z: +(z0 + 0.09).toFixed(3), w: 1.1, d: 0.12, rot: 0, room: 'lift-lobby' });                         // steel
-    items.push({ kind: 'lift_door', x, z: +(z1 - 0.09).toFixed(3), w: 1.1, d: 0.12, rot: Math.PI, panel: true, room: 'lift-lobby' } as any); // panelled
+  const zd = (ROOMS as any[]).find(r => /zone d/i.test(String(r.name)));
+  if (!zd) return;
+  const inRect = (f: any, x0: number, x1: number, z0: number, z1: number) => f.x > x0 && f.x < x1 && f.z > z0 && f.z < z1;
+  const zx0 = zd.x[0];
+  // the shafts: the six traced "workstations" in two rows across Zone D
+  const shafts = rt.furniture.filter(f => f.kind === 'workstation' && inRect(f, zd.x[0], zd.x[1], zd.z[0], zd.z[1]));
+  if (shafts.length !== 6) return;
+  const zs = [...new Set(shafts.map(f => f.z))].sort((p, q) => p - q);
+  if (zs.length !== 2) return;
+  const north = shafts.filter(f => f.z === zs[0]).sort((p, q) => p.x - q.x), south = shafts.filter(f => f.z === zs[1]).sort((p, q) => p.x - q.x);
+  const half = (f: any) => f.d / 2;
+  const lz0 = +(zs[0] + half(north[0])).toFixed(3), lz1 = +(zs[1] - half(south[0])).toFixed(3);   // lobby between the rows
+  const lx1 = Math.max(...north.map(f => f.x + f.w / 2), ...south.map(f => f.x + f.w / 2));
+  const bx1 = +(zd.poly.map((p: number[]) => p[0]).filter((x: number) => x <= lx1 + 0.4).reduce((m: number, x: number) => Math.max(m, x), lx1)).toFixed(3); // Zone D's own step line
+  // Zone D keeps what lies east of the lift block, and the strip below it beside the core stair
+  const P: number[][] = zd.poly;
+  const right = Math.max(...P.map(p => p[0])), bottom = Math.max(...P.map(p => p[1]));
+  const eTop = Math.min(...P.filter(p => p[0] > bx1 + 0.01).map(p => p[1]));
+  const lowLeft = Math.min(...P.filter(p => Math.abs(p[1] - bottom) < 0.01).map(p => p[0]));
+  const bBot = Math.max(...P.filter(p => p[0] < bx1 - 0.01 && p[1] < bottom - 0.01).map(p => p[1]));   // the lift block's bottom
+  const bz0 = zd.z[0], bz1 = bBot;
+  // the lobby runs between the two rows of lifts and on to Zone D's east wall; Zone D keeps the area south-east of
+  // the lower row (and the strip beside the core stair)
+  const lobbyPoly: number[][] = eTop > lz0 + 0.01
+    ? [[zx0, lz0], [bx1, lz0], [bx1, eTop], [right, eTop], [right, lz1], [zx0, lz1]]
+    : [[zx0, lz0], [right, lz0], [right, lz1], [zx0, lz1]];
+  const eastPoly: number[][] = lowLeft < bx1 - 0.01
+    ? [[bx1, lz1], [right, lz1], [right, bottom], [lowLeft, bottom], [lowLeft, bBot], [bx1, bBot]]
+    : [[bx1, lz1], [right, lz1], [right, bottom], [bx1, bottom]];
+  zd.poly = eastPoly; zd.x = [Math.min(...eastPoly.map(p => p[0])), right]; zd.z = [lz1, bottom];
+  zd.labelAt = [(bx1 + right) / 2, (lz1 + bottom) / 2];
+  const cx = (zx0 + right) / 2, cz = (lz0 + lz1) / 2;
+  (ROOMS as any[]).push({ key: 'lift-lobby', name: 'Lift Lobby', label: 'Lift Lobby', x: [zx0, right], z: [lz0, lz1],
+    poly: lobbyPoly, color: '#9fb0e6', labelAt: [cx, cz], zone: zd.zone ?? 'D', finish: LOBBY_FINISH });
+  // replace the traced shafts and ceiling squares; keep doors
+  rt.furniture = rt.furniture.filter(f => f.kind === 'door' || !(inRect(f, zx0 - 0.01, bx1 + 0.01, bz0 - 0.01, bz1 + 0.01) || inRect(f, zx0, right, lz0, lz1)));
+  const items: Item[] = [];
+  for (const row of [north, south]) for (const f of row) {
+    const isNorth = row === north;
+    // the shaft itself (solid), and its door on the lobby wall
+    items.push({ kind: 'lift_shaft', x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, room: 'lift-lobby' });
+    items.push({ kind: 'lift_door', x: f.x, z: +(isNorth ? lz0 + 0.09 : lz1 - 0.09).toFixed(3), w: 1.1, d: 0.12, rot: isNorth ? 0 : Math.PI, ...(isNorth ? {} : { panel: true }), room: 'lift-lobby' });
   }
-  rt.furniture = [...rt.furniture.filter(f => !(f.x > x0 && f.x < x1 && f.z > z0 && f.z < z1)), ...items];
+  // the lobby's west door stands open; the cafeteria's glass doors face it across the passage
+  const lobbyDoor = rt.furniture.find(f => f.kind === 'door' && Math.abs(f.x - zx0) < 0.1 && f.z > lz0 && f.z < lz1);
+  if (lobbyDoor) lobbyDoor.held_open = true;
+  const cafeDoor = lobbyDoor && rt.furniture.find(f => f.kind === 'door' && f !== lobbyDoor && Math.abs(f.z - lobbyDoor.z) < 0.3 && f.x < zx0 && f.x > zx0 - 3);
+  if (cafeDoor) {
+    cafeDoor.glass = true;
+    items.push({ kind: 'exit_sign', x: +(cafeDoor.x + 0.1).toFixed(3), z: cafeDoor.z, w: 0.5, d: 0.08, rot: Math.PI / 2, room: 'corridor' });
+    items.push({ kind: 'water_bottles', x: +(cafeDoor.x + 0.4).toFixed(3), z: +(cafeDoor.z - cafeDoor.w / 2 - 0.75).toFixed(3), w: 0.9, d: 0.55, rot: Math.PI / 2, room: 'corridor' });
+  }
+  rt.furniture = [...rt.furniture, ...items];
 }
 
 /**

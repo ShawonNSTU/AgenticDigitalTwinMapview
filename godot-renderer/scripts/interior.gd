@@ -537,6 +537,9 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_bm("monitor", Vector3(w / 2 + 0.55, 1.32, 0.047), Vector3(0.06, 0.08, 0.004))
 			_bm("led", Vector3(w / 2 + 0.55, 1.15, 0.047), Vector3(0.025, 0.025, 0.006), "cyl")
 			_bm("led", Vector3(w / 2 + 0.55, 1.08, 0.047), Vector3(0.025, 0.025, 0.006), "cyl")
+		"lift_shaft":
+			# a lift shaft behind the lobby wall: a solid concrete block, full height
+			_bm("concrete", Vector3(0, h / 2, 0), Vector3(w, h, d))
 		"exit_sign":
 			# green EXIT sign over the glass doors
 			var sy := minf(h - 0.2, 2.4)
@@ -572,7 +575,7 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 				var side := -1.0 if li == 0 else 1.0  # hinge at -w/2 or +w/2; the leaf reaches towards the middle
 				var hinge := Vector3(side * w / 2, 0, 0)
 				# open 70° on the map; flat against the wall while walking, so the doorway is clear
-				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(92.0 if Store.walk else 70.0) * side), hinge)
+				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(92.0 if Store.walk or _cur.get("held_open", false) else 70.0) * side), hinge)
 				var glass_door: bool = _cur.get("glass", false)
 				_emit("box", "frosted" if glass_door else "door", _ir * leaf * Transform3D(Basis.from_scale(Vector3(lw - 0.02, lh, 0.012 if glass_door else 0.04)), Vector3(-side * lw / 2, lh / 2, 0)))
 				if glass_door:  # pull handle and a frosted band
