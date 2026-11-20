@@ -75,11 +75,76 @@ func go_to(target: Vector2) -> bool:
 	return true
 
 
+var live := false          # following live position fixes instead of a planned walk
+var _you: Node3D           # "you are here" marker with the fix's accuracy circle
+var _you_acc: MeshInstance3D
+var _you_label: Label3D
 var _route_node: Node3D
 var _over := false
 var _over_from: Transform3D
 var _over_t := 1.0  # 0..1 progress of the move into or out of the overview
 var _look_goal = null  # [yaw, pitch] to turn to (guided tour)
+
+
+func set_live(on: bool) -> void:
+	live = on
+	if on:
+		_cancel_route()
+	if _you == null:
+		_you = Node3D.new()
+		add_child(_you)
+		_you_acc = MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 1.0
+		cm.bottom_radius = 1.0
+		cm.height = 0.01
+		cm.radial_segments = 40
+		_you_acc.mesh = cm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = Color(0.15, 0.5, 1.0, 0.18)
+		_you_acc.material_override = m
+		_you_acc.position.y = 0.02
+		_you.add_child(_you_acc)
+		var dot := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.16
+		sm.height = 0.32
+		dot.mesh = sm
+		var dm := StandardMaterial3D.new()
+		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		dm.albedo_color = Color("2563eb")
+		dot.material_override = dm
+		dot.position.y = 0.2
+		_you.add_child(dot)
+		_you_label = Label3D.new()
+		_you_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_you_label.fixed_size = true
+		_you_label.no_depth_test = true
+		_you_label.pixel_size = 0.0007
+		_you_label.font_size = 24
+		_you_label.outline_size = 8
+		_you_label.modulate = Color("93c5fd")
+		_you_label.position.y = 0.7
+		_you.add_child(_you_label)
+	_you.visible = on
+
+
+## A live fix (already snapped to walkable floor): the view walks there along the floor, never through walls.
+func live_fix(q: Vector2, accuracy: float, source: String) -> void:
+	if not live:
+		return
+	_you.position = Vector3(q.x, 0, q.y)
+	_you_acc.scale = Vector3(clampf(accuracy, 0.4, 15.0), 1, clampf(accuracy, 0.4, 15.0))
+	_you_label.text = "You are here · ±%.0f m · %s" % [accuracy, {"rtls": "positioning badge", "rtls-sim": "badge (simulated)", "checkpoint": "location code", "pdr": "step tracking"}.get(source, source)]
+	if q.distance_to(p) > 8.0 or (_path.is_empty() and q.distance_to(p) > 0.35):
+		if q.distance_to(p) > 8.0:
+			teleport(q)  # a far jump (first fix, or a checkpoint): go there directly
+		else:
+			go_to(q)
+	elif not _path.is_empty():
+		go_to(q)
 
 
 ## A guide line on the floor from the start to the destination (chevrons pointing the way) with tags where

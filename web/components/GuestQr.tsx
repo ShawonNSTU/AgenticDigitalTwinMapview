@@ -15,6 +15,7 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
   const [checkout, setCheckout] = useState(checkoutDefault());
   const [verify, setVerify] = useState(true);
   const [unlock, setUnlock] = useState(false);
+  const [tag, setTag] = useState('');
   const [entrance, setEntrance] = useState('');
   const [label, setLabel] = useState('');
   const [entrances, setEntrances] = useState<Entrance[]>([]);
@@ -35,7 +36,7 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
 
   const create = async () => {
     setErr('');
-    const r = await fetch('/api/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room, until: new Date(checkout).getTime(), entrance: entrance || undefined, label: label || undefined, verify, allowUnlock: verify && unlock }) });
+    const r = await fetch('/api/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room, until: new Date(checkout).getTime(), entrance: entrance || undefined, label: label || undefined, verify, allowUnlock: verify && unlock, tag: tag || undefined }) });
     const d = await r.json();
     if (!r.ok) { setErr(d.error ?? 'Could not create the pass'); return; }
     setMade(d); load();
@@ -57,8 +58,9 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
               <option value="">Nearest entrance (automatic)</option>
               {entrances.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
             </select></label>
+            <label>Location badge (optional: the tag id of the badge or key card the hotel's positioning system tracks)<input value={tag} maxLength={64} placeholder="e.g. BADGE-0042" onChange={e => setTag(e.target.value.trim())} /></label>
             <label className="chk"><input type="checkbox" checked={verify} onChange={e => setVerify(e.target.checked)} /> Verify identity with a check-in PIN (handed over at the desk)</label>
-            <label className={`chk ${verify ? '' : 'dim'}`}><input type="checkbox" disabled={!verify} checked={verify && unlock} onChange={e => setUnlock(e.target.checked)} /> Let the guest unlock this room&apos;s door (hotel policy; simulated lock integration)</label>
+            <label className={`chk ${verify ? '' : 'dim'}`}><input type="checkbox" disabled={!verify} checked={verify && unlock} onChange={e => setUnlock(e.target.checked)} /> Let the guest unlock this room&apos;s door (hotel policy; uses the SmartThings lock when linked on Integrations)</label>
             {err && <div className="bad-text">{err}</div>}
             <button className="pri" onClick={create}>Create QR code</button>
           </div>

@@ -9,13 +9,15 @@ const KEY = process.env.ADMIN_KEY ?? '';
 const guestApi = (path: string, method: string) =>
   /^\/api\/guest\/[^/]+\/(building|floor)$/.test(path) && method === 'GET'
   || /^\/api\/guest\/[^/]+\/devices\/[^/]+\/commands$/.test(path) && method === 'POST'
-  || /^\/api\/guest\/[^/]+\/(verify|chat)$/.test(path) && method === 'POST'
+  || /^\/api\/guest\/[^/]+\/(verify|chat|position)$/.test(path) && method === 'POST'
+  || /^\/api\/guest\/[^/]+\/position$/.test(path) && method === 'GET'
+  || path === '/api/positioning/rtls' && method === 'POST' // checked by its own key
   || /^\/api\/guest\/[^/]+$/.test(path) && method === 'GET';
 
 export function proxy(req: NextRequest) {
   if (!KEY) return NextResponse.next();
   const { pathname, searchParams } = req.nextUrl;
-  if (pathname.startsWith('/guest/') || pathname.startsWith('/godot/') || pathname.startsWith('/_next/') || pathname === '/favicon.ico' || guestApi(pathname, req.method)) return NextResponse.next();
+  if (pathname.startsWith('/guest/') || pathname.startsWith('/here/') || pathname.startsWith('/godot/') || pathname.startsWith('/_next/') || pathname === '/favicon.ico' || guestApi(pathname, req.method)) return NextResponse.next();
   if (searchParams.get('key') === KEY) {
     const url = req.nextUrl.clone();
     url.searchParams.delete('key');

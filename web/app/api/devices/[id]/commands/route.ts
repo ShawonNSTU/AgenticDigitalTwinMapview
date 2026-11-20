@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { runCommand, COMMANDS } from '@/lib/sim/runtime';
+import { COMMANDS } from '@/lib/sim/runtime';
+import { dispatch } from '@/lib/sim/dispatch';
 import { byId } from '@/lib/sim/engine';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.message }, { status: 400 });
   const { command, args, confirmed, by } = parsed.data;
-  const r = runCommand(id, command, args ?? {}, !!confirmed, by ?? 'user');
+  const r = await dispatch(id, command, args ?? {}, !!confirmed, by ?? 'user');
   return NextResponse.json(r, { status: r.ok ? 200 : r.needsConfirmation ? 409 : 400 });
 }

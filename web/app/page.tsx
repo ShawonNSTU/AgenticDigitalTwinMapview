@@ -158,6 +158,7 @@ export default function Home() {
           <span className={`stat ${bad.length ? 'warn' : 'good'}`}><b>{bad.length}</b> {bad.length === 1 ? 'needs' : 'need'} attention</span>
           <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
           <a href="/tech"><button className="ghost">Technician</button></a>
+          <a href="/integrations"><button className="ghost">Integrations</button></a>
           <a href="/setup"><button className="ghost">Upload floor plan</button></a>
         </div>
       </header>

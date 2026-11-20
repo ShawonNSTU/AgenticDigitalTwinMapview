@@ -93,6 +93,10 @@ func _ready() -> void:
 			var fs := Node.new()
 			fs.set_script(load("res://tests/fx_shots.gd"))
 			add_child(fs)
+		if a.begins_with("--live-check="):
+			var lt := Node.new()
+			lt.set_script(load("res://tests/live_test.gd"))
+			add_child(lt)
 		if a.begins_with("--guest-check="):
 			var gt := Node.new()
 			gt.set_script(load("res://tests/guest_test.gd"))
@@ -162,6 +166,8 @@ func _build_world(animate: bool) -> void:
 func _apply_live() -> void:
 	if world == null:
 		return
+	if _live:
+		_live_fix()
 	for id in devices:
 		var n = devices[id]
 		if is_instance_valid(n):
@@ -501,6 +507,12 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 				stop_walk()
 		"skip": _guest_skip()
 		"restart": _guest_restart(str(msg.get("from", "")))
+		"live":
+			_live = bool(msg.get("on", true))
+			if walker:
+				walker.set_live(_live)
+				if _live:
+					_live_fix()
 		"overview":
 			if walker:
 				walker.overview(bool(msg.get("on", true)))
@@ -618,6 +630,9 @@ func _busiest_room_point() -> Vector2:
 # --- Guest visit (opened from a room's QR code) ---------------------------------------------------------
 
 var _guest_target := Vector2.INF
+var _live := false       # the guest's view follows their live indoor position
+var _route_at := 0       # ms of the last route re-plan from the live position
+var _last_fix := 0.0
 var _guest_room := ""
 var _guest_from := ""
 
@@ -687,10 +702,15 @@ func _start_guest(from_key := "") -> void:
 	for q in route:
 		metres += prev.distance_to(q)
 		prev = q
-	Bus.walk_changed.emit({"on": true, "guest": "walking", "from": _guest_from, "to": Store.room_label(target_room), "metres": snappedf(metres, 0.1)})
+	var pts: Array = [[snappedf(start.x, 0.01), snappedf(start.y, 0.01)]]
+	for q in route:
+		pts.append([snappedf(q.x, 0.01), snappedf(q.y, 0.01)])
+	Bus.walk_changed.emit({"on": true, "guest": "walking", "from": _guest_from, "to": Store.room_label(target_room), "metres": snappedf(metres, 0.1), "route": pts})
 	get_tree().create_timer(Walker.INTRO + 0.3).timeout.connect(func():
-		if walker and _guest_target != Vector2.INF and not walker.go_to(_guest_target):
+		if walker and not _live and _guest_target != Vector2.INF and not walker.go_to(_guest_target):
 			_guest_skip())
+	if _live:
+		walker.set_live(true)
 
 
 ## Where a guest's walk begins: the entrance the host chose; else just inside a door to the outside;
@@ -744,6 +764,28 @@ func _guest_arrived() -> void:
 	walker.confine(Store.room(_guest_room))
 	walker.hide_route()
 	Bus.walk_changed.emit({"on": true, "guest": "arrived", "room": _guest_room, "roomName": Store.room_label(Store.room(_guest_room))})
+
+
+## A live position fix (RTLS badge, location QR code or step tracking): snap it to walkable floor (map
+## matching), walk the guest's view there through doorways, re-plan the way to the room from it, and count it
+## as arriving once the fix is inside the room.
+func _live_fix() -> void:
+	if walker == null or Store.me.is_empty():
+		return
+	var at := float(Store.me.get("at", 0.0))
+	if at == _last_fix:
+		return
+	_last_fix = at
+	var q := walker.nav.nearest_free(Vector2(float(Store.me.x), float(Store.me.z)), 30)
+	walker.live_fix(q, float(Store.me.get("accuracy", 2.0)), str(Store.me.get("source", "")))
+	if Time.get_ticks_msec() - _route_at > 3000 and _guest_target != Vector2.INF and walker._confine.is_empty():
+		_route_at = Time.get_ticks_msec()
+		var route := walker.nav.path(q, _guest_target)
+		walker.show_route(q, route, Store.room_label(Store.room(_guest_room)))
+	var r: Dictionary = Store.room_at(q)
+	if not r.is_empty() and r.key == _guest_room:
+		walker._track_room()
+		_guest_arrived()
 
 
 ## The guest chose another starting point: plan the way again from there.

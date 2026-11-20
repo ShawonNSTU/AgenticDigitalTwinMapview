@@ -5,10 +5,11 @@ import TwinView from '@/components/TwinView';
 import { DeviceIcon } from '@/components/DevicePalette';
 import DeviceControls, { CMD_LABEL, type Cmd } from '@/components/DeviceControls';
 import GuestAssistant from '@/components/GuestAssistant';
+import Locator from '@/components/Locator';
 import { send, type FromRenderer } from '@/lib/bridge';
 
 type Dev = { id: string; type: string; label: string; name: string; health: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; status: { name: string; value: string; health: string }[]; finding: { title: string; lvl: string } | null; commands: Cmd[] };
-type View = { room: { key: string; name: string }; entrance: { key: string; name: string } | null; entrances: { key: string; name: string }[]; title: string; guestName: string; allowUnlock: boolean; expiresAt: number; devices: Dev[] };
+type View = { lock: { integration: string; autoRelockSec: number }; room: { key: string; name: string }; entrance: { key: string; name: string } | null; entrances: { key: string; name: string }[]; title: string; guestName: string; allowUnlock: boolean; expiresAt: number; devices: Dev[] };
 type Walk = { phase: 'loading' | 'walking' | 'arrived'; from?: string; to?: string; metres?: number; here?: string };
 
 // What the guided tour says about each kind of device (only devices in the room, only controls it has).
@@ -45,6 +46,12 @@ export default function GuestPage() {
   const [overview, setOverview] = useState(false);
   const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
   const cards = useRef<Record<string, HTMLDivElement | null>>({});
+  const [route, setRoute] = useState<[number, number][]>([]);
+  const [stepUp, setStepUp] = useState<{ id: string; command: string } | null>(null);
+  const [stepPin, setStepPin] = useState('');
+  const [stepErr, setStepErr] = useState('');
+  // remember this guest link on the phone, so a location code scanned with the camera finds the way back here
+  useEffect(() => { try { localStorage.setItem('twin.guestToken', token); } catch { /* storage unavailable */ } }, [token]);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/guest/${token}`, { cache: 'no-store' });
@@ -68,18 +75,22 @@ export default function GuestPage() {
     if (m.type === 'floorBuilt') setBuilt(true);
     if (m.type === 'guestDenied') setDenied('This guest link is no longer valid.');
     if (m.type === 'walk') {
-      if (m.guest === 'walking') setWalk({ phase: 'walking', from: m.from, to: m.to, metres: m.metres });
+      if (m.guest === 'walking') { setWalk({ phase: 'walking', from: m.from, to: m.to, metres: m.metres }); if (m.route) setRoute(m.route); }
       else if (m.guest === 'arrived') { setWalk(w => ({ ...w, phase: 'arrived', here: m.roomName })); setOverview(false); }
       else if (m.roomName) setWalk(w => ({ ...w, here: m.roomName }));
     }
     if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); setTimeout(() => cards.current[m.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); }
   }, []);
 
-  const run = (id: string) => async (command: string, args: Record<string, unknown> = {}) => {
-    const r = await fetch(`/api/guest/${token}/devices/${id}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, args }) });
+  const run = (id: string) => async (command: string, args: Record<string, unknown> = {}, _c?: boolean, pin?: string) => {
+    const r = await fetch(`/api/guest/${token}/devices/${id}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, args, ...(pin ? { pin } : {}) }) });
     const d = await r.json().catch(() => ({}));
-    setMsg(r.ok ? { text: `${CMD_LABEL[command] ?? command} · done`, bad: false } : { text: d.error ?? 'That didn’t work', bad: true });
-    setTimeout(() => setMsg(null), 2600);
+    if (r.status === 428 && d.stepUp) { setStepUp({ id, command }); setStepPin(''); setStepErr(''); return; }   // the policy wants the PIN again
+    if (stepUp && !r.ok) { setStepErr(d.error ?? 'That didn’t work'); return; }
+    setStepUp(null);
+    const what = command === 'unlock' && r.ok ? `Door unlocked${d.relockIn ? ` · locks again in ${d.relockIn} s` : ''}` : `${CMD_LABEL[command] ?? command} · done`;
+    setMsg(r.ok ? { text: what, bad: false } : { text: d.error ?? 'That didn’t work', bad: true });
+    setTimeout(() => setMsg(null), 3200);
     send({ type: 'refreshDevices' });
     load();
   };
@@ -142,6 +153,18 @@ export default function GuestPage() {
             {stops.length > 0 && <button className="pri" onClick={() => setTour(0)}>Take the tour</button>}
           </div>
         )}
+        {view && <div className="locator-wrap"><Locator token={token} route={route} /></div>}
+        {stepUp && (
+          <div className="modal-back" onClick={() => setStepUp(null)}>
+            <form className="modal glass pin-card" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); run(stepUp.id)(stepUp.command, {}, true, stepPin); }}>
+              <h3>Unlock your door</h3>
+              <p className="muted">For your safety, enter your check-in PIN again.</p>
+              <input className="pin" inputMode="numeric" maxLength={6} autoFocus value={stepPin} onChange={e => setStepPin(e.target.value.replace(/\D/g, ''))} aria-label="Check-in PIN" />
+              {stepErr && <div className="bad-text">{stepErr}</div>}
+              <button className="pri" disabled={stepPin.length < 6}>Unlock</button>
+            </form>
+          </div>
+        )}
         {tour != null && stops[tour] && (
           <div className="tour glass">
             <small>{tour + 1} of {stops.length}</small>
@@ -167,6 +190,7 @@ export default function GuestPage() {
                   {d.online ? <i className={`dot ${d.health}`} /> : <em className="off-tag">Offline</em>}
                 </div>
                 {!d.online && <div className="guest-finding fault">Not responding. Hotel staff have been alerted.</div>}
+                {d.type === 'lock' && view && <div className="muted lock-line">{view.lock.integration === 'smartthings' ? 'Connected lock (SmartThings)' : 'Lock simulator'}{view.allowUnlock ? ` · unlocking needs your PIN; it locks again after ${view.lock.autoRelockSec} s` : ' · unlocking is done at the front desk'}</div>}
                 {d.online && d.finding && d.health !== 'ok' && <div className={`guest-finding ${d.finding.lvl}`}>{d.finding.title}</div>}
                 <div className="guest-status">{d.status.map(s => <span key={s.name}><small>{s.name}</small>{s.value}</span>)}</div>
                 {d.commands.length > 0 && <div onClick={e => e.stopPropagation()}><DeviceControls dev={d} commands={d.commands} run={run(d.id)} disabled={!d.online} /></div>}

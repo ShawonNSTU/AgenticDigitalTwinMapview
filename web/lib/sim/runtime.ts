@@ -6,6 +6,7 @@ import sampleDevices from './data/devices.json';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
+import { realState } from '@/lib/integrations/smartthings';
 
 type Override = Record<string, unknown>;
 interface Runtime {
@@ -65,9 +66,12 @@ export function device(id: string, t = tick()) {
     const room = base ? acRoom(id, base.readings as Record<string, any>, o) : null;
     if (room != null) o = { ...(o ?? {}), room };
   }
+  // a device linked to SmartThings shows what the real device reports (over the simulated values)
+  const real = d ? realState(id, d.type) : null;
+  if (real) o = { ...(o ?? {}), ...real.readings, ...(real.online ? {} : { online: false }) };
   const s = snapshot(id, t, o);
   if (!s) return null;
-  return { ...s, overrides: rt.overrides[id] ?? null, online: (s.readings as any).online !== false };
+  return { ...s, overrides: rt.overrides[id] ?? null, online: (s.readings as any).online !== false, source: real ? 'smartthings' : 'simulator' };
 }
 
 /** Readings the floor view needs for every refrigerant circuit, sent with each /api/floor poll. */

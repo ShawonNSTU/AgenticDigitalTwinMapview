@@ -16,7 +16,8 @@ var wall_height := 1.15
 var walk := false
 var guest_token := ""      # set when the page was opened from a guest link (?guest=<token>)
 var guest: Dictionary = {}  # {room, entrance} from the platform for that link
-var guest_allowed: Dictionary = {}  # rooms a guest may see and walk through (empty = no limit)  # first-person walk-through: full-height walls, ceilings, lights under the ceiling
+var guest_allowed: Dictionary = {}
+var me: Dictionary = {}  # the guest's live position fix {x, z, accuracy, source, at} (guest links only)  # rooms a guest may see and walk through (empty = no limit)  # first-person walk-through: full-height walls, ceilings, lights under the ceiling
 
 var t := 10.0
 var scenario := "normal"
@@ -172,6 +173,7 @@ func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteAr
 		_announced = true  # the platform runs the same sample home we bundle: build it now
 		print("[store] layout: platform runs the bundled sample (version %d)" % layout_version)
 		Bus.layout_changed.emit()
+	me = data.get("me", {}) if data.get("me") is Dictionary else {}
 	set_time(float(data.get("time", t)))
 	set_scenario(str(data.get("scenario", scenario)))
 	for d in data.get("devices", []):

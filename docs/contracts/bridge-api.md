@@ -28,7 +28,7 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `startMove` | `id` | the placed device follows the pointer inside the map; click puts it down (`moveDevice`), right-click or Esc cancels |
 | `refreshDevices` | | poll the platform now (the page just added, moved or removed a device) |
 | `selectRoom` | `room` | highlight a room's floor (`""` clears) |
-| `walk` | `action`: `start`, `stop`, `toggle`, `goto` (`room`), `stick` (`x`, `y` in −1..1), and for guests `skip`, `restart` (`from` room), `overview` (`on`), `look` (`id`: turn to a device) | first-person walk-through: `start` drops to eye height where the view is centred (or in `room`); walls reach the ceiling and rooms are entered through doorways; `goto` walks the route to a room; `stick` is the on-screen joystick (`y` −1 walks forward, `x` turns) |
+| `walk` | `action`: `start`, `stop`, `toggle`, `goto` (`room`), `stick` (`x`, `y` in −1..1), and for guests `skip`, `restart` (`from` room), `overview` (`on`), `look` (`id`: turn to a device), `live` (`on`: follow the live position) | first-person walk-through: `start` drops to eye height where the view is centred (or in `room`); walls reach the ceiling and rooms are entered through doorways; `goto` walks the route to a room; `stick` is the on-screen joystick (`y` −1 walks forward, `x` turns) |
 
 ## Renderer → host
 

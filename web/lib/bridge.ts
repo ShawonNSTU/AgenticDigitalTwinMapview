@@ -20,7 +20,7 @@ export type ToRenderer =
   | { type: 'dragEnd'; u: number; v: number; drop: boolean }
   | { type: 'startMove'; id: string }
   | { type: 'refreshDevices' }
-  | { type: 'walk'; action: 'start' | 'stop' | 'toggle' | 'goto' | 'stick' | 'skip' | 'restart' | 'overview' | 'look'; room?: string; x?: number; y?: number; from?: string; on?: boolean; id?: string }
+  | { type: 'walk'; action: 'start' | 'stop' | 'toggle' | 'goto' | 'stick' | 'skip' | 'restart' | 'overview' | 'look' | 'live'; room?: string; x?: number; y?: number; from?: string; on?: boolean; id?: string }
   | { type: 'selectRoom'; room: string };
 
 /** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */
@@ -37,7 +37,7 @@ export type FromRenderer =
   | ({ type: 'dropDevice'; deviceType: string } & Placement)
   | ({ type: 'moveDevice'; id: string } & Placement)
   | { type: 'placeHover'; room: string; roomName: string; valid: boolean; mount: string }
-  | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string; guest?: 'walking' | 'arrived'; from?: string; to?: string; metres?: number }
+  | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string; guest?: 'walking' | 'arrived'; from?: string; to?: string; metres?: number; route?: [number, number][] }
   | { type: 'roomClicked'; room: string; roomName: string }
   | { type: 'guestDenied'; code: number };
 

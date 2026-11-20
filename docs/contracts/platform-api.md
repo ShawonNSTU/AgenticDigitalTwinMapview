@@ -115,3 +115,26 @@ token and 410 once the pass expired, was withdrawn or the plan was replaced.
 Commands added for the hotel: AC `setMode`, `setSwing`, `setTimer`; light `power`, `setColorTemperature`; TV
 `power`, `setVolume`, `setInput`; fan `power`, `setSpeed`, `setOscillation`; blinds `open`, `close`; purifier
 `power`. Any device with a radio can get the `offline` fault: its commands then fail with `offline: true`.
+
+## Integrations, door access, positioning
+
+| Method · path | What |
+|---|---|
+| `GET /api/integrations` · `POST {token?, policy?}` | SmartThings connection and links; door-access policy `{stepUpMinutes, maxUnlocksPer10Min, autoRelockSec}` |
+| `GET /api/integrations/smartthings` | devices in the connected SmartThings account |
+| `POST /api/integrations/links {localId, stId, component?}` · `DELETE ?localId=` | link a twin device to a SmartThings device |
+| `GET /api/locks?device=` | door-access audit log |
+| `GET /api/positioning` · `POST {northDeg?, stepLength?}` | positioning settings, RTLS key, location QR checkpoints |
+| `POST /api/positioning/rtls` (header `x-rtls-key`) | fixes from the hotel's positioning system: `{tag, x, z, accuracy?}` or `{fixes: [...]}` |
+| `GET · POST /api/guest/:token/position` | the guest's latest fix; a fix from the guest's phone: `{checkpoint}` or `{x, z, accuracy, source: pdr}` |
+
+Commands to a linked device go to `POST https://api.smartthings.com/v1/devices/{id}/commands` (base overridable
+with `SMARTTHINGS_API`) as `{commands: [{component, capability, command, arguments}]}`: lock `lock.lock/unlock`,
+`switch.on/off`, `switchLevel.setLevel`, `colorTemperature.setColorTemperature`,
+`thermostatCoolingSetpoint.setCoolingSetpoint`, `airConditionerMode.setAirConditionerMode`,
+`airConditionerFanMode.setFanMode`, `fanOscillationMode`, `audioVolume.setVolume`,
+`mediaInputSource.setInputSource`, `fanSpeed.setFanSpeed`, `windowShade.open/close`,
+`windowShadeLevel.setShadeLevel`, `airPurifierFanMode`, `robotCleanerMovement`. Status comes from
+`GET /devices/{id}/status` and `/health`. A guest unlock answers 428 `{stepUp: true}` when the policy wants the
+PIN again (send `pin` with the command), 429 when too many unlocks.
+The guest's `/floor` feed carries `me: {x, z, accuracy, source, at}` while a fresh fix (under 30 s) exists.

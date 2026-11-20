@@ -3,7 +3,11 @@
 // /api/guest/<token>/..., which filters by the pass; nothing else is reachable with a token.
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { DEV, ROOMS, TYPES, LAYOUT, byId } from './engine';
-import { buildingState, floor, device, runCommand, COMMANDS, rt } from './runtime';
+import { buildingState, floor, device, COMMANDS, rt } from './runtime';
+import { dispatch } from './dispatch';
+import { audit, markStepUp, stepUpFresh, unlocksRecently, policy } from './access';
+import { info as stInfo } from '@/lib/integrations/smartthings';
+import { bindTag, fixOf } from './positioning';
 
 export type GuestPass = {
   token: string;
@@ -35,7 +39,7 @@ export function verifyPin(token: string, pin: string): { cookie: string } | { er
   const p = passes[token];
   if (!p || p.revoked) return { error: 'This guest link is not valid.', status: 404 };
   if (!p.pin) return { cookie: sign(token) };
-  if (pin.trim() === p.pin) { p.failed = 0; return { cookie: sign(token) }; }
+  if (pin.trim() === p.pin) { p.failed = 0; markStepUp(token); return { cookie: sign(token) }; }
   p.failed += 1;
   if (p.failed >= 5) { p.revoked = true; return { error: 'Too many wrong PINs. The link was locked; ask the front desk for a new one.', status: 410 }; }
   return { error: `That PIN is not right (${5 - p.failed} tries left).`, status: 401 };
@@ -55,7 +59,7 @@ export function entranceRooms() {
     .sort((a, b) => (/lift|elevator|lobby|reception|entrance|entry|foyer/i.test(a.name) ? 0 : 1) - (/lift|elevator|lobby|reception|entrance|entry|foyer/i.test(b.name) ? 0 : 1));
 }
 
-export function createPass(room: string, hours: number, entrance = '', label = '', opts: { until?: number; verify?: boolean; allowUnlock?: boolean } = {}) {
+export function createPass(room: string, hours: number, entrance = '', label = '', opts: { until?: number; verify?: boolean; allowUnlock?: boolean; tag?: string } = {}) {
   if (!roomOf(room)) throw new Error(`Unknown room ${room}`);
   if (entrance && !roomOf(entrance)) throw new Error(`Unknown entrance ${entrance}`);
   const now = Date.now();
@@ -65,6 +69,7 @@ export function createPass(room: string, hours: number, entrance = '', label = '
   if (opts.allowUnlock && !pin) throw new Error('Unlocking needs identity verification (a check-in PIN)');
   const p: GuestPass = { token: randomBytes(18).toString('base64url'), room, entrance, label: label.slice(0, 60), layout: rt.planGen ?? 0, createdAt: now, expiresAt, revoked: false, pin, allowUnlock: !!opts.allowUnlock, failed: 0 };
   passes[p.token] = p;
+  if (opts.tag) bindTag(opts.tag.slice(0, 64), p.token); // the guest's location badge in the hotel's positioning system
   return describe(p);
 }
 
@@ -116,6 +121,7 @@ export function guestView(p: GuestPass) {
     title: rt.title,
     expiresAt: p.expiresAt,
     guestName: p.label,
+    lock: lockInfo(),
     allowUnlock: p.allowUnlock,
     entrances: entranceRooms(),
     devices: inRoom(p).map((d: any) => {
@@ -140,15 +146,31 @@ export function guestBuilding(p: GuestPass) {
 
 export function guestFloor(p: GuestPass) {
   const f = floor();
-  return { ...f, devices: f.devices.filter(d => d.room === p.room) };
+  const me = fixOf(p.token);
+  return { ...f, devices: f.devices.filter(d => d.room === p.room), ...(me ? { me } : {}) };
 }
 
-export function guestCommand(p: GuestPass, id: string, command: string, args: Record<string, unknown>) {
+export async function guestCommand(p: GuestPass, id: string, command: string, args: Record<string, unknown>, pin?: string) {
   const d = byId[id];
   if (!d || d.room !== p.room) return { status: 403, body: { ok: false, error: 'This device is not in your room.' } };
   const allowed = guestCommands(d.type, p).find(c => c.name === command);
-  if (!allowed) return { status: 403, body: { ok: false, error: `Guests can't use "${command}" on this device.` } };
-  // unlocking is allowed only by hotel policy, for a verified guest, on their own room's lock (simulated integration)
-  const r: any = runCommand(id, command, args, !!(allowed as any).confirm, 'guest');
-  return { status: r.ok ? 200 : r.offline ? 503 : 400, body: r.ok ? { ok: true } : { ok: false, error: r.error, offline: !!r.offline } };
+  const who = `guest ${p.label || p.token.slice(0, 6)}`;
+  if (!allowed) {
+    if (command === 'unlock') audit({ deviceId: id, room: d.room, action: 'unlock', by: who, ok: false, reason: 'not allowed by the pass', via: 'simulator' });
+    return { status: 403, body: { ok: false, error: `Guests can't use "${command}" on this device.` } };
+  }
+  if (command === 'unlock') {
+    // the hotel's access policy: identity re-checked recently, not too many unlocks, within the stay
+    if (pin) { const v = verifyPin(p.token, pin); if ('error' in v) return { status: v.status, body: { ok: false, error: v.error } }; }
+    if (!stepUpFresh(p.token)) return { status: 428, body: { ok: false, stepUp: true, error: 'Enter your check-in PIN to unlock the door.' } };
+    if (unlocksRecently(who) >= policy().maxUnlocksPer10Min) {
+      audit({ deviceId: id, room: d.room, action: 'unlock', by: who, ok: false, reason: 'too many unlocks', via: 'simulator' });
+      return { status: 429, body: { ok: false, error: 'Too many unlocks in a short time. Please contact the front desk.' } };
+    }
+  }
+  const r = await dispatch(id, command, args, !!(allowed as any).confirm, who);
+  return { status: r.ok ? 200 : r.offline ? 503 : 400, body: r.ok ? { ok: true, via: r.via, ...(command === 'unlock' && policy().autoRelockSec ? { relockIn: policy().autoRelockSec } : {}) } : { ok: false, error: r.error, offline: !!r.offline } };
 }
+
+/** How the room's lock is connected, for the guest page. */
+export const lockInfo = () => ({ integration: stInfo().configured ? 'smartthings' : 'simulator', autoRelockSec: policy().autoRelockSec });

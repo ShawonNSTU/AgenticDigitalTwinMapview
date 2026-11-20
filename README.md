@@ -34,14 +34,19 @@ Proof of concept with three features:
    colour; fan: speed and oscillation; blinds; purifier; vacuum; lock).
 7. **Time-limited guest access by QR code.** Click a room, "Guest QR code": guest name, checkout time, an optional
    check-in PIN (identity check at the desk) and, by hotel policy, whether the verified guest may unlock their door
-   (simulated lock integration). Passes expire at checkout and can be withdrawn. A guest only ever reaches
+   (through the lock integration below). Passes expire at checkout and can be withdrawn. A guest only ever reaches
    `/api/guest/<token>/…`, which returns and controls nothing outside their room. Optional `ADMIN_KEY` keeps the
    host pages and APIs behind a sign-in (`?key=…` once).
 8. **3D guidance to the room.** After scanning, the guest enters the PIN and walks in 3D from an entrance (the host's
    choice, or a lift, lobby or stair, or a door to the outside) to the room along a route drawn on the floor with
    tags where it enters the corridor, stairs and the room; they can pick another starting point, see the way from
-   above or skip. Only rooms on the way open; other doors stay shut and show nothing. Live indoor positioning is
-   not part of this demo (it needs positioning hardware).
+   above or skip. Only rooms on the way open; other doors stay shut and show nothing.
+   **Live indoor position** ("Find me" on the guest page): the view follows the guest's real position, snapped
+   to walkable floor and re-routed to the room. Fixes come from the hotel's positioning system (UWB/BLE badge
+   bound to the pass at check-in, posted to `/api/positioning/rtls` with its key), from location QR codes on the
+   walls (one beside every door and in each stair or lift; print them from `/integrations`, scan with the phone
+   camera), and in between from the phone's step counting and compass. "Simulate a badge" replays the route as
+   an RTLS would, for demos without hardware.
 9. **Room tour and controls.** In the room a guided tour turns to each device and says what it does; tapping a
    device in 3D opens its controls. The room reacts in 3D: lights brighten or dim the room (with colour), the AC
    blows air coloured by mode and swings its louver, the floor tints cool or warm, the TV screen plays, blinds go up
@@ -51,6 +56,12 @@ Proof of concept with three features:
     the lights" or "Make the room comfortable for sleeping": the assistant shows the planned actions, asks first for
     broad wishes, runs them and reports each device's result, including partial failures (a device offline). It
     uses Claude when `ANTHROPIC_API_KEY` is set and a rule-based reader otherwise, always through the guest API.
+12. **Real devices and door access** (`/integrations`). Connect a SmartThings account (personal access token, or
+    `SMARTTHINGS_TOKEN`) and link twin devices to real ones: every command (host, guest, assistants, policy) then
+    goes to the SmartThings API, and the device's reported status and online state replace the simulated values;
+    unlinked devices stay simulated. Unlocking follows the hotel's access policy: only the guest's own door, only
+    if the pass allows it, after the check-in PIN, with the PIN asked again after a set time, a limit on unlocks,
+    automatic relocking, and an audit log of every attempt.
 11. **Technician alerts.** `/tech` lists alerts from devices that are not healthy (with browser notifications for
     new ones): room and device, what it reports, affected components (measured or not), recent events,
     troubleshooting steps, service notes, the 3D twin, an AI summary of the evidence, and a form to record the
@@ -142,6 +153,7 @@ Try in the chat: "which air conditioners have a problem?", "what's wrong with OD
 ```bash
 cd agent-backend && pytest                              # search, tools, demo mode, eval cases, guest assistant
 cd web && npm run typecheck && npm run build
+# after every pull: cd web && npm install && npm run export:renderer && npm run build && npm start
 cd web && npm run test:faults                           # every fault × severity: readings, parts, diagnosis
 cd godot-renderer && godot --headless --path . -- --smoke   # drives every bridge command
 cd godot-renderer && godot --path . -- --camera=/tmp/camera # fit, zoom range, plan view, rotate, pan limits on 8 m to 300 m floors
@@ -149,6 +161,7 @@ cd godot-renderer && godot --path . -- --place=/tmp/place   # drag and drop 21 d
 cd godot-renderer && godot --path . -- --walk=/tmp/walk     # walk-through: every room reachable, routes through doorways, no wall crossing
 cd godot-renderer && godot --headless --path . -- --guest=<token> --guest-check=/tmp/guest  # guest walk (pass without PIN)
 cd godot-renderer && godot --path . -- --fx-shots=/tmp/fx --fx-room=<key>  # screenshots of a room reacting to its devices
+cd godot-renderer && godot --headless --path . -- --guest=<token> --live-check=/tmp/live  # following noisy live position fixes
 ```
 
 ## Status
