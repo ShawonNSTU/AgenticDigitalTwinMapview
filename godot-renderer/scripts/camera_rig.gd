@@ -368,6 +368,7 @@ func _unhandled_input(e: InputEvent) -> void:
 				if e.pressed:
 					_drag = e.button_index
 					drag_px = 0.0
+					_pivot = ground_at(e.position) if e.button_index == MOUSE_BUTTON_LEFT else null
 					if e.double_click and e.button_index == MOUSE_BUTTON_LEFT:
 						_zoom_to(e.position)
 				elif e.button_index == _drag:
@@ -413,6 +414,7 @@ func _touch(e: InputEventScreenTouch) -> void:
 		_touches[e.index] = e.position
 		if _touches.size() == 1:
 			drag_px = 0.0
+			_pivot = ground_at(e.position)
 			if e.double_tap:
 				_zoom_to(e.position)
 	else:
@@ -469,14 +471,39 @@ func _key(e: InputEventKey) -> void:
 		KEY_HOME: reset()
 
 
+## Floor point the current drag orbits around (the point that was under the cursor), or null.
+var _pivot = null
+
+
+## Orbit: sideways turns, up/down tilts. The view swings around the floor point that was under the cursor
+## when the drag began, so that point stays put on screen (like CAD and map apps); without one, around the
+## centre of the view.
 func _orbit(rel: Vector2) -> void:
 	user_moved = true
 	if _tw and _tw.is_running():
 		_tw.kill()
 		_goal_distance = distance
 		_goal_target = target
-	yaw -= rel.x * 0.006
-	pitch -= rel.y * 0.006
+	var dy := -rel.x * 0.006
+	var new_pitch := clampf(pitch - rel.y * 0.006, deg_to_rad(PITCH_MIN), deg_to_rad(PITCH_MAX))
+	var dp := new_pitch - pitch
+	if _pivot == null:
+		yaw += dy
+		pitch = new_pitch
+		_apply()
+		return
+	var pv: Vector3 = _pivot
+	var b := cam.global_transform.basis
+	var r := Basis(Vector3.UP, dy) * Basis(b.x.normalized(), dp)
+	var pos := pv + r * (cam.global_position - pv)
+	yaw += dy
+	pitch = new_pitch
+	var f := Vector3(-cos(pitch) * sin(yaw), sin(pitch), -cos(pitch) * cos(yaw))  # looking direction
+	var k := -pos.y / f.y if f.y < -0.02 else distance
+	distance = clampf(k, MIN_DISTANCE, max_distance)
+	target = pos + f * k
+	_goal_distance = distance
+	_goal_target = target
 	_apply()
 
 

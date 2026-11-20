@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { attach, onRenderer, type FromRenderer } from '@/lib/bridge';
 
 /** Hosts the Godot web export (public/godot/index.html) and wires the message bridge. */
-export default function TwinView({ onEvent, ready = false }: { onEvent: (m: FromRenderer) => void; ready?: boolean }) {
+export default function TwinView({ onEvent, ready = false, src = '/godot/index.html', loadingText = 'Preparing the floor, interiors and devices…' }: { onEvent: (m: FromRenderer) => void; ready?: boolean; src?: string; loadingText?: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [present, setPresent] = useState<boolean | null>(null);
   useEffect(() => { fetch('/godot/index.html', { method: 'HEAD' }).then(r => setPresent(r.ok)).catch(() => setPresent(false)); }, []);
@@ -19,12 +19,12 @@ export default function TwinView({ onEvent, ready = false }: { onEvent: (m: From
   );
   return (
     <>
-      <iframe ref={ref} className="twin" src="/godot/index.html" title="3D map view" allow="fullscreen" />
+      <iframe ref={ref} className="twin" src={src} title="3D map view" allow="fullscreen" />
       {present && !ready && (
         <div className="loading" role="status">
           <span className="spinner" aria-hidden />
           <b>{slow ? 'The 3D view is taking longer than usual' : 'Loading the 3D map'}</b>
-          <span className="muted">{slow ? 'It needs WebGL 2 and about 40 MB on first load. Try reloading, or a desktop browser with hardware acceleration on.' : 'Preparing the floor, interiors and devices…'}</span>
+          <span className="muted">{slow ? 'It needs WebGL 2 and about 40 MB on first load. Try reloading, or a desktop browser with hardware acceleration on.' : loadingText}</span>
         </div>
       )}
     </>

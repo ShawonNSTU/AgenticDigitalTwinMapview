@@ -4,17 +4,21 @@ extends RefCounted
 ## columns and furniture are solid, A* paths that go through doorways, and doorways for rooms the plan
 ## left without one (so every room can be entered).
 
-const RADIUS := 0.2  # metres kept between the walker and a wall
-# furniture you can walk past or between (chairs are pushed in; rugs and door leaves are not obstacles)
-const SOFT := ["door", "rug", "railing", "chair", "task_chair", "stool", "arc", "plant"]
+const RADIUS := 0.22   # body radius: metres kept between the walker's centre and any wall or furniture
+const MARGIN := 0.45   # routes prefer to stay this far from obstacles (middle of corridors and doorways)
+# only rugs and door leaves (open flat against the wall while walking) can be walked over
+const SOFT := ["door", "rug"]
 
 var astar := AStarGrid2D.new()
 var cell := 0.15
+var gaps: Array = []        # door openings [a, b]: routes cross them through the middle, square on
+var _near := PackedByteArray()  # 1 where a cell is closer than MARGIN to an obstacle
 var origin := Vector2.ZERO
 var size := Vector2i.ZERO
 
 
-func build(wall_pieces: Array) -> void:
+func build(wall_pieces: Array, door_gaps: Array = []) -> void:
+	gaps = door_gaps
 	var fr: Rect2 = Store.floor_rect().grow(1.0)
 	cell = maxf(0.15, maxf(fr.size.x, fr.size.y) / 700.0)  # at most ~700 cells across, even on huge floors
 	origin = fr.position
@@ -28,6 +32,8 @@ func build(wall_pieces: Array) -> void:
 	astar.fill_solid_region(astar.region, true)
 	# 1. the rooms are walkable
 	for r in Store.rooms:
+		if not Store.room_allowed(r.key):
+			continue
 		var poly := PlanGeo.room_poly(r)
 		var bb := _bbox(poly)
 		var a := to_cell(bb.position)
@@ -45,23 +51,88 @@ func build(wall_pieces: Array) -> void:
 	for f in Store.furniture:
 		if SOFT.has(f.get("kind", "")):
 			continue
-		_fill(Placer._rect(Vector2(float(f.x), float(f.z)), Vector2(float(f.w) + 0.2, float(f.d) + 0.2), float(f.get("rot", 0.0))), true)
-	# 4. walls, kept RADIUS away
-	var reach := ceili(RADIUS / cell) + 1
+		_fill(Placer._rect(Vector2(float(f.x), float(f.z)), Vector2(float(f.w) + 2 * RADIUS, float(f.d) + 2 * RADIUS), float(f.get("rot", 0.0))), true)
+	# 4. walls, kept RADIUS away, and the open door leaves standing out from their hinges
 	for s in wall_pieces:
-		var a: Vector2 = s[0]
-		var b: Vector2 = s[1]
-		var steps := maxi(1, ceili(a.distance_to(b) / (cell * 0.5)))
-		for k in steps + 1:
-			var q := a.lerp(b, float(k) / steps)
-			var c0 := to_cell(q)
-			for i in range(-reach, reach + 1):
-				for j in range(-reach, reach + 1):
-					var c := c0 + Vector2i(i, j)
-					if _inside(c) and not astar.is_point_solid(c):
-						var m := centre(c)
-						if m.distance_to(Geometry2D.get_closest_point_to_segment(m, a, b)) < RADIUS:
-							astar.set_point_solid(c, true)
+		_mark_segment(s[0], s[1])
+	for f in Store.furniture:
+		if f.get("kind", "") != "door":
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		var rot := float(f.get("rot", 0.0))
+		var u := Vector2(cos(rot), -sin(rot))
+		var n := Vector2(sin(rot), cos(rot))
+		var w := float(f.w)
+		var leaves := 2 if w > 1.2 else 1
+		for li in leaves:
+			var side := -1.0 if li == 0 else 1.0
+			var hinge := c + u * side * w / 2
+			_mark_segment(hinge, hinge + n * (w / leaves - 0.02))
+	_clearance()
+
+
+func _mark_segment(a: Vector2, b: Vector2) -> void:
+	var reach := ceili(RADIUS / cell) + 1
+	var steps := maxi(1, ceili(a.distance_to(b) / (cell * 0.5)))
+	for k in steps + 1:
+		var q := a.lerp(b, float(k) / steps)
+		var c0 := to_cell(q)
+		for i in range(-reach, reach + 1):
+			for j in range(-reach, reach + 1):
+				var c := c0 + Vector2i(i, j)
+				if _inside(c) and not astar.is_point_solid(c):
+					var m := centre(c)
+					if m.distance_to(Geometry2D.get_closest_point_to_segment(m, a, b)) < RADIUS:
+						astar.set_point_solid(c, true)
+
+
+## Cells near obstacles cost more, so routes keep to the middle of corridors, aisles and doorways.
+func _clearance() -> void:
+	var n := size.x * size.y
+	var dist := PackedInt32Array()
+	dist.resize(n)
+	dist.fill(1 << 20)
+	var queue := PackedInt32Array()
+	for j in size.y:
+		for i in size.x:
+			if astar.is_point_solid(Vector2i(i, j)):
+				dist[j * size.x + i] = 0
+				queue.append(j * size.x + i)
+	var reach := ceili(MARGIN / cell)
+	var head := 0
+	while head < queue.size():
+		var k := queue[head]
+		head += 1
+		var d := dist[k]
+		if d >= reach:
+			continue
+		var x := k % size.x
+		var y := k / size.x
+		for o in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nx: int = x + o.x
+			var ny: int = y + o.y
+			if nx < 0 or ny < 0 or nx >= size.x or ny >= size.y:
+				continue
+			var nk := ny * size.x + nx
+			if dist[nk] > d + 1:
+				dist[nk] = d + 1
+				queue.append(nk)
+	_near.resize(n)
+	_near.fill(0)
+	for k in n:
+		var d := dist[k]
+		if d > 0 and d < reach:
+			_near[k] = 1
+			astar.set_point_weight_scale(Vector2i(k % size.x, k / size.x), 1.0 + 4.0 * (1.0 - float(d) / reach))
+
+
+## Only cells inside this outline stay walkable.
+func restrict(poly: PackedVector2Array) -> void:
+	for j in size.y:
+		for i in size.x:
+			var c := Vector2i(i, j)
+			if not astar.is_point_solid(c) and not Geometry2D.is_point_in_polygon(centre(c), poly):
+				astar.set_point_solid(c, true)
 
 
 func to_cell(p: Vector2) -> Vector2i:
@@ -94,8 +165,9 @@ func nearest_free(p: Vector2, rings := 40) -> Vector2:
 	return p
 
 
-## Walking route from a to b through doorways (smoothed to straight runs). Empty when b can't be reached;
-## `partial` then has the route to the reachable point closest to b.
+## Walking route from a to b through doorways: it keeps clear of furniture and walls, goes through each
+## doorway through its middle and square on, and is straightened only where that stays clear.
+## Empty when nothing can be reached; with `partial`, the route ends at the reachable point closest to b.
 func path(a: Vector2, b: Vector2, partial := true) -> PackedVector2Array:
 	var ca := to_cell(nearest_free(a))
 	var cb := to_cell(nearest_free(b))
@@ -104,22 +176,67 @@ func path(a: Vector2, b: Vector2, partial := true) -> PackedVector2Array:
 	var ids := astar.get_id_path(ca, cb, partial)
 	if ids.is_empty():
 		return PackedVector2Array()
-	var pts := PackedVector2Array([a])
-	for c in ids:
-		pts.append(centre(c))
+	var pts: Array = [a]
+	var fixed: Array = [true]
+	for i in ids.size():
+		var c := centre(ids[i])
+		if i > 0:
+			var door := _door_between(centre(ids[i - 1]), c)
+			if not door.is_empty():
+				# through the doorway: line up in front of it, cross at the middle, step clear on the far side
+				for q in door:
+					pts.append(q)
+					fixed.append(true)
+		pts.append(c)
+		fixed.append(false)
 	if ids[ids.size() - 1] == cb and is_free(b):
 		pts.append(b)
-	# string pulling: from each point, jump to the furthest point still in straight sight
-	var out := PackedVector2Array([pts[0]])
+		fixed.append(true)
+	# string pulling: from each point jump to the furthest point still in clear straight sight,
+	# never skipping a doorway point
+	var out := PackedVector2Array()
 	var i := 0
 	while i < pts.size() - 1:
 		var j := i + 1
-		while j + 1 < pts.size() and line_free(pts[i], pts[j + 1]):
+		while j + 1 < pts.size() and not fixed[j] and line_ok(pts[i], pts[j + 1]):
 			j += 1
 		out.append(pts[j])
 		i = j
-	out.remove_at(0)
 	return out
+
+
+## The doorway the step from p to q goes through, as [in front, middle, beyond], or [].
+func _door_between(p: Vector2, q: Vector2) -> Array:
+	for g in gaps:
+		var a: Vector2 = g[0]
+		var b: Vector2 = g[1]
+		if Geometry2D.segment_intersects_segment(p, q, a, b) == null:
+			continue
+		var mid := (a + b) / 2
+		var u := (b - a).normalized()
+		var n := Vector2(-u.y, u.x)
+		var s := signf((q - p).dot(n))
+		var out: Array = []
+		for k in [-0.6, 0.0, 0.6]:
+			var r: Vector2 = mid + n * s * k
+			if is_free(r):
+				out.append(r)
+		return out
+	return []
+
+
+## A straight walk from a to b that stays clear: every point on it is walkable, and away from the two
+## ends it does not brush past obstacles.
+func line_ok(a: Vector2, b: Vector2) -> bool:
+	var n := maxi(1, ceili(a.distance_to(b) / (cell * 0.5)))
+	for k in n + 1:
+		var q := a.lerp(b, float(k) / n)
+		var c := to_cell(q)
+		if not _inside(c) or astar.is_point_solid(c):
+			return false
+		if _near[c.y * size.x + c.x] == 1 and q.distance_to(a) > 0.6 and q.distance_to(b) > 0.6:
+			return false
+	return true
 
 
 func reaches(a: Vector2, b: Vector2) -> bool:

@@ -4,7 +4,7 @@ extends Node
 ## Renderer -> host: parent.postMessage({source: "twin-renderer", type, ...})
 ## Contract: docs/contracts/bridge-api.md
 
-const VERSION := "0.1.0"
+const VERSION := "0.4.0"  # bump with every renderer change the page depends on (web/lib/bridge.ts RENDERER_VERSION)
 var _cb: JavaScriptObject  # keep a reference or the callback is collected
 
 
@@ -71,5 +71,6 @@ func handle(msg: Dictionary) -> void:
 		"dragEnd": Bus.place_ended.emit(Vector2(float(msg.get("u", 0)), float(msg.get("v", 0))), bool(msg.get("drop", false)))
 		"startMove": Bus.place_started.emit("", str(msg.get("id", "")))
 		"refreshDevices": Store.refresh_now()
+		"selectRoom": Bus.room_selected.emit(str(msg.get("room", "")))
 		"walk": Bus.walk_requested.emit(str(msg.get("action", "toggle")), msg)
 		_: push_warning("Bridge: unknown message %s" % msg)

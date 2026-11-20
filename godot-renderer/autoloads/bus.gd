@@ -13,6 +13,7 @@ signal layer_changed(layer: String, on: bool)
 signal reset_view_requested
 signal camera_requested(action: String)  # zoomIn, zoomOut, fit, top, perspective, toggleTop, rotateLeft, rotateRight, reset
 signal walk_requested(action: String, msg: Dictionary)  # start, stop, toggle, goto {room}, stick {x, y}
+signal room_selected(key: String)  # host highlights a room ("" = none)
 signal insets_changed(left: float, right: float, top: float, bottom: float)  # host overlays, px
 
 # State changes

@@ -30,7 +30,7 @@ func add_line(pts: Array, spacing := 0.35) -> int:
 	for i in range(1, pts.size()):
 		cum.append(cum[-1] + (pts[i] as Vector3).distance_to(pts[i - 1]))
 	var total: float = cum[-1]
-	_lines.append({"pts": pts, "cum": cum, "len": total, "speed": 0.0, "phase": randf() * total, "n": maxi(2, int(total / spacing))})
+	_lines.append({"pts": pts, "cum": cum, "len": total, "speed": 0.0, "phase": randf() * total, "n": maxi(2, int(total / spacing)), "on": true})
 	var count := 0
 	for l in _lines:
 		count += l.n
@@ -43,13 +43,19 @@ func set_speed(i: int, v: float) -> void:
 		_lines[i].speed = v
 
 
+## Shows or hides one line's beads.
+func set_line_visible(i: int, on: bool) -> void:
+	if i >= 0 and i < _lines.size():
+		_lines[i].on = on
+
+
 func _process(delta: float) -> void:
 	var idx := 0
 	for l in _lines:
 		l.phase = fposmod(l.phase + l.speed * delta, maxf(l.len, 0.001))
 		for k in l.n:
 			var s := fposmod(l.phase + k * l.len / l.n, maxf(l.len, 0.001))
-			var scale := _radius * (1.0 if absf(l.speed) > 0.001 else 0.6)
+			var scale := (_radius * (1.0 if absf(l.speed) > 0.001 else 0.6)) if l.on else 0.0
 			multimesh.set_instance_transform(idx, Transform3D(Basis.from_scale(Vector3.ONE * scale * 2.0), _at(l, s)))
 			idx += 1
 

@@ -9,6 +9,7 @@ var _slabs := {}  # room key -> StandardMaterial3D
 var _walls: Array = []
 var wall_pieces: Array = []  # [a, b] on the floor for every built wall piece (door gaps left out)
 var lintels: Array = []      # [a, b] over each door gap (walk mode only: the walls reach the ceiling)
+var ceilings: Node3D         # walk mode: shown once the camera is down at eye height (not seen from above)
 var _veil: MeshInstance3D
 var _veil_tw: Tween
 var _plan_mat: StandardMaterial3D
@@ -24,15 +25,17 @@ func build() -> void:
 		_finish(mat, str(r.name).to_lower())
 		_slabs[r.key] = mat
 		_slab(poly, mat)
-		_room_label(r, poly)
+		if Store.room_allowed(r.key):
+			_room_label(r, poly)
 	for n in Store.notes:
-		_note(n)
+		if Store.room_allowed(Store.room_at(Vector2(float(n.x), float(n.z))).get("key", "")) or Store.guest_allowed.is_empty():
+			_note(n)
 	var wall_mat := StandardMaterial3D.new()
 	wall_mat.albedo_color = Color("f2f3f5")
 	wall_mat.roughness = 0.8
 	var h: float = Store.wall_height
 	# Walls follow every room edge (any angle); shared walls are built once; door openings are left open.
-	var doors: Array = Store.furniture.filter(func(f): return f.get("kind", "") == "door")
+	var doors: Array = Store.furniture.filter(func(f): return f.get("kind", "") == "door" and Store.door_open(f))
 	for s in PlanGeo.wall_segments(Store.rooms):
 		var a: Vector2 = s[0]
 		var b: Vector2 = s[1]
@@ -236,6 +239,10 @@ func set_walls_faded(on: bool) -> void:
 
 ## Ceilings for the walk-through: one per room at the wall top, facing down, casting no shadow.
 func _ceilings(h: float) -> void:
+	ceilings = Node3D.new()
+	ceilings.name = "Ceilings"
+	ceilings.visible = false
+	add_child(ceilings)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color("e9ebee")
 	mat.roughness = 1.0
@@ -255,7 +262,7 @@ func _ceilings(h: float) -> void:
 		m.material_override = mat
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		m.name = "Ceiling_" + str(r.key)
-		add_child(m)
+		ceilings.add_child(m)
 
 
 ## Floor slab for any simple polygon: triangulated top face plus side faces.
@@ -280,6 +287,21 @@ func _slab(poly: PackedVector2Array, mat: Material) -> void:
 	m.mesh = st.commit()
 	m.material_override = mat
 	add_child(m)
+
+
+var _selected := ""
+
+
+## Highlights one room's floor (a click on the map); "" clears it.
+func select_room(key: String) -> void:
+	if _selected != "" and _slabs.has(_selected):
+		var r: Dictionary = Store.room(_selected)
+		if not r.is_empty():
+			_slabs[_selected].albedo_color = Color(r.color).lerp(Color("d9dde3"), 0.55)
+	_selected = key
+	if key != "" and _slabs.has(key):
+		var m: StandardMaterial3D = _slabs[key]
+		m.albedo_color = m.albedo_color.lerp(Color("3b82f6"), 0.45)
 
 
 ## Tint rooms by the worst device health inside them (the "temperature" layer stand-in).

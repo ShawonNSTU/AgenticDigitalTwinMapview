@@ -7,7 +7,8 @@ import DevicePalette, { DeviceIcon, type Hover } from '@/components/DevicePalett
 import MapToolbar from '@/components/MapToolbar';
 import MapNav from '@/components/MapNav';
 import WalkHud from '@/components/WalkHud';
-import { send, type FromRenderer } from '@/lib/bridge';
+import GuestQr from '@/components/GuestQr';
+import { send, RENDERER_VERSION, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
 type Row = { id: string; type: string; label: string; room: string; name: string; health: string; fault?: string };
@@ -28,8 +29,11 @@ export default function Home() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [walk, setWalk] = useState<{ on: boolean; roomName?: string; note?: string }>({ on: false });
-  const [floorShown, setFloorShown] = useState(false); // the renderer has built the floor (not just started)
+  const [walk, setWalk] = useState<{ on: boolean; room?: string; roomName?: string; note?: string }>({ on: false });
+  const [roomSel, setRoomSel] = useState<{ room: string; roomName: string } | null>(null); // a room clicked on the map
+  const [qrFor, setQrFor] = useState<{ room: string; roomName: string } | null>(null);
+  const [floorShown, setFloorShown] = useState(false);
+  const [stale, setStale] = useState(''); // the 3D renderer export is older than this page // the renderer has built the floor (not just started)
   // the "no devices yet" hint can be closed; remembered in this browser
   const [hintClosed, setHintClosed] = useState(false);
   // Tell the renderer which parts of the map the overlays cover, so "fit" keeps the floor clear of them.
@@ -53,6 +57,8 @@ export default function Home() {
     if (pal) ro.observe(pal);
     return () => ro.disconnect();
   }, [ready, walk.on]);
+  // nothing selected: the renderer drops the selected device's piping circuit
+  useEffect(() => { if (!sel) send({ type: 'focusDevice', id: '' }); }, [sel]);
   useEffect(() => { try { setHintClosed(localStorage.getItem('twin.hintClosed') === '1'); } catch { /* storage unavailable */ } }, []);
   const closeHint = () => { setHintClosed(true); try { localStorage.setItem('twin.hintClosed', '1'); } catch { /* storage unavailable */ } };
   const stage = useRef<HTMLElement>(null);
@@ -81,13 +87,15 @@ export default function Home() {
   const roomName = useCallback((key: string) => { const r = rooms.find(x => x.key === key); return r ? r.name : key === 'out' ? 'Outside' : key; }, [rooms]);
 
   const onEvent = useCallback(async (m: FromRenderer) => {
-    if (m.type === 'ready') setReady(true);
+    if (m.type === 'ready') { setReady(true); setStale(m.version !== RENDERER_VERSION ? m.version : ''); }
     if (m.type === 'floorBuilt') setFloorShown(true);
-    if (m.type === 'deviceClicked') setSel(m.id);
+    if (m.type === 'deviceClicked') { setSel(m.id); setRoomSel(null); }
+    if (m.type === 'roomClicked') setRoomSel(m.room ? { room: m.room, roomName: m.roomName } : null);
     if (m.type === 'partClicked') setSel(m.id);
     if (m.type === 'deviceClosed') setSel(null);
     if (m.type === 'walk') {
-      setWalk(w => ({ on: m.on, roomName: m.roomName ?? w.roomName, note: m.note }));
+      setWalk(w => ({ on: m.on, room: m.room ?? w.room, roomName: m.roomName ?? w.roomName, note: m.note }));
+      setRoomSel(null);
       if (m.on) setSel(null);
       if (m.note) setTimeout(() => setWalk(w => ({ ...w, note: undefined })), 3500);
     }
@@ -143,7 +151,7 @@ export default function Home() {
       </header>
       <section className="stage" ref={stage}>
         <TwinView onEvent={onEvent} ready={ready && floorShown} />
-        {walk.on ? <WalkHud room={walk.roomName ?? ''} note={walk.note} rooms={rooms.map(r => ({ key: r.key, name: r.name }))} /> : (
+        {walk.on ? <WalkHud room={walk.roomName ?? ''} note={walk.note} rooms={rooms.map(r => ({ key: r.key, name: r.name }))} onQr={walk.room && walk.room !== 'out' ? () => setQrFor({ room: walk.room!, roomName: walk.roomName ?? walk.room! }) : undefined} /> : (
           <>
             <DevicePalette stage={stage} hover={hover} counts={counts} />
             <MapToolbar />
@@ -157,7 +165,27 @@ export default function Home() {
             <span>Drag devices from the palette onto any room. Wall units snap to the nearest wall, locks go beside a door, lights on the ceiling.</span>
           </div>
         )}
+        {roomSel && !walk.on && (
+          <div className="room-card glass">
+            <button className="hint-close" aria-label="Close" onClick={() => { setRoomSel(null); send({ type: 'selectRoom', room: '' }); }}>✕</button>
+            <span className="muted">Room</span>
+            <b>{roomSel.roomName}</b>
+            <span className="muted">{devices.filter(d => d.room === roomSel.room).length} SmartThings devices</span>
+            <div className="row">
+              <button onClick={() => { send({ type: 'walk', action: 'start', room: roomSel.room }); }}>Walk in</button>
+              <button className="pri" onClick={() => setQrFor(roomSel)}>Guest QR code</button>
+            </div>
+          </div>
+        )}
+        {qrFor && <GuestQr room={qrFor.room} roomName={qrFor.roomName} onClose={() => setQrFor(null)} />}
         {moving && <div className="move-hint glass">Moving <b>{moving}</b>: click where it should go · right-click or Esc to cancel</div>}
+        {stale && (
+          <div className="stale glass">
+            <b>The 3D renderer build is out of date</b> (built {stale}, this page needs {RENDERER_VERSION}). Mouse and touch
+            controls may not match. Re-export it: <code>cd web &amp;&amp; npm run export:renderer</code>, then restart the server.
+            <button className="hint-close" aria-label="Close" onClick={() => setStale('')}>✕</button>
+          </div>
+        )}
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}</div>
       </section>
       <aside className="side">

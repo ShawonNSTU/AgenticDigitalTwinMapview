@@ -44,7 +44,15 @@ func _crosses(a: Vector2, b: Vector2, pieces: Array) -> bool:
 	return false
 
 
+var hard: Array = []  # furniture outlines the walker's body must never overlap
+var bumps := 0
+var gaps: Array = []
+var door_cross := 0
+var door_off := 0  # crossings more than 15 cm from the middle of the doorway
+
+
 ## Runs the walker without rendering until its route is done; false if it ever stepped through a wall.
+## Counts steps where the walker's body (radius 0.2 m) overlaps furniture.
 func _walk_route(w: Walker, pieces: Array, max_steps := 3000) -> bool:
 	var clean := true
 	for i in max_steps:
@@ -52,6 +60,16 @@ func _walk_route(w: Walker, pieces: Array, max_steps := 3000) -> bool:
 		w._process(0.05)
 		if _crosses(before, w.p, pieces):
 			clean = false
+		for g in gaps:
+			var x = Geometry2D.segment_intersects_segment(before, w.p, g[0], g[1])
+			if x != null:
+				door_cross += 1
+				if (x as Vector2).distance_to((g[0] + g[1]) / 2) > 0.15:
+					door_off += 1
+		for poly in hard:
+			if Geometry2D.is_point_in_polygon(w.p, poly):
+				bumps += 1
+				break
 		if w._path.is_empty():
 			break
 	return clean
@@ -64,6 +82,12 @@ func _run() -> void:
 			break
 		await _wait(0.25)
 	await _wait(2.0)
+	# piping: only circuits with an unhealthy AC or outdoor unit are drawn, and all of those are
+	var shown: Array = main.piping.shown()
+	var want: Array = main.piping._runs.keys().filter(func(id): return Store.health.get(id, "ok") != "ok" or Store.health.get(main.piping._runs[id].odu, "ok") != "ok")
+	shown.sort()
+	want.sort()
+	_check(shown == want, "piping shows only circuits with a problem (shown %s of %d)" % [shown, main.piping._runs.size()])
 	var map_h: float = Store.wall_height
 	var map_doors := Store.furniture.filter(func(f): return f.get("kind", "") == "door").size()
 	Bridge.handle({"type": "walk", "action": "start"})
@@ -77,6 +101,10 @@ func _run() -> void:
 	var auto := Store.furniture.filter(func(f): return f.get("auto", false)).size()
 	lines.append("INFO  %d doors on the plan, %d doorways added for closed rooms" % [map_doors, auto])
 	var pieces: Array = main.floor_builder.wall_pieces
+	gaps = main.floor_builder.lintels
+	for f in Store.furniture:
+		if not WalkNav.SOFT.has(f.get("kind", "")):
+			hard.append(Placer._rect(Vector2(float(f.x), float(f.z)), Vector2(float(f.w) + 0.4, float(f.d) + 0.4), float(f.get("rot", 0.0))))
 	_check(w.nav.is_free(w.p), "the walker starts on walkable floor (%s, in %s)" % [w.p, w.room_key])
 	await _shot("w0_start")
 	# every room is reachable on foot
@@ -116,6 +144,8 @@ func _run() -> void:
 		await _wait(0.3)
 		await _shot("w%d_%s" % [1 + n, k])
 		n += 1
+	_check(door_cross > 0 and door_off == 0, "doorways are crossed through the middle (%d crossings, %d off-centre)" % [door_cross, door_off])
+	_check(bumps == 0, "routes keep the body clear of furniture and door leaves (%d steps touching)" % bumps)
 	# walking straight ahead in 12 directions for 15 m never passes through a wall
 	var through := 0
 	for d in 12:

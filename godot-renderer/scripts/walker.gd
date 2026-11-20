@@ -12,6 +12,9 @@ const LOOK := 0.0045  # radians of turn per pixel dragged
 const LINTEL := 2.08  # top of a door opening
 const INTRO := 1.3
 
+signal arrived  # a route (click, room or guest walk) has ended
+signal landed   # the drop from the map view to eye height has finished
+
 var cam: Camera3D
 var nav := WalkNav.new()
 var p := Vector2.ZERO  # position on the floor (x, z)
@@ -42,7 +45,7 @@ var _room_in := 0.0
 func begin(pieces: Array, lintels: Array, start: Vector2, start_yaw: float, from: Transform3D) -> void:
 	_pieces = pieces
 	_lintels = lintels
-	nav.build(pieces)
+	nav.build(pieces, lintels)
 	eye = minf(EYE, Store.wall_height - 0.5)
 	p = nav.nearest_free(start, 200)
 	yaw = start_yaw
@@ -72,6 +75,24 @@ func go_to(target: Vector2) -> bool:
 	return true
 
 
+## Keeps the walker inside one room from now on (a guest who reached their room).
+func confine(r: Dictionary) -> void:
+	if r.is_empty():
+		return
+	nav.restrict(PlanGeo.room_poly(r))
+
+
+func teleport(q: Vector2) -> void:
+	_cancel_route()
+	var from := cam.global_transform
+	p = nav.nearest_free(q, 40)
+	var c := PlanGeo.interior_point(PlanGeo.room_poly(Store.room_at(p))) if not Store.room_at(p).is_empty() else p
+	if c.distance_to(p) > 0.3:
+		yaw = atan2(-(c - p).x, -(c - p).y)
+	_from = from
+	_intro = INTRO
+
+
 func go_to_room(key: String) -> bool:
 	var r: Dictionary = Store.room(key)
 	if r.is_empty():
@@ -82,6 +103,8 @@ func go_to_room(key: String) -> bool:
 
 func _process(delta: float) -> void:
 	delta = minf(delta, 0.25)
+	if _intro > 0.0 and _intro - delta <= 0.0:
+		landed.emit()
 	_intro = maxf(0.0, _intro - delta)
 	var k := func(code: int) -> float: return 1.0 if _keys.get(code, false) else 0.0
 	var move: Vector2 = Vector2(k.call(KEY_D) - k.call(KEY_A), k.call(KEY_W) + k.call(KEY_UP) - k.call(KEY_S) - k.call(KEY_DOWN) - joy.y)
@@ -104,19 +127,45 @@ func _process(delta: float) -> void:
 			_path.remove_at(0)
 			if _path.is_empty():
 				_goal.visible = false
+				_track_room()
+				arrived.emit()
 		else:
 			vel = to.normalized() * minf(ROUTE, to.length() / delta)
 			if not _down and _touches.is_empty():  # look where you walk unless the user is looking around
 				yaw = lerp_angle(yaw, atan2(-to.x, -to.y), 1.0 - exp(-5.0 * delta))
 				pitch = lerpf(pitch, deg_to_rad(-4.0), 1.0 - exp(-3.0 * delta))
 	if vel != Vector2.ZERO:
+		var before := p
 		_step(vel * delta)
+		_unstick(before, vel.length() * delta, delta)
 		_bob += vel.length() * delta * 6.5
 	_apply()
 	_room_in -= delta
 	if _room_in <= 0.0:
 		_room_in = 0.2
 		_track_room()
+
+
+var _stuck := 0.0
+
+
+## Following a route but not getting anywhere (a corner the body can't round): plan again; right next to
+## the end, call it arrived.
+func _unstick(before: Vector2, wanted: float, delta: float) -> void:
+	if _path.is_empty() or wanted < 1e-4:
+		_stuck = 0.0
+		return
+	_stuck = _stuck + delta if before.distance_to(p) < wanted * 0.25 else 0.0
+	if _stuck < 0.6:
+		return
+	_stuck = 0.0
+	var end := _path[_path.size() - 1]
+	if end.distance_to(p) < 0.7:
+		_cancel_route()
+		_track_room()
+		arrived.emit()
+	else:
+		go_to(end)
 
 
 ## Moves with collision, in small steps so nothing is skipped at low frame rates; slides along walls.

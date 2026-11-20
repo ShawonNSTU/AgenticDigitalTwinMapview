@@ -13,7 +13,10 @@ var by_id: Dictionary = {}
 var types: Dictionary = {}
 var outdoor_pad: Dictionary = {}
 var wall_height := 1.15
-var walk := false  # first-person walk-through: full-height walls, ceilings, lights under the ceiling
+var walk := false
+var guest_token := ""      # set when the page was opened from a guest link (?guest=<token>)
+var guest: Dictionary = {}  # {room, entrance} from the platform for that link
+var guest_allowed: Dictionary = {}  # rooms a guest may see and walk through (empty = no limit)  # first-person walk-through: full-height walls, ceilings, lights under the ceiling
 
 var t := 10.0
 var scenario := "normal"
@@ -43,6 +46,10 @@ func _ready() -> void:
 	var b: Dictionary = _load("res://data/building.json")
 	types = _load("res://data/device_types.json")
 	_apply_layout(b.get("rooms", []), _load("res://data/devices.json"), b.get("outdoorPad", {}), b.get("wallHeight", 1.15))
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--guest="):  # desktop runs and tests: open as a guest link
+			guest_token = a.substr(8).uri_encode()
+			layout_version = -1
 	var env_url := OS.get_environment("PLATFORM_URL")
 	if env_url != "":
 		platform_url = env_url
@@ -50,6 +57,10 @@ func _ready() -> void:
 		var origin = JavaScriptBridge.eval("window.location.origin", true)
 		if origin is String and origin != "":
 			platform_url = origin
+		var token = JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('guest') || ''", true)
+		if token is String and token != "":
+			guest_token = token.uri_encode()
+			layout_version = -1  # always load the guest's layout; never show the bundled sample
 	_floor_req = HTTPRequest.new()
 	_dev_req = HTTPRequest.new()
 	_building_req = HTTPRequest.new()
@@ -91,10 +102,34 @@ func room(key: String) -> Dictionary:
 	return {}
 
 
+## Platform endpoint: the guest-scoped one when opened from a guest link.
+func api(what: String) -> String:
+	return "/api/guest/%s/%s" % [guest_token, what] if guest_token != "" else "/api/" + what
+
+
+## Whether a door may be open and walked through: always, except for a guest, who only gets doors
+## between rooms on their way (or the outside).
+func door_open(f: Dictionary) -> bool:
+	if guest_allowed.is_empty():
+		return true
+	var c := Vector2(float(f.x), float(f.z))
+	var rot := float(f.get("rot", 0.0))
+	var n := Vector2(sin(rot), cos(rot))
+	for side in [1.0, -1.0]:
+		var r := room_at(c + n * side * 0.45)
+		if not r.is_empty() and not guest_allowed.has(r.key):
+			return false
+	return true
+
+
+func room_allowed(key: String) -> bool:
+	return guest_allowed.is_empty() or guest_allowed.has(key)
+
+
 func _poll() -> void:
 	if not _busy_floor:
 		_busy_floor = true
-		_floor_req.request(platform_url + "/api/floor")
+		_floor_req.request(platform_url + api("floor"))
 	_poll_device()
 
 
@@ -109,6 +144,9 @@ func _poll_device(restart := false) -> void:
 
 func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
 	_busy_floor = false
+	if guest_token != "" and (code == 404 or code == 410):
+		Bridge.emit_event({"type": "guestDenied", "code": code})
+		return
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
 		_fails += 1
 		if not _announced and _fails == 3:  # three failures in a row (the first request in a browser can fail once)
@@ -123,12 +161,12 @@ func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteAr
 	if int(data.get("layoutVersion", 0)) != layout_version:
 		_busy_building = true
 		_devices_only = false
-		_building_req.request(platform_url + "/api/building")
+		_building_req.request(platform_url + api("building"))
 		return
 	if _announced and int(data.get("devicesVersion", 0)) != devices_version:
 		_busy_building = true
 		_devices_only = true
-		_building_req.request(platform_url + "/api/building")
+		_building_req.request(platform_url + api("building"))
 		return
 	if not _announced:
 		_announced = true  # the platform runs the same sample home we bundle: build it now
@@ -228,6 +266,7 @@ func _finish_layout(tex: Texture2D) -> void:
 	plan_bounds = Rect2(plan.x0, plan.z0, plan.x1 - plan.x0, plan.z1 - plan.z0) if plan is Dictionary else Rect2()
 	furniture = b.get("furniture", [])
 	notes = b.get("notes", [])
+	guest = b.get("guest", {}) if b.get("guest") is Dictionary else {}
 	devices_version = int(b.get("devicesVersion", 0))
 	_apply_layout(b.get("rooms", []), b.get("devices", []), b.get("outdoorPad", {}), float(b.get("wallHeight", wall_height)))
 	layout_version = int(b.get("version", 0))

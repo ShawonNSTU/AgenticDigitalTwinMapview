@@ -6,7 +6,7 @@ type Room = { key: string; name: string };
 
 /** Controls for the first-person walk-through: where you are, walk to a room, an on-screen stick for
  *  touch screens (and mice), and the way back to the map. */
-export default function WalkHud({ room, note, rooms }: { room: string; note?: string; rooms: Room[] }) {
+export default function WalkHud({ room, note, rooms, onQr }: { room: string; note?: string; rooms: Room[]; onQr?: () => void }) {
   const [help, setHelp] = useState(true);
   const pad = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
@@ -39,6 +39,7 @@ export default function WalkHud({ room, note, rooms }: { room: string; note?: st
           <option value="">Walk to a room…</option>
           {[...rooms].sort((a, b) => a.name.localeCompare(b.name)).map(r => <option key={r.key} value={r.key}>{r.name}</option>)}
         </select>
+        {onQr && <button title="Guest QR code for this room" onClick={onQr}>Guest QR</button>}
         <button className="ghost" title="Controls" aria-label="Walk controls" onClick={() => setHelp(!help)}><b>?</b></button>
         <button className="pri" onClick={() => send({ type: 'walk', action: 'stop' })}>Back to map</button>
       </div>

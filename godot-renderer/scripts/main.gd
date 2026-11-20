@@ -32,19 +32,23 @@ func _ready() -> void:
 	_hud()
 	# Wait for the platform's layout so the bundled sample never flashes up first. Fall back to the
 	# bundled sample only when the platform can't be reached (offline desktop run) or after 20 s.
-	Bus.layout_changed.connect(func(): _build_world(true))
+	Bus.layout_changed.connect(func(): _build_world(Store.guest_token == ""))  # guests go straight to their walk
 	Bus.devices_changed.connect(_rebuild_devices)
 	Store.platform_unreachable.connect(func():
-		if world == null:
+		if world == null and Store.guest_token == "":
 			_build_world(true))
 	get_tree().create_timer(20.0).timeout.connect(func():
-		if world == null:
+		if world == null and Store.guest_token == "":
 			_build_world(true))
 
 	Bus.health_changed.connect(_on_health)
 	Bus.highlight_requested.connect(_on_highlight)
 	Bus.highlight_cleared.connect(func(): _on_highlight([], ""))
-	Bus.focus_requested.connect(_on_focus)
+	Bus.focus_requested.connect(func(id):
+		if piping and is_instance_valid(piping):
+			piping.focus(id)  # the selected AC or outdoor unit shows its circuits ("" = none selected)
+		if id != "":
+			_on_focus(id))
 	Bus.open_requested.connect(_on_open)
 	Bus.close_requested.connect(_on_close)
 	Bus.part_focus_requested.connect(func(id, part):
@@ -61,6 +65,10 @@ func _ready() -> void:
 		if walker == null:
 			rig.command(action))
 	Bus.walk_requested.connect(_on_walk)
+	Bus.device_clicked.connect(func(_id): _device_click_ms = Time.get_ticks_msec())
+	Bus.room_selected.connect(func(key):
+		if world:
+			floor_builder.select_room(key))
 	Bus.insets_changed.connect(func(l, r, t, b): rig.set_insets(l, r, t, b))
 	Bus.time_changed.connect(_on_time)
 	Bus.scenario_changed.connect(_on_scenario)
@@ -78,6 +86,10 @@ func _ready() -> void:
 			var g := Node.new()
 			g.set_script(load("res://tests/twin_gallery.gd"))
 			add_child(g)
+		if a.begins_with("--guest-check="):
+			var gt := Node.new()
+			gt.set_script(load("res://tests/guest_test.gd"))
+			add_child(gt)
 		if a.begins_with("--walk="):
 			var wt := Node.new()
 			wt.set_script(load("res://tests/walk_test.gd"))
@@ -114,7 +126,11 @@ func _build_world(animate: bool) -> void:
 	interior = Interior.new()
 	interior.name = "Interior"
 	world.add_child(interior)
-	interior.build(Store.furniture)
+	interior.build(Store.furniture if Store.guest_allowed.is_empty() else Store.furniture.filter(func(f):
+		if f.get("kind", "") == "door":
+			return Store.door_open(f)
+		var r: Dictionary = Store.room_at(Vector2(float(f.x), float(f.z)))
+		return r.is_empty() or Store.room_allowed(r.key)))
 	_make_devices()
 	detail = DetailView.new()
 	world.add_child(detail)
@@ -131,6 +147,8 @@ func _build_world(animate: bool) -> void:
 	if animate:
 		_play_plan_to_3d()
 	Bridge.emit_event({"type": "floorBuilt", "rooms": Store.rooms.size(), "devices": Store.devices.size()})
+	if Store.guest_token != "" and not _walk_build and not Store.guest.is_empty():
+		_start_guest.call_deferred()
 
 
 func _make_devices() -> void:
@@ -162,11 +180,15 @@ func _rebuild_devices() -> void:
 	if open_id != "":
 		_on_close()
 	var piping_on := piping.visible
+	var piping_focus := piping.focused
+	var piping_trace := piping.traced
 	world.get_node("Devices").free()
 	piping.free()
 	devices.clear()
 	_make_devices()
 	piping.visible = piping_on
+	piping.focused = piping_focus
+	piping.trace(piping_trace)
 	for id in devices:
 		var n: DeviceNode = devices[id]
 		if before.has(id) and (before[id] as Vector3).distance_to(n.position) < 0.01:
@@ -198,13 +220,17 @@ func _play_plan_to_3d() -> void:
 		var y := n.position.y
 		n.position.y = y + 2.5
 		n.visible = false
-		var tw := create_tween()
+		var tw := n.create_tween()  # bound to the device: dropped with it if the floor is rebuilt meanwhile
 		tw.tween_interval(1.4 + 0.02 * i)
-		tw.tween_callback(func(): n.visible = detail.device == null or detail.device == n)
+		tw.tween_callback(func(): n.visible = detail == null or detail.device == null or detail.device == n)
 		tw.tween_property(n, "position:y", y, 0.45).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 		i += 1
-	get_tree().create_timer(1.6 + 0.02 * i).timeout.connect(func(): piping.visible = detail.device == null)
-	get_tree().create_timer(1.0).timeout.connect(func(): rig.reset(1.8))
+	get_tree().create_timer(1.6 + 0.02 * i).timeout.connect(func():
+		if is_instance_valid(piping) and is_instance_valid(detail):
+			piping.visible = detail.device == null)
+	get_tree().create_timer(1.0).timeout.connect(func():
+		if walker == null:
+			rig.reset(1.8))
 
 
 func _on_trace(id: String) -> void:
@@ -312,7 +338,7 @@ func _on_focus(id: String) -> void:
 
 
 func _on_open(id: String, part: String) -> void:
-	if world == null:
+	if world == null or Store.guest_token != "":
 		return
 	if walker:
 		stop_walk(false)  # the twin opens on the map
@@ -373,11 +399,16 @@ func _on_layer(layer: String, on: bool) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and not e.pressed and e.device != InputEvent.DEVICE_ID_EMULATION:
+		_room_click(e.position)
+	elif e is InputEventScreenTouch and not e.pressed and e.index == 0:
+		_room_click(e.position)
 	if e.is_action_pressed("toggle_piping"):
 		piping.visible = not piping.visible
 	elif e.is_action_pressed("back"):
 		if walker:
-			stop_walk()
+			if Store.guest_token == "":
+				stop_walk()
 		elif placer and placer.active():
 			placer.cancel()
 		elif detail.device:
@@ -387,13 +418,38 @@ func _unhandled_input(e: InputEvent) -> void:
 			rig.reset()
 
 
+var _device_click_ms := 0
+
+
+## A click on a room's floor (not a device, not a drag) selects the room: the page offers to walk there
+## or to make a guest QR code for it.
+func _room_click(screen: Vector2) -> void:
+	if world == null or walker or placer.active() or detail.device or CameraRig.drag_px > 6.0:
+		return
+	var hit = Placer.pointer_floor(rig.cam, screen)
+	if hit == null:
+		return
+	var r: Dictionary = Store.room_at(hit)
+	var at := Time.get_ticks_msec()
+	await get_tree().create_timer(0.18).timeout
+	if _device_click_ms >= at - 30 or world == null:
+		return  # the click was on a device
+	floor_builder.select_room(r.get("key", ""))
+	Bridge.emit_event({"type": "roomClicked", "room": r.get("key", ""), "roomName": Store.room_label(r) if not r.is_empty() else ""})
+
+
 # --- Walk-through ---------------------------------------------------------------------------------------
 
 func _on_walk(action: String, msg: Dictionary) -> void:
 	match action:
 		"start": start_walk(str(msg.get("room", "")))
-		"stop": stop_walk()
+		"stop":
+			if Store.guest_token == "":
+				stop_walk()
+		"skip": _guest_skip()
 		"toggle":
+			if Store.guest_token != "":
+				return
 			if walker:
 				stop_walk()
 			else:
@@ -439,6 +495,9 @@ func start_walk(room_key := "") -> void:
 	walker = Walker.new()
 	walker.name = "Walker"
 	world.add_child(walker)
+	walker.landed.connect(func():
+		if is_instance_valid(floor_builder) and floor_builder.ceilings:
+			floor_builder.ceilings.visible = true)
 	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look_yaw, from)
 	walker._track_room()
 
@@ -493,3 +552,138 @@ func _busiest_room_point() -> Vector2:
 			most = n
 			best = r
 	return PlanGeo.interior_point(PlanGeo.room_poly(best))
+
+
+# --- Guest visit (opened from a room's QR code) ---------------------------------------------------------
+
+var _guest_target := Vector2.INF
+var _guest_room := ""
+var _guest_from := ""
+
+
+## The guest walks from the entrance to their room. Only rooms on that way (and the room itself) are
+## open: their doors stand open and their furniture is shown; every other door stays shut and other
+## rooms show no names, furniture or devices (the platform sends only the guest room's devices).
+## On arrival the guest is kept inside their room.
+func _start_guest() -> void:
+	if walker or world == null:
+		return
+	_guest_room = str(Store.guest.get("room", ""))
+	var target_room: Dictionary = Store.room(_guest_room)
+	if target_room.is_empty():
+		return
+	Store.guest_allowed = {}
+	Store.walk = true
+	Store.wall_height = WALK_HEIGHT
+	Store.furniture = Store.furniture + WalkNav.auto_doors(Store.rooms, Store.furniture)
+	_walk_build = true
+	_build_world(false)
+	# plan the way on the whole floor, then open only the rooms it passes through
+	var nav := WalkNav.new()
+	nav.build(floor_builder.wall_pieces, floor_builder.lintels)
+	var start := _guest_entrance(nav, target_room)
+	_guest_target = nav.room_target(target_room, start)
+	var allowed := {_guest_room: true}
+	var from_room: Dictionary = Store.room_at(start)
+	if not from_room.is_empty():
+		allowed[from_room.key] = true
+		_guest_from = Store.room_label(from_room)
+	else:
+		_guest_from = "Entrance"
+	var route := nav.path(start, _guest_target) if _guest_target != Vector2.INF else PackedVector2Array()
+	var prev := start
+	for q in route:
+		for k in 8:
+			var r: Dictionary = Store.room_at(prev.lerp(q, k / 8.0))
+			if not r.is_empty():
+				allowed[r.key] = true
+		prev = q
+	Store.guest_allowed = allowed
+	_build_world(false)
+	_walk_build = false
+	rig.set_process_unhandled_input(false)
+	env.ambient_light_energy = 0.72
+	sun.light_energy = 0.25
+	walker = Walker.new()
+	walker.name = "Walker"
+	world.add_child(walker)
+	walker.landed.connect(func():
+		if is_instance_valid(floor_builder) and floor_builder.ceilings:
+			floor_builder.ceilings.visible = true)
+	var look := 0.0
+	if route.size() > 0:
+		var d := route[0] - start
+		look = atan2(-d.x, -d.y)
+	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look, rig.cam.global_transform)
+	walker.arrived.connect(_guest_arrived)
+	walker._track_room()
+	var metres := 0.0
+	prev = start
+	for q in route:
+		metres += prev.distance_to(q)
+		prev = q
+	Bus.walk_changed.emit({"on": true, "guest": "walking", "from": _guest_from, "to": Store.room_label(target_room), "metres": snappedf(metres, 0.1)})
+	get_tree().create_timer(Walker.INTRO + 0.3).timeout.connect(func():
+		if walker and _guest_target != Vector2.INF and not walker.go_to(_guest_target):
+			_guest_skip())
+
+
+## Where a guest's walk begins: the entrance the host chose; else just inside a door to the outside;
+## else a lift, lobby, reception or stair; else the best-connected room (usually the corridor).
+func _guest_entrance(nav: WalkNav, target_room: Dictionary) -> Vector2:
+	var chosen: Dictionary = Store.room(str(Store.guest.get("entrance", "")))
+	if not chosen.is_empty():
+		var p := nav.room_target(chosen, PlanGeo.interior_point(PlanGeo.room_poly(target_room)))
+		if p != Vector2.INF:
+			return p
+	var goal := PlanGeo.interior_point(PlanGeo.room_poly(target_room))
+	var best := Vector2.INF
+	var best_len := INF
+	for f in Store.furniture:
+		if f.get("kind", "") != "door":
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		var rot := float(f.get("rot", 0.0))
+		var n := Vector2(sin(rot), cos(rot))
+		for side in [1.0, -1.0]:
+			if Store.room_at(c + n * side * 0.45).is_empty() and not Store.room_at(c - n * side * 0.45).is_empty():
+				var inside := nav.nearest_free(c - n * side * 0.8, 6)
+				var route := nav.path(inside, goal, false)
+				if route.size() > 0 and route.size() < best_len:
+					best_len = route.size()
+					best = inside
+	if best != Vector2.INF:
+		return best
+	var re := RegEx.create_from_string("(?i)lift|elevator|lobby|reception|entrance|entry|foyer")
+	var stairs := RegEx.create_from_string("(?i)stair")
+	for pass_re in [re, stairs]:
+		best_len = INF
+		for r in Store.rooms:
+			if pass_re.search(str(r.name) + " " + str(r.get("label", ""))) == null or r.key == target_room.key:
+				continue
+			var p := nav.room_target(r, goal)
+			if p == Vector2.INF:
+				continue
+			var route := nav.path(p, goal, false)
+			if route.size() > 0 and route.size() < best_len:
+				best_len = route.size()
+				best = p
+		if best != Vector2.INF:
+			return best
+	return nav.nearest_free(_busiest_room_point(), 200)
+
+
+func _guest_arrived() -> void:
+	if walker == null or _guest_room == "" or walker.room_key != _guest_room:
+		return
+	walker.confine(Store.room(_guest_room))
+	Bus.walk_changed.emit({"on": true, "guest": "arrived", "room": _guest_room, "roomName": Store.room_label(Store.room(_guest_room))})
+
+
+## Straight into the room (the guest skipped the walk).
+func _guest_skip() -> void:
+	if walker == null or _guest_target == Vector2.INF:
+		return
+	walker.teleport(_guest_target)
+	walker._track_room()
+	_guest_arrived()

@@ -456,7 +456,8 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			for li in leaves:
 				var side := -1.0 if li == 0 else 1.0  # hinge at -w/2 or +w/2; the leaf reaches towards the middle
 				var hinge := Vector3(side * w / 2, 0, 0)
-				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(70.0) * side), hinge)
+				# open 70° on the map; flat against the wall while walking, so the doorway is clear
+				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(92.0 if Store.walk else 70.0) * side), hinge)
 				_emit("box", "door", _ir * leaf * Transform3D(Basis.from_scale(Vector3(lw - 0.02, lh, 0.04)), Vector3(-side * lw / 2, lh / 2, 0)))
 				_emit("box", "metal", _ir * leaf * Transform3D(Basis.from_scale(Vector3(0.12, 0.025, 0.06)), Vector3(-side * (lw - 0.12), 0.95, 0)))
 				for k in 9:  # quarter-circle swing arc on the floor
