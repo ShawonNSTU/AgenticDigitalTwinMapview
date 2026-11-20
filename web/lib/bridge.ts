@@ -20,7 +20,7 @@ export type ToRenderer =
   | { type: 'dragEnd'; u: number; v: number; drop: boolean }
   | { type: 'startMove'; id: string }
   | { type: 'refreshDevices' }
-  | { type: 'walk'; action: 'start' | 'stop' | 'toggle' | 'goto' | 'stick' | 'skip'; room?: string; x?: number; y?: number }
+  | { type: 'walk'; action: 'start' | 'stop' | 'toggle' | 'goto' | 'stick' | 'skip' | 'restart' | 'overview' | 'look'; room?: string; x?: number; y?: number; from?: string; on?: boolean; id?: string }
   | { type: 'selectRoom'; room: string };
 
 /** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */

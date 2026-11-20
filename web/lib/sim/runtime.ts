@@ -19,6 +19,7 @@ interface Runtime {
   furniture: { kind: string; x: number; z: number; w: number; d: number; rot?: number; h?: number }[]; // interiors from the plan
   notes: Note[]; // other text printed on the plan (zone tags, SCREEN, UP/DN, dimensions)
   title: string; // floor name shown in the header
+  planGen?: number; // bumps when a new plan is uploaded or the sample is restored (guest links made before stop working)
 }
 export type Note = { text: string; x: number; z: number; size?: number; rot?: number };
 const g = globalThis as unknown as { __twin?: Runtime };
@@ -54,14 +55,28 @@ export function setSim(p: { scenario?: string; t?: number; playing?: boolean; sp
 
 /** Device snapshot with command overrides applied on top of simulated readings. */
 export function device(id: string, t = tick()) {
-  const o = rt.overrides[id] ?? null;
+  let o = rt.overrides[id] ?? null;
+  const d = byId[id];
+  if (d?.type === 'ac' && o?.timer && o?.timerAt && Date.now() > Number(o.timerAt) + Number(o.timer) * 3600_000) {
+    rt.overrides[id] = o = { ...o, on: false, timer: 0, timerAt: undefined }; // off-timer ran out
+  }
+  if (d?.type === 'ac' && acDyn[id]) {
+    const base = snapshot(id, t, null);
+    const room = base ? acRoom(id, base.readings as Record<string, any>, o) : null;
+    if (room != null) o = { ...(o ?? {}), room };
+  }
   const s = snapshot(id, t, o);
   if (!s) return null;
-  return { ...s, overrides: o };
+  return { ...s, overrides: rt.overrides[id] ?? null, online: (s.readings as any).online !== false };
 }
 
 /** Readings the floor view needs for every refrigerant circuit, sent with each /api/floor poll. */
-const LIVE: Record<string, string[]> = { ac: ['on', 'fan', 'air', 'evIn', 'evOut', 'sh', 'room', 'set'], odu: ['hz', 'dis', 'suc', 'lp', 'hp', 'fan'] };
+const LIVE: Record<string, string[]> = {
+  ac: ['on', 'fan', 'air', 'evIn', 'evOut', 'sh', 'room', 'set', 'mode', 'swing', 'online'], odu: ['hz', 'dis', 'suc', 'lp', 'hp', 'fan'],
+  light: ['lv', 'ct', 'online'], tv: ['on', 'vol', 'input', 'online'], fan: ['on', 'speed', 'osc', 'online'], blinds: ['pos', 'online'],
+  purifier: ['on', 'fan', 'pm', 'online'], vacuum: ['state', 'batt', 'online'], lock: ['locked', 'online'], plug: ['on', 'online'],
+  temphum: ['temp', 'hum', 'online'],
+};
 function live(id: string, t: number) {
   const d = device(id, t)!;
   return Object.fromEntries(LIVE[d.type].map(k => [k, (d.readings as Record<string, unknown>)[k]]));
@@ -81,23 +96,67 @@ export function floor(t = tick()) {
 /* ---------------- device commands ---------------- */
 // Whitelisted commands per device type. `confirm` commands must be confirmed by the user first
 // (the agent asks; the API rejects them unless confirmed=true).
-export const COMMANDS: Record<string, Record<string, { args?: Record<string, [number, number] | string[]>; confirm?: boolean; apply: (a: any) => Override }>> = {
+export const COMMANDS: Record<string, Record<string, { args?: Record<string, [number, number] | string[]>; confirm?: boolean; apply: (a: any, cur: any) => Override }>> = {
   ac: {
     power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
     setTemperature: { args: { celsius: [16, 30] }, apply: a => ({ set: +a.celsius }) },
+    setMode: { args: { mode: ['cool', 'heat', 'dry', 'fan', 'auto'] }, apply: a => ({ mode: String(a.mode), on: true }) },
     setFanSpeed: { args: { percent: [0, 100] }, apply: a => ({ fan: +a.percent }) },
+    setSwing: { args: { position: ['swing', 'up', 'middle', 'down'] }, apply: a => ({ swing: String(a.position) }) },
+    setTimer: { args: { hours: [0, 12] }, apply: a => ({ timer: +a.hours, timerAt: Date.now() }) },
   },
-  light: { setLevel: { args: { percent: [0, 100] }, apply: a => ({ lv: +a.percent }) } },
-  blinds: { setPosition: { args: { percent: [0, 100] }, apply: a => ({ pos: +a.percent }) } },
+  light: {
+    power: { args: { on: ['true', 'false'] }, apply: (a, cur) => (a.on === true || a.on === 'true') ? { lv: cur?.lastLv || 80 } : { lv: 0, lastLv: cur?.lv || 80 } },
+    setLevel: { args: { percent: [0, 100] }, apply: a => ({ lv: +a.percent }) },
+    setColorTemperature: { args: { kelvin: [2700, 6500] }, apply: a => ({ ct: +a.kelvin }) },
+  },
+  tv: {
+    power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
+    setVolume: { args: { percent: [0, 100] }, apply: a => ({ vol: +a.percent }) },
+    setInput: { args: { source: ['TV', 'HDMI 1', 'HDMI 2', 'Apps'] }, apply: a => ({ input: String(a.source), on: true }) },
+  },
+  fan: {
+    power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
+    setSpeed: { args: { level: [1, 3] }, apply: a => ({ speed: +a.level, on: true }) },
+    setOscillation: { args: { on: ['true', 'false'] }, apply: a => ({ osc: a.on === true || a.on === 'true' }) },
+  },
+  blinds: {
+    open: { apply: () => ({ pos: 100 }) },
+    close: { apply: () => ({ pos: 0 }) },
+    setPosition: { args: { percent: [0, 100] }, apply: a => ({ pos: +a.percent }) },
+  },
   plug: { power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) } },
   lock: {
     lock: { apply: () => ({ locked: true }) },
-    unlock: { confirm: true, apply: () => ({ locked: false }) },
+    unlock: { confirm: true, apply: () => ({ locked: false, unlockedAt: Date.now() }) },
   },
   washer: { stop: { confirm: true, apply: () => ({ state: 'Stopped by user' }) } },
-  purifier: { setFan: { args: { level: [1, 5] }, apply: a => ({ fan: +a.level }) } },
-  vacuum: { start: { apply: () => ({ state: 'Cleaning' }) }, dock: { apply: () => ({ state: 'Docked' }) } },
+  purifier: {
+    power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
+    setFan: { args: { level: [1, 5] }, apply: a => ({ fan: +a.level, on: true }) },
+  },
+  vacuum: { start: { apply: () => ({ state: 'Cleaning', startedAt: Date.now() }) }, dock: { apply: () => ({ state: 'Docked' }) } },
 };
+
+/* The room answers an AC slowly: after a command the room temperature moves from where it was toward what
+   the unit can reach (setpoint when cooling below the room or heating above it), with a ~45 s time constant,
+   so a guest sees the room cool down live. Off, fan and dry drift back to the room's own temperature. */
+type AcDyn = { room0: number; at: number };
+const acDyn: Record<string, AcDyn> = ((globalThis as any).__acDyn ??= {});
+const TAU_MS = 45_000;
+function acRoom(id: string, base: Record<string, any>, o: Override | null) {
+  const dyn = acDyn[id];
+  if (!dyn) return null;
+  const on = (o?.on ?? base.on) !== false, mode = String(o?.mode ?? 'cool'), set = Number(o?.set ?? base.set);
+  const ambient = Number(base.room);
+  let target = ambient;
+  if (on && (mode === 'cool' || mode === 'auto') && set < ambient) target = set;
+  if (on && (mode === 'heat' || mode === 'auto') && set > ambient) target = set;
+  if (on && mode === 'dry') target = ambient - 0.8;
+  if (on && mode === 'fan') target = ambient - 0.3;
+  const k = Math.exp(-(Date.now() - dyn.at) / TAU_MS);
+  return +(target + (dyn.room0 - target) * k).toFixed(2);
+}
 
 export function runCommand(id: string, command: string, args: Record<string, unknown> = {}, confirmed = false, by = 'user') {
   const d = byId[id];
@@ -105,13 +164,16 @@ export function runCommand(id: string, command: string, args: Record<string, unk
   const spec = COMMANDS[d.type]?.[command];
   if (!spec) return { ok: false, error: `${TYPES[d.type].label} does not support "${command}". Supported: ${Object.keys(COMMANDS[d.type] ?? {}).join(', ') || 'none'}` };
   if (spec.confirm && !confirmed) return { ok: false, needsConfirmation: true, error: `"${command}" on ${id} needs explicit confirmation` };
+  if (activeFault(d)?.spec.key === 'offline') return { ok: false, offline: true, error: `${TYPES[d.type].label} ${id} is offline and did not respond` };
   for (const [k, rule] of Object.entries(spec.args ?? {})) {
     const v = args[k];
     if (v === undefined) return { ok: false, error: `Missing argument "${k}"` };
     if (Array.isArray(rule) && typeof rule[0] === 'number') { const n = Number(v); if (Number.isNaN(n) || n < (rule[0] as number) || n > (rule[1] as number)) return { ok: false, error: `"${k}" must be between ${rule[0]} and ${rule[1]}` }; }
     else if (Array.isArray(rule) && !rule.map(String).includes(String(v))) return { ok: false, error: `"${k}" must be one of ${rule.join(', ')}` };
   }
-  rt.overrides[id] = { ...(rt.overrides[id] ?? {}), ...spec.apply(args) };
+  const before = device(id);
+  if (d.type === 'ac' && before) acDyn[id] = { room0: Number((before.readings as any)?.room), at: Date.now() };
+  rt.overrides[id] = { ...(rt.overrides[id] ?? {}), ...spec.apply(args, { ...(before?.readings ?? {}), ...(rt.overrides[id] ?? {}) }) };
   rt.log.push({ at: rt.t, deviceId: id, command, args, by });
   return { ok: true, device: device(id) };
 }
@@ -182,6 +244,7 @@ export function buildingState() {
 }
 
 export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan: { dataUrl: string; x0: number; x1: number; z0: number; z1: number } | null, furniture: Runtime['furniture'] = [], notes: Note[] = [], title = 'Uploaded floor plan') {
+  rt.planGen = (rt.planGen ?? 0) + 1;
   rt.furniture = furniture;
   rt.title = title;
   rt.notes = notes;

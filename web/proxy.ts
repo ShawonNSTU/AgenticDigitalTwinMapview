@@ -9,6 +9,7 @@ const KEY = process.env.ADMIN_KEY ?? '';
 const guestApi = (path: string, method: string) =>
   /^\/api\/guest\/[^/]+\/(building|floor)$/.test(path) && method === 'GET'
   || /^\/api\/guest\/[^/]+\/devices\/[^/]+\/commands$/.test(path) && method === 'POST'
+  || /^\/api\/guest\/[^/]+\/(verify|chat)$/.test(path) && method === 'POST'
   || /^\/api\/guest\/[^/]+$/.test(path) && method === 'GET';
 
 export function proxy(req: NextRequest) {

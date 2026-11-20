@@ -74,6 +74,7 @@ func _run() -> void:
 	_check(got.arrived and w.room_key == room, "the guest walks into their room (ended in %s)" % w.room_key)
 	_check(crossed == 0, "the way there never crosses a wall (%d)" % crossed)
 	main._guest_arrived()
+	print("arrived at ", w.p, " room ", w.room_key, " poly ", PlanGeo.room_poly(Store.room(room)))
 	w._apply()
 	await _wait(0.4)
 	await _shot("g1_arrived")
@@ -85,6 +86,8 @@ func _run() -> void:
 		for i in 300:
 			w._process(0.05)
 			if Store.room_at(w.p).get("key", "") != room:
+				if left == 0:
+					print("outside at ", w.p, " in ", Store.room_at(w.p).get("key", "-"), " dir ", d, " free ", w.nav.is_free(w.p))
 				left += 1
 		w._keys[KEY_W] = false
 	_check(left == 0, "the guest can't walk out of the room (%d steps outside)" % left)

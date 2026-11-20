@@ -95,8 +95,9 @@ function readBase(d, t) {
   switch (d.type) {
     case 'ac': return acRead(d, t);
     case 'odu': return oduRead(t, d.id);
-    case 'light': { const lv = o ? (LT_LEVEL[d.room] ?? 70) : 0; return { lv, ma: lv * 4.1, ledT: 28 + lv * .22, rssi: -55 - (d.n % 6) * 2 }; }
-    case 'tv': { const home = d.room in LT_LEVEL; const on = o && (!home || d.room === 'media' || t > 19); return { on, w: on ? 112 : 0.5, rssi: -48 }; }
+    case 'light': { const lv = o ? (LT_LEVEL[d.room] ?? 70) : 0; return { lv, ct: 3000, ma: lv * 4.1, ledT: 28 + lv * .22, rssi: -55 - (d.n % 6) * 2 }; }
+    case 'tv': { const home = d.room in LT_LEVEL; const on = o && (!home || d.room === 'media' || t > 19); return { on, vol: 18, input: 'TV', w: on ? 112 : 0.5, rssi: -48 }; }
+    case 'fan': return { on: false, speed: 2, osc: true, rpm: 0, w: 0.4, rssi: -54 - (d.n % 6) * 2 };
     case 'speaker': return { on: o, vol: o ? 30 : 0, rssi: -50 - (d.n % 6) };
     case 'blinds': return { pos: t > 7 && t < 19.5 ? 100 : 0, batt: 64 - (d.n % 6) * 4, rssi: -62 };
     case 'fridge': return { fz: 3.1 + Math.sin(t * 3) * .3, fr: -18.2 + Math.sin(t * 2) * .4, comp: Math.sin(t * 6) > -.2 ? 'Running' : 'Idle', door: 'Closed', w: 95 };
@@ -114,7 +115,7 @@ function readBase(d, t) {
     case 'temphum': return { temp: 24.5 + (occ('bath', t) ? 1.5 : 0), hum: occ('bath', t) ? 78 : 55, batt: 81, rssi: -63 };
     case 'motion': return { motion: o && Math.sin(t * 9 + d.n) > 0, batt: d.id === R.lowBatt ? 12 : 74, rssi: -61 - (d.n % 6) * 2 };
     case 'plug': return { on: true, w: o ? 42 : 3.2, kwh: ((t - 6) * .05).toFixed(2), rssi: -57 };
-    case 'purifier': return { fan: o ? 3 : 1, pm: 8 + (o ? 4 : 0), hepa: 62 };
+    case 'purifier': return { on: true, fan: o ? 3 : 1, pm: 8 + (o ? 4 : 0), hepa: 62, rssi: -56 };
   }
 }
 
@@ -211,12 +212,32 @@ export const TYPES: Record<string, any> = {
   plug: { label: 'Smart plug', icon: '<path d="M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4"/>', cam: .7, sf: 3, er: .08,
     parts: [{ key: 'relay', name: 'Relay', shape: 'box', size: [.02, .015, .015], col: 0x1d2433, val: r => r.on ? 'On' : 'Off', h: () => 'ok', s: () => 1, u: '' },
       { key: 'meter', name: 'Power meter', shape: 'box', size: [.012, .003, .012], col: 0x1d7a4a, val: r => `${r.w} W · ${r.kwh} kWh`, h: () => 'ok', s: r => r.w, u: 'W' }, radio()] },
+  fan: { label: 'Fan', icon: '<circle cx="12" cy="9" r="6"/><path d="M12 9l3-4M12 9l-4 1M12 9l1 5M12 15v6M8 21h8"/>', cam: 1.6, sf: 1, er: .38,
+    parts: [{ key: 'blades', name: 'Blades', shape: 'cyl', size: [.18, .03], col: 0xcbd5e1, val: r => r.on ? `${r.rpm} rpm` : 'Stopped', h: () => 'ok', s: r => r.rpm, u: 'rpm' },
+      { key: 'motor', name: 'Fan motor', shape: 'cyl', size: [.06, .08], col: 0x64748b, val: r => `${r.w} W`, h: () => 'ok', s: r => r.w, u: 'W' },
+      { key: 'osc', name: 'Oscillation motor', shape: 'box', size: [.05, .04, .04], col: 0x475569, val: r => r.osc ? 'Oscillating' : 'Fixed', h: () => 'ok', s: r => r.osc ? 1 : 0, u: '' },
+      radio('wifi', 'Wi-Fi module')] },
   purifier: { label: 'Air purifier', icon: '<rect x="6" y="3" width="12" height="18" rx="3"/><path d="M9 7h6M9 10h6M9 13h6"/>', cam: 1.6, sf: 1, er: .38,
     parts: [{ key: 'hepa', name: 'HEPA filter', shape: 'cyl', size: [.12, .25], col: 0xe2e8f0, val: r => `${r.hepa} % life left`, h: r => r.hepa < 10 ? 'watch' : 'ok', s: r => r.hepa, u: '%' },
       { key: 'fan', name: 'Fan', shape: 'cyl', size: [.1, .04], col: 0x64748b, val: r => `speed ${r.fan}`, h: () => 'ok', s: r => r.fan, u: '' },
       { key: 'pm', name: 'PM2.5 sensor', shape: 'box', size: [.04, .03, .02], col: 0x1d2433, val: r => `${r.pm} µg/m³`, h: () => 'ok', s: r => r.pm, u: 'µg/m³' },
-      { key: 'pcb', name: 'Control board', shape: 'box', size: [.1, .06, .01], col: 0x1d7a4a, val: () => 'No error', h: () => 'ok', s: () => 0, u: '' }] },
+      { key: 'pcb', name: 'Control board', shape: 'box', size: [.1, .06, .01], col: 0x1d7a4a, val: () => 'No error', h: () => 'ok', s: () => 0, u: '' }, radio('wifi', 'Wi-Fi module')] },
 };
+
+/* Any device with a radio can go offline (power cut, network or hub problem): commands then fail. */
+for (const [type, T] of Object.entries(TYPES)) {
+  const radioPart = T.parts.find((p: any) => /wifi|radio/.test(p.key));
+  if (!radioPart || type === 'odu') continue;
+  FAULTS[type] ??= [];
+  if (FAULTS[type].some((f: any) => f.key === 'offline')) continue;
+  FAULTS[type].push({
+    key: 'offline', name: 'Device offline', what: 'The device stopped answering (power cut, network or hub problem). Commands fail until it is back.',
+    parts: { [radioPart.key]: 1 }, base: (r: any) => { r.online = false; r.rssi = -100; },
+    title: 'Device offline: not responding', conf: 'Confirmed · no reply to status requests or commands',
+    ev: () => ['No status report since the device went quiet', 'Commands are not acknowledged'],
+    steps: [{ t: 'Check the device has power (breaker, plug, battery)', p: radioPart.key }, { t: 'Check the hub and the network in this room', p: radioPart.key }, { t: 'Power-cycle the device and confirm it reports again', p: radioPart.key }],
+  });
+}
 
 
 /* ---------------- deeper twins ----------------
@@ -252,16 +273,17 @@ function derive(d, r, t) {
       return { rpm: dry ? 52 : 0, fanrpm: dry ? 2750 : 0, inlet: r.heat === 'On' ? 118 : 25, moist: dry ? Math.max(5, Math.round(60 - (t - 15.5) * 50)) : 0, w: dry ? 2600 : 1 };
     }
     case 'oven': return { top: r.on && t % 0.2 < 0.1 ? 'On' : 'Off', cool: r.on ? 2200 : 0, w: r.on ? 2400 : 3 };
-    case 'tv': return { nits: r.on ? 420 : 0, vol: r.on ? 18 : 0 };
+    case 'tv': return { nits: r.on ? 420 : 0, w: r.on ? 112 : 0.5 };
+    case 'fan': return { rpm: r.on ? [0, 820, 1080, 1340][r.speed] ?? 1080 : 0, w: r.on ? [0, 18, 26, 38][r.speed] ?? 26 : 0.4 };
     case 'speaker': return { w: r.on ? 9.5 : 1.2 };
-    case 'light': return { lm: Math.round(r.lv * 8.6), w: +(r.lv * 0.095 + 0.3).toFixed(1) };
+    case 'light': return { on: r.lv > 0, lm: Math.round(r.lv * 8.6), w: +(r.lv * 0.095 + 0.3).toFixed(1), ma: r.lv * 4.1 };
     case 'blinds': return { moving: (t > 7 && t < 7.08) || (t > 19.5 && t < 19.58) };
     case 'camera': return { fps: 25, kbps: r.rec ? 2048 + Math.round(w * 150) : 0, storage: Math.round(38 + (t - 6) * 1.2), pan: 0.5, w: 4.8 };
     case 'doorbell': return { motion: Math.sin(t * 7) > 0.9, ring: false };
     case 'lock': return { moving: false };
     case 'motion': return { lux: Math.round(t > 6.5 && t < 18.5 ? 320 + 80 * w : 15) };
     case 'plug': return { volt: 230, amps: +(r.w / 230).toFixed(2) };
-    case 'purifier': return { pre: 35, carbon: 70, cmh: r.fan * 95, voc: 120 + r.pm * 4, w: r.fan * 9 + 2 };
+    case 'purifier': return { pre: 35, carbon: 70, cmh: r.on ? r.fan * 95 : 0, voc: 120 + r.pm * 4, w: r.on ? r.fan * 9 + 2 : 0.5 };
     case 'temphum': return { on: true };
   }
   return {};
@@ -276,6 +298,15 @@ export function activeFault(d) {
   if (!spec) return null;
   const ramp = clamp((Date.now() - a.since) / RAMP_MS, 0, 1);
   return { spec, s: a.severity * ramp, target: a.severity, level: a.level, ramp };
+}
+/** Reference text for a technician: what the device's parts do and, for a known fault, what it is. */
+export function FAULT_DOCS(type: string, faultKey?: string) {
+  const T = TYPES[type]; const f = faultKey ? (FAULTS[type] ?? []).find((x: any) => x.key === faultKey) : null;
+  return {
+    title: `${T.label}: service notes (simulated)`,
+    fault: f ? { name: f.name, what: f.what } : null,
+    parts: T.parts.map((p: any) => ({ key: p.key, name: p.name, measured: !p.note })),
+  };
 }
 export function faultCatalog(type: string) { return (FAULTS[type] ?? []).map(f => ({ key: f.key, name: f.name, what: f.what, parts: Object.keys(f.parts) })); }
 export function setFault(id: string, key: string, level = 'developing') {
@@ -292,11 +323,24 @@ export function clearFault(id: string) { const had = !!G.faults[id]; delete G.fa
 export function faultList() { return Object.entries(G.faults).map(([id, a]: any) => ({ id, key: a.key, level: a.level })); }
 export { LEVELS };
 
-function read(d, t) {
+/** Readings at time t. `extra` is the state set by commands (and the AC's room response); it goes in before the
+ *  derived values, so power, airflow and the like follow what the user set. */
+function read(d, t, extra = null) {
   const r = readBase(d, t);
   if (!r) return r;
+  if (d.type === 'ac') { r.mode = 'cool'; r.swing = 'swing'; r.timer = 0; }
+  if (extra) Object.assign(r, extra);
+  if (d.type === 'ac') {
+    if (r.mode === 'fan' || r.mode === 'dry') { r.evIn = r.room - (r.mode === 'dry' ? 6 : 0.5); r.evOut = r.room - (r.mode === 'dry' ? 3 : 0.3); }
+    if (r.mode === 'heat') { r.evIn = 38 + (r.set - 24); r.evOut = 34 + (r.set - 24); }
+    if (!r.on) { r.fan = 0; r.evIn = r.room; r.evOut = r.room; r.louver = 0; }
+    else r.louver = { swing: 35, up: 15, middle: 35, down: 60 }[r.swing] ?? 35;
+    r.amps = .18 + r.fan * .004;
+  }
+  if (d.type === 'purifier' && !r.on) r.fan = 0;
   const f = activeFault(d);
   if (f?.spec.base && f.s > 0) { f.spec.base(r, f.s); if (d.type === 'ac') r.sh = r.evOut - r.evIn; } // superheat follows the changed pipe temperatures
+  if (d.type === 'ac') r.sh = r.evOut - r.evIn;
   const full = { ...r, ...derive(d, r, t) };
   if (f?.spec.post && f.s > 0) f.spec.post(full, f.s);
   return full;
@@ -446,7 +490,7 @@ export const LBL: Record<string, string> = { ok: 'Normal', watch: 'Watch', fault
 /** Snapshot of one device at time t: readings, part values and health, finding. */
 export function snapshot(id: string, t: number, extra: Record<string, unknown> | null = null) {
   const d = byId[id]; if (!d) return null;
-  const r = { ...read(d, t), ...(extra ?? {}) }, T = TYPES[d.type];
+  const r = read(d, t, extra), T = TYPES[d.type];
   return {
     id: d.id, type: d.type, label: T.label, room: d.room, name: d.name, time: t,
     health: health(d, t),

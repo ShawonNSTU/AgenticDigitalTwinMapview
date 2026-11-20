@@ -75,11 +75,110 @@ func go_to(target: Vector2) -> bool:
 	return true
 
 
+var _route_node: Node3D
+var _over := false
+var _over_from: Transform3D
+var _over_t := 1.0  # 0..1 progress of the move into or out of the overview
+var _look_goal = null  # [yaw, pitch] to turn to (guided tour)
+
+
+## A guide line on the floor from the start to the destination (chevrons pointing the way) with tags where
+## the way enters another room (corridor, stairs, lift...) and at the destination.
+func show_route(start: Vector2, route: PackedVector2Array, dest: String) -> void:
+	if _route_node:
+		_route_node.queue_free()
+	_route_node = Node3D.new()
+	add_child(_route_node)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.2, 0.55, 1.0, 0.85)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	var chev := PrismMesh.new()
+	chev.size = Vector3(0.32, 0.36, 0.01)
+	var pts := PackedVector2Array([start]) + route
+	var room_before := Store.room_label(Store.room_at(start))
+	var carry := 0.0
+	for i in pts.size() - 1:
+		var a := pts[i]
+		var b := pts[i + 1]
+		var len := a.distance_to(b)
+		var d := (b - a) / maxf(len, 0.001)
+		var t := carry
+		while t < len:
+			var q := a + d * t
+			var m := MeshInstance3D.new()
+			m.mesh = chev
+			m.material_override = mat
+			m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			m.position = Vector3(q.x, 0.025, q.y)
+			m.rotation = Vector3(-PI / 2, atan2(-d.x, -d.y), 0)
+			_route_node.add_child(m)
+			t += 0.9
+		carry = t - len
+		var here := Store.room_label(Store.room_at(b))
+		if here != room_before and i < pts.size() - 2:
+			_route_tag(b, here, Color(0.75, 0.85, 1.0))
+			room_before = here
+	_route_tag(pts[pts.size() - 1], dest, Color(0.45, 0.85, 0.55))
+
+
+func _route_tag(at: Vector2, text: String, col: Color) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.fixed_size = true
+	l.pixel_size = 0.0007
+	l.font_size = 24
+	l.outline_size = 8
+	l.outline_modulate = Color(0.05, 0.07, 0.1, 0.9)
+	l.modulate = col
+	l.no_depth_test = true
+	l.position = Vector3(at.x, 1.9, at.y)
+	_route_node.add_child(l)
+
+
+func hide_route() -> void:
+	if _route_node:
+		_route_node.queue_free()
+		_route_node = null
+
+
+## The way from above (the guest's overview); again to come back down.
+func overview(on: bool) -> void:
+	if on == _over:
+		return
+	_over = on
+	_over_t = 0.0
+	_over_from = cam.global_transform
+	var fb := FloorBuilder.current
+	if fb and fb.ceilings:
+		fb.ceilings.visible = not on
+
+
+## Turn to face a point (guided tour of the room's devices).
+func look_at_point(q: Vector3) -> void:
+	var eye_pos := Vector3(p.x, eye, p.y)
+	var d := q - eye_pos
+	var flat := Vector2(d.x, d.z).length()
+	_look_goal = [atan2(-d.x, -d.z), clampf(atan2(d.y, flat), deg_to_rad(-60.0), deg_to_rad(50.0))]
+	_cancel_route()
+
+
 ## Keeps the walker inside one room from now on (a guest who reached their room).
+var _confine := PackedVector2Array()
+
+
 func confine(r: Dictionary) -> void:
 	if r.is_empty():
 		return
-	nav.restrict(PlanGeo.room_poly(r))
+	_confine = PlanGeo.room_poly(r)
+	nav.restrict(_confine)
+
+
+## Walkable for the body here: a free cell and, once confined, inside the room outline itself.
+func _ok(q: Vector2) -> bool:
+	return nav.is_free(q) and (_confine.is_empty() or Geometry2D.is_point_in_polygon(q, _confine))
 
 
 func teleport(q: Vector2) -> void:
@@ -175,12 +274,12 @@ func _step(d: Vector2) -> void:
 	var blocked := false
 	for i in n:
 		var q := p + s
-		if nav.is_free(q):
+		if _ok(q):
 			p = q
-		elif nav.is_free(Vector2(q.x, p.y)):
+		elif _ok(Vector2(q.x, p.y)):
 			p.x = q.x
 			blocked = true
-		elif nav.is_free(Vector2(p.x, q.y)):
+		elif _ok(Vector2(p.x, q.y)):
 			p.y = q.y
 			blocked = true
 		else:
@@ -191,13 +290,36 @@ func _step(d: Vector2) -> void:
 
 
 func _apply() -> void:
+	if _look_goal != null:
+		yaw = lerp_angle(yaw, _look_goal[0], 0.12)
+		pitch = lerpf(pitch, _look_goal[1], 0.12)
+		if absf(wrapf(yaw - _look_goal[0], -PI, PI)) < 0.01 and absf(pitch - _look_goal[1]) < 0.01:
+			_look_goal = null
 	var bob := sin(_bob) * 0.02
 	var t := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch), Vector3(p.x, eye + bob, p.y))
+	if _over or _over_t < 1.0:
+		_over_t = minf(_over_t + get_process_delta_time() / 1.2, 1.0)
+		var top := _overview_xform()
+		var a := _over_t * _over_t * (3.0 - 2.0 * _over_t)
+		cam.global_transform = (_over_from.interpolate_with(top, a)) if _over else _over_from.interpolate_with(t, a)
+		return
 	if _intro > 0.0:
 		var a := 1.0 - _intro / INTRO
 		cam.global_transform = _from.interpolate_with(t, a * a * (3.0 - 2.0 * a))
 	else:
 		cam.global_transform = t
+
+
+## Straight down over the walker and the way to the destination.
+func _overview_xform() -> Transform3D:
+	var box := Rect2(p, Vector2.ZERO)
+	if _route_node:
+		for c in _route_node.get_children():
+			box = box.expand(Vector2(c.position.x, c.position.z))
+	box = box.grow(3.0)
+	var h := maxf(box.size.x, box.size.y) / (2.0 * tan(deg_to_rad(cam.fov) / 2.0)) + 4.0
+	var c := box.get_center()
+	return Transform3D(Basis(Vector3.RIGHT, -PI / 2 + 0.001), Vector3(c.x, h, c.y))
 
 
 func _track_room() -> void:
@@ -222,7 +344,7 @@ func _look(rel: Vector2) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if _intro > 0.4:
+	if _intro > 0.4 or _over:
 		return
 	if e is InputEventMouseButton:
 		if e.device == InputEvent.DEVICE_ID_EMULATION:
@@ -387,8 +509,8 @@ func _door_signs() -> void:
 			var plate := Label3D.new()
 			plate.text = Store.room_label(there)
 			plate.font_size = 40
-			plate.pixel_size = 0.0035
-			plate.width = 900
+			plate.pixel_size = 0.0022
+			plate.width = 700
 			plate.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			plate.double_sided = false
 			plate.modulate = Color(0.1, 0.13, 0.2)

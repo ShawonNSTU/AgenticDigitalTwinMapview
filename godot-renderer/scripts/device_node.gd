@@ -10,10 +10,12 @@ const BODY := {
 	"speaker": Vector3(0.15, 0.25, 0.15), "blinds": Vector3(1.0, 0.08, 0.06), "lock": Vector3(0.08, 0.15, 0.05),
 	"camera": Vector3(0.12, 0.12, 0.18), "doorbell": Vector3(0.06, 0.14, 0.03), "light": Vector3(0.22, 0.06, 0.22),
 	"plug": Vector3(0.08, 0.08, 0.05), "motion": Vector3(0.08, 0.08, 0.08), "leak": Vector3(0.1, 0.03, 0.1),
-	"temphum": Vector3(0.08, 0.08, 0.03),
+	"temphum": Vector3(0.08, 0.08, 0.03), "fan": Vector3(0.42, 1.1, 0.3),
 }
+const FX := ["light", "ac", "tv", "blinds", "fan", "purifier", "vacuum", "lock", "plug"]
 
 var data: Dictionary
+var fx: DeviceFx  # what the device is doing, shown in the room (light, airflow, screen, blinds...)
 var body: MeshInstance3D
 var body_mat := StandardMaterial3D.new()
 var ring_mat := StandardMaterial3D.new()
@@ -45,6 +47,9 @@ func setup(d: Dictionary) -> DeviceNode:
 	add_child(body)
 
 	_details(d.type, size)
+	if FX.has(d.type):
+		fx = DeviceFx.new().setup(self, d.type, size)
+		add_child(fx)
 
 	ring = MeshInstance3D.new()
 	var tm := TorusMesh.new()
@@ -99,13 +104,25 @@ func setup(d: Dictionary) -> DeviceNode:
 	return self
 
 
+## Live state from the platform (Store.live): the room shows what the device is doing.
+func apply_live(l: Dictionary) -> void:
+	if fx:
+		fx.apply(l)
+
+
 func set_health(h: String) -> void:
 	_health = h
 	var c := Store.color_for(h)
 	ring_mat.albedo_color = Color(c, 0.9 if h != "ok" else 0.45)
 	label.modulate = c.lightened(0.3) if h != "ok" else Color.WHITE
 	label.text = data.id if h == "ok" else "%s  ●" % data.id
+	_ring_visible()
 	_update_label()
+
+
+func _ring_visible() -> void:
+	# walking: the status ring only shows on devices that need attention (it reads as clutter in a room)
+	ring.visible = not Store.walk or _health != "ok" or _highlighted
 
 
 func _update_label() -> void:
@@ -114,7 +131,8 @@ func _update_label() -> void:
 
 func set_highlight(on: bool, dim_others: bool) -> void:
 	_highlighted = on
-	beam.visible = on
+	beam.visible = on and not Store.walk
+	_ring_visible()
 	if _pulse:
 		_pulse.kill()
 	ring.scale = Vector3.ONE
@@ -220,6 +238,9 @@ func _details(type: String, s: Vector3) -> void:
 		"oven":
 			_add_box(Vector3(s.x * 0.8, s.y * 0.5, 0.005), Vector3(0, -s.y * 0.05, s.z * 0.51), _m(Color(0.1, 0.1, 0.12, 0.9), 0.3, 0.05))
 			_add_box(Vector3(s.x * 0.7, 0.02, 0.03), Vector3(0, s.y * 0.28, s.z * 0.53), metal)
+		"fan":
+			body.mesh = _cyl(0.17, 0.035)
+			body.position.y = -s.y / 2 + 0.02
 		"lock", "doorbell":
 			_add_box(Vector3(s.x * 0.7, s.y * 0.4, 0.004), Vector3(0, s.y * 0.1, s.z * 0.5 + 0.003), _glow(Color("4c8dff")))
 

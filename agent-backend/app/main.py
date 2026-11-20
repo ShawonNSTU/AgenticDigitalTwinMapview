@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import agent
+from .guest_agent import run_guest
 from .floorplan import ParseError, analyze_plan
 from .config import ANTHROPIC_API_KEY, AGENT_MODEL, CORS_ORIGINS, PLATFORM_URL
 from .platform import Platform, PlatformError
@@ -50,6 +51,34 @@ async def chat(body: ChatIn):
     async def stream():
         async for event, data in agent.run([m.model_dump() for m in body.messages], platform):
             yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+class GuestAction(BaseModel):
+    device_id: str
+    command: str
+    args: dict = Field(default_factory=dict)
+    label: str = ""
+    type: str = ""
+    summary: str = ""
+
+
+class GuestChatIn(BaseModel):
+    token: str = Field(min_length=8, max_length=64)
+    cookie: str = Field(default="", max_length=2000, description="the guest's cookie header (PIN verification), passed on to the platform")
+    messages: list[Msg] = Field(min_length=1)
+    confirm: list[GuestAction] | None = Field(default=None, description="a plan the guest approved: run it")
+
+
+@app.post("/guest/chat")
+async def guest_chat(body: GuestChatIn):
+    """Room assistant for a hotel guest: plans, asks when needed, runs and reports per device. Scoped by the
+    guest pass on the platform side."""
+    async def stream():
+        confirm = [a.model_dump() for a in body.confirm] if body.confirm else None
+        async for event, data in run_guest(body.token, body.cookie, [m.model_dump() for m in body.messages], confirm):
+            yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 

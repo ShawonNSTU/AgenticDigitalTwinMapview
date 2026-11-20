@@ -122,6 +122,16 @@ export default function Home() {
     }
   }, [toast, loadDevices]);
 
+  // hotel: refurnish a room as a guest room (bed set and the usual devices), or every suitable room at once
+  const setupRoom = useCallback(async (room?: string) => {
+    if (!room && !confirm('Set up every suitable room on this floor as a hotel guest room? Their furniture and devices are replaced.')) return;
+    const r = await post('/api/hotel', 'POST', room ? { room } : {});
+    const d = await r.json();
+    if (!r.ok) { toast(d.error ?? 'Could not set up the room', 'bad'); return; }
+    toast(room ? `Guest room ready · ${d.devices.length} devices` : `${d.rooms} guest rooms ready`);
+    loadDevices(); loadRooms(); send({ type: 'refreshDevices' });
+  }, [toast, loadDevices, loadRooms]);
+
   const remove = useCallback(async (id: string) => {
     send({ type: 'closeDevice' });
     const r = await post(`/api/devices/${id}`, 'DELETE');
@@ -146,6 +156,8 @@ export default function Home() {
         <div className="stats">
           <span className="stat"><b>{devices.length}</b> devices</span>
           <span className={`stat ${bad.length ? 'warn' : 'good'}`}><b>{bad.length}</b> {bad.length === 1 ? 'needs' : 'need'} attention</span>
+          <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
+          <a href="/tech"><button className="ghost">Technician</button></a>
           <a href="/setup"><button className="ghost">Upload floor plan</button></a>
         </div>
       </header>
@@ -173,6 +185,7 @@ export default function Home() {
             <span className="muted">{devices.filter(d => d.room === roomSel.room).length} SmartThings devices</span>
             <div className="row">
               <button onClick={() => { send({ type: 'walk', action: 'start', room: roomSel.room }); }}>Walk in</button>
+              <button onClick={() => setupRoom(roomSel.room)}>Set up as guest room</button>
               <button className="pri" onClick={() => setQrFor(roomSel)}>Guest QR code</button>
             </div>
           </div>

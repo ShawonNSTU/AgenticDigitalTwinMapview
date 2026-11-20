@@ -5,7 +5,9 @@ extends Node3D
 const SLAB := 0.08
 const WALL := 0.08
 
+static var current: FloorBuilder  # the floor on screen (devices tint their room through it)
 var _slabs := {}  # room key -> StandardMaterial3D
+var _tints := {}  # room key -> [colour, amount] from devices working in the room (AC cooling or heating)
 var _walls: Array = []
 var wall_pieces: Array = []  # [a, b] on the floor for every built wall piece (door gaps left out)
 var lintels: Array = []      # [a, b] over each door gap (walk mode only: the walls reach the ceiling)
@@ -16,6 +18,7 @@ var _plan_mat: StandardMaterial3D
 
 
 func build() -> void:
+	current = self
 	for r in Store.rooms:
 		var poly := PlanGeo.room_poly(r)
 		var mat := StandardMaterial3D.new()
@@ -76,12 +79,13 @@ func build() -> void:
 	ground.albedo_color = Color("1a2028")
 	var fr: Rect2 = Store.floor_rect()
 	_box(Vector3(fr.get_center().x, -SLAB - 0.03, fr.get_center().y), Vector3(fr.size.x + 60, 0.02, fr.size.y + 60), ground)
-	if Store.plan_texture:
+	if Store.plan_texture and not Store.walk:  # walking: real floor finishes, not the drawing
 		# The uploaded plan lies on top of the floor so you can see it turn into the 3D map.
 		_plan_mat = StandardMaterial3D.new()
 		_plan_mat.albedo_texture = Store.plan_texture
 		_plan_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_plan_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_plan_mat.albedo_color.a = 0.18  # the drawing stays faintly under the 3D floor (play_build_up fades it from full)
 		var pb: Rect2 = Store.plan_bounds
 		var plane := MeshInstance3D.new()
 		var pm := PlaneMesh.new()
@@ -290,6 +294,25 @@ func _slab(poly: PackedVector2Array, mat: Material) -> void:
 
 
 var _selected := ""
+
+
+func _base(key: String) -> Color:
+	var r: Dictionary = Store.room(key)
+	return Color(r.color).lerp(Color("d9dde3"), 0.55) if not r.is_empty() else Color("d9dde3")
+
+
+## A device working in a room tints its floor (amount 0 clears it).
+func climate_tint(key: String, col: Color, amount: float) -> void:
+	if not _slabs.has(key):
+		return
+	var was: Array = _tints.get(key, [col, 0.0])
+	if is_equal_approx(was[1], amount) and was[0] == col:
+		return
+	_tints[key] = [col, amount]
+	if key == _selected:
+		return
+	var m: StandardMaterial3D = _slabs[key]
+	create_tween().tween_property(m, "albedo_color", _base(key).lerp(col, amount), 1.2)
 
 
 ## Highlights one room's floor (a click on the map); "" clears it.

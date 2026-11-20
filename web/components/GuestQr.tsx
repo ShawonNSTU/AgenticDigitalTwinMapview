@@ -2,16 +2,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 
-type Pass = { token: string; room: string; roomName: string; entranceName: string; label: string; expiresAt: number; path: string };
+type Pass = { token: string; room: string; roomName: string; entranceName: string; label: string; expiresAt: number; path: string; pin: string; allowUnlock: boolean };
 type Entrance = { key: string; name: string };
 
-const HOURS = [{ h: 2, t: '2 hours' }, { h: 8, t: '8 hours' }, { h: 24, t: '1 day' }, { h: 24 * 7, t: '7 days' }];
+// default checkout: tomorrow at 12:00, as a local datetime-local value
+const checkoutDefault = () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(12, 0, 0, 0); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T12:00`; };
 const when = (ms: number) => new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** Guest QR for one room: whoever scans it walks from the entrance to this room in 3D and can see and
  *  control only this room's devices, until the pass expires or is withdrawn. */
 export default function GuestQr({ room, roomName, onClose }: { room: string; roomName: string; onClose: () => void }) {
-  const [hours, setHours] = useState(24);
+  const [checkout, setCheckout] = useState(checkoutDefault());
+  const [verify, setVerify] = useState(true);
+  const [unlock, setUnlock] = useState(false);
   const [entrance, setEntrance] = useState('');
   const [label, setLabel] = useState('');
   const [entrances, setEntrances] = useState<Entrance[]>([]);
@@ -32,7 +35,7 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
 
   const create = async () => {
     setErr('');
-    const r = await fetch('/api/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room, hours, entrance: entrance || undefined, label: label || undefined }) });
+    const r = await fetch('/api/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room, until: new Date(checkout).getTime(), entrance: entrance || undefined, label: label || undefined, verify, allowUnlock: verify && unlock }) });
     const d = await r.json();
     if (!r.ok) { setErr(d.error ?? 'Could not create the pass'); return; }
     setMade(d); load();
@@ -44,16 +47,18 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
     <div className="modal-back" onClick={onClose}>
       <div className="modal glass" role="dialog" aria-label={`Guest QR for ${roomName}`} onClick={e => e.stopPropagation()}>
         <button className="hint-close" aria-label="Close" onClick={onClose}>✕</button>
-        <h3>Guest access · {roomName}</h3>
+        <h3>Guest check-in · {roomName}</h3>
         <p className="muted">A guest who scans this code walks from the entrance to this room in 3D, and can see and control only this room&apos;s devices. Doors to other rooms stay shut. Unlocking doors is never allowed.</p>
         {!made ? (
           <div className="qr-form">
-            <label>Valid for<select value={hours} onChange={e => setHours(+e.target.value)}>{HOURS.map(x => <option key={x.h} value={x.h}>{x.t}</option>)}</select></label>
+            <label>Guest name<input value={label} maxLength={60} placeholder="e.g. Ms. Rahman" onChange={e => setLabel(e.target.value)} /></label>
+            <label>Checkout (access ends)<input type="datetime-local" value={checkout} onChange={e => setCheckout(e.target.value)} /></label>
             <label>Walk starts at<select value={entrance} onChange={e => setEntrance(e.target.value)}>
               <option value="">Nearest entrance (automatic)</option>
               {entrances.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
             </select></label>
-            <label>For (optional)<input value={label} maxLength={60} placeholder="e.g. Visitor from Acme" onChange={e => setLabel(e.target.value)} /></label>
+            <label className="chk"><input type="checkbox" checked={verify} onChange={e => setVerify(e.target.checked)} /> Verify identity with a check-in PIN (handed over at the desk)</label>
+            <label className={`chk ${verify ? '' : 'dim'}`}><input type="checkbox" disabled={!verify} checked={verify && unlock} onChange={e => setUnlock(e.target.checked)} /> Let the guest unlock this room&apos;s door (hotel policy; simulated lock integration)</label>
             {err && <div className="bad-text">{err}</div>}
             <button className="pri" onClick={create}>Create QR code</button>
           </div>
@@ -63,6 +68,8 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
             <div className="qr-side">
               <b>{made.roomName}</b>
               <span className="muted">Valid until {when(made.expiresAt)}{made.entranceName ? ` · starts at ${made.entranceName}` : ''}</span>
+              {made.pin && <div className="pin-out"><small>Check-in PIN (give it to the guest, not printed on the QR)</small><b>{made.pin}</b></div>}
+              {made.allowUnlock && <span className="muted">Door unlock allowed for this guest.</span>}
               <label>Link address<input value={base} onChange={e => setBase(e.target.value)} /></label>
               {local && <span className="warn-text">Phones can&apos;t open “localhost”. Put this computer&apos;s network address here (for example http://192.168.1.20:3000) before printing.</span>}
               <code className="qr-url">{url(made)}</code>
@@ -80,7 +87,7 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
             <b>Active passes for this room</b>
             {passes.map(p => (
               <div key={p.token} className="qr-row">
-                <span>{p.label || 'Guest'} · until {when(p.expiresAt)}{p.entranceName ? ` · from ${p.entranceName}` : ''}</span>
+                <span>{p.label || 'Guest'} · until {when(p.expiresAt)}{p.pin ? ` · PIN ${p.pin}` : ''}{p.allowUnlock ? ' · may unlock' : ''}</span>
                 <button className="danger" onClick={() => withdraw(p.token)}>Withdraw</button>
               </div>))}
           </div>

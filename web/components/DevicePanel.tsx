@@ -2,12 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { send } from '@/lib/bridge';
 import { DeviceIcon } from '@/components/DevicePalette';
+import DeviceControls, { type Cmd } from '@/components/DeviceControls';
 
 type Part = { key: string; name: string; value: string; health: string; inferred: boolean };
 type Finding = { lvl: string; title: string; conf: string; ev: string[]; steps: { t: string; p: string; go?: string }[]; simulated?: boolean } | null;
 type FaultOpt = { key: string; name: string; what: string; parts: string[] };
 type Active = { key: string; name: string; level: string; severity: number; developing: boolean; parts: string[] } | null;
-type Device = { id: string; type: string; label: string; name: string; health: string; parts: Part[]; finding: Finding; fault: Active; faults: FaultOpt[] };
+type Device = { id: string; type: string; label: string; name: string; health: string; parts: Part[]; finding: Finding; fault: Active; faults: FaultOpt[]; readings: Record<string, unknown>; overrides: Record<string, unknown> | null; online?: boolean };
+type Rec = { id: string; at: number; by: string; status: string; cause: string; action: string; notes: string };
 
 const LEVELS = [{ key: 'early', name: 'Early' }, { key: 'developing', name: 'Developing' }, { key: 'severe', name: 'Severe' }] as const;
 const json = (r: Response) => r.json();
@@ -23,6 +25,21 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const alive = useRef(true);
+  const [cmds, setCmds] = useState<Cmd[]>([]);
+  const [recs, setRecs] = useState<Rec[]>([]);
+  const [cmdMsg, setCmdMsg] = useState('');
+  useEffect(() => {
+    fetch(`/api/devices/${id}/commands`).then(json).then(x => setCmds(x.commands ?? [])).catch(() => setCmds([]));
+    const loadRecs = () => fetch(`/api/maintenance?device=${id}`).then(json).then(x => setRecs(x.records ?? [])).catch(() => {});
+    loadRecs(); const h = setInterval(loadRecs, 5000); return () => clearInterval(h);
+  }, [id]);
+  const runCmd = async (command: string, args: Record<string, unknown> = {}, confirmed = false) => {
+    const r = await fetch(`/api/devices/${id}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, args, confirmed, by: 'host' }) });
+    const x = await r.json().catch(() => ({}));
+    setCmdMsg(r.ok ? '' : x.error ?? 'Command failed');
+    send({ type: 'refreshDevices' });
+    load();
+  };
 
   const load = useCallback(() => fetch(`/api/devices/${id}`).then(json).then(x => { if (alive.current) setD(x); }).catch(() => {}), [id]);
   useEffect(() => { alive.current = true; setStep(0); setPick(''); setErr(''); setTwinOpen(false); load(); const h = setInterval(load, 1000); return () => { alive.current = false; clearInterval(h); }; }, [id, load]);
@@ -81,6 +98,14 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
         {onRemove && <button className="danger" onClick={() => onRemove(id)}>Remove</button>}
       </div>}
 
+      {cmds.length > 0 && (
+        <section className="ctl-box">
+          <div className="lab-head"><b>Controls</b>{d.online === false ? <span className="off-tag">Offline</span> : <span className="muted">what this device supports</span>}</div>
+          <DeviceControls dev={{ type: d.type, readings: d.readings, overrides: d.overrides }} commands={cmds} run={runCmd} disabled={d.online === false} />
+          {cmdMsg && <div className="bad-text">{cmdMsg}</div>}
+        </section>
+      )}
+
       {d.faults.length > 0 && (
         <section className={`lab ${active ? 'lab-on' : ''}`}>
           <div className="lab-head">
@@ -126,12 +151,19 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
           </div>
         </div>
       )}
-      <div className="sec-title">Components · live</div>
+      <div className="sec-title">Components <span className="muted">· live where the device reports it; “not measured” parts are shown for explanation only</span></div>
       <div className="parts">{d.parts.map(p => (
         <div key={p.key} className={`part ${affected.has(p.key) ? 'hit' : ''}`} onClick={() => { if (!twinOpen) openTwin(); send({ type: 'focusPart', id, part: p.key }); }}>
-          <span><i className={`dot ${p.health}`} />{p.name}{p.inferred && <em> (inferred)</em>}</span><b>{p.value}</b>
+          <span><i className={`dot ${p.health}`} />{p.name}{p.inferred && <em className="not-measured"> not measured</em>}</span><b>{p.value}</b>
         </div>))}
       </div>
+      <div className="sec-title">Maintenance history</div>
+      {recs.length === 0 ? <div className="muted">No investigations recorded for this device.</div> : (
+        <div className="recs">{recs.slice(0, 6).map(r => (
+          <div key={r.id} className="rec"><b>{r.status}</b> · {new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {r.by}
+            {r.cause && <div>Cause: {r.cause}</div>}{r.action && <div>Action: {r.action}</div>}{r.notes && <div className="muted">{r.notes}</div>}</div>))}
+        </div>
+      )}
     </div>
   );
 }

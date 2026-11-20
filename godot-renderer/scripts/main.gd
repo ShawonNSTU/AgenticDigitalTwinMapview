@@ -22,6 +22,7 @@ var walker: Walker        # first-person walk-through, or null on the map
 var _walk_saved := {}     # map wall height and plan furniture, restored when the walk ends
 var _walk_build := false  # the world is being rebuilt to enter or leave the walk
 const WALK_HEIGHT := 2.7  # metres, floor to ceiling while walking
+const WALK_AMBIENT := 0.5  # low enough that the room's own lights (and switching them) show
 
 
 func _ready() -> void:
@@ -42,6 +43,7 @@ func _ready() -> void:
 			_build_world(true))
 
 	Bus.health_changed.connect(_on_health)
+	Bus.live_updated.connect(_apply_live)
 	Bus.highlight_requested.connect(_on_highlight)
 	Bus.highlight_cleared.connect(func(): _on_highlight([], ""))
 	Bus.focus_requested.connect(func(id):
@@ -65,6 +67,7 @@ func _ready() -> void:
 		if walker == null:
 			rig.command(action))
 	Bus.walk_requested.connect(_on_walk)
+	Bus.walk_changed.connect(func(_i): _room_light())
 	Bus.device_clicked.connect(func(_id): _device_click_ms = Time.get_ticks_msec())
 	Bus.room_selected.connect(func(key):
 		if world:
@@ -86,6 +89,10 @@ func _ready() -> void:
 			var g := Node.new()
 			g.set_script(load("res://tests/twin_gallery.gd"))
 			add_child(g)
+		if a.begins_with("--fx-shots="):
+			var fs := Node.new()
+			fs.set_script(load("res://tests/fx_shots.gd"))
+			add_child(fs)
 		if a.begins_with("--guest-check="):
 			var gt := Node.new()
 			gt.set_script(load("res://tests/guest_test.gd"))
@@ -151,6 +158,51 @@ func _build_world(animate: bool) -> void:
 		_start_guest.call_deferred()
 
 
+## Every device shows its live state in the room (lights, airflow, screens, blinds...).
+func _apply_live() -> void:
+	if world == null:
+		return
+	for id in devices:
+		var n = devices[id]
+		if is_instance_valid(n):
+			n.apply_live(Store.live.get(id, {}))
+	_room_light()
+
+
+var _amb_tw: Tween
+
+
+## Walking: how bright the room looks follows its own lights (off is dim, full is bright), and the blinds let
+## daylight in. Rooms without connected lights keep the normal level.
+func _room_light() -> void:
+	if walker == null or env == null:
+		return
+	var levels: Array = []
+	var day := 0.0
+	for d in Store.devices:
+		if d.room != walker.room_key:
+			continue
+		var l: Dictionary = Store.live.get(d.id, {})
+		if l.get("online", true) == false:
+			if d.type == "light":
+				levels.append(0.0)
+			continue
+		if d.type == "light":
+			levels.append(float(l.get("lv", 0.0)) / 100.0)
+		elif d.type == "blinds":
+			day = maxf(day, float(l.get("pos", 0.0)) / 100.0)
+		elif d.type == "tv" and bool(l.get("on", false)):
+			day = maxf(day, 0.15)
+	var target := WALK_AMBIENT
+	if not levels.is_empty():
+		var avg: float = levels.reduce(func(a, b): return a + b, 0.0) / levels.size()
+		target = 0.14 + 0.42 * avg + 0.15 * day
+	if _amb_tw:
+		_amb_tw.kill()
+	_amb_tw = create_tween()
+	_amb_tw.tween_property(env, "ambient_light_energy", target, 1.2)
+
+
 func _make_devices() -> void:
 	var holder := Node3D.new()
 	holder.name = "Devices"
@@ -164,6 +216,7 @@ func _make_devices() -> void:
 	piping.name = "Piping"
 	world.add_child(piping)
 	piping.build()
+	_apply_live.call_deferred()
 
 
 ## Devices were placed, moved or removed on the same floor: rebuild devices and piping, keep the rest.
@@ -447,6 +500,14 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 			if Store.guest_token == "":
 				stop_walk()
 		"skip": _guest_skip()
+		"restart": _guest_restart(str(msg.get("from", "")))
+		"overview":
+			if walker:
+				walker.overview(bool(msg.get("on", true)))
+		"look":
+			if walker and devices.has(str(msg.get("id", ""))):
+				walker.look_at_point(devices[str(msg.get("id", ""))].global_position)
+				_on_highlight([str(msg.get("id", ""))], "")
 		"toggle":
 			if Store.guest_token != "":
 				return
@@ -490,7 +551,7 @@ func start_walk(room_key := "") -> void:
 	_build_world(false)
 	_walk_build = false
 	rig.set_process_unhandled_input(false)
-	env.ambient_light_energy = 0.72
+	env.ambient_light_energy = WALK_AMBIENT
 	sun.light_energy = 0.25
 	walker = Walker.new()
 	walker.name = "Walker"
@@ -565,13 +626,16 @@ var _guest_from := ""
 ## open: their doors stand open and their furniture is shown; every other door stays shut and other
 ## rooms show no names, furniture or devices (the platform sends only the guest room's devices).
 ## On arrival the guest is kept inside their room.
-func _start_guest() -> void:
+func _start_guest(from_key := "") -> void:
 	if walker or world == null:
 		return
 	_guest_room = str(Store.guest.get("room", ""))
 	var target_room: Dictionary = Store.room(_guest_room)
 	if target_room.is_empty():
 		return
+	if from_key != "":
+		Store.guest["entrance"] = from_key
+	_walk_saved = {"h": Store.wall_height, "furniture": Store.furniture}
 	Store.guest_allowed = {}
 	Store.walk = true
 	Store.wall_height = WALK_HEIGHT
@@ -602,7 +666,7 @@ func _start_guest() -> void:
 	_build_world(false)
 	_walk_build = false
 	rig.set_process_unhandled_input(false)
-	env.ambient_light_energy = 0.72
+	env.ambient_light_energy = WALK_AMBIENT
 	sun.light_energy = 0.25
 	walker = Walker.new()
 	walker.name = "Walker"
@@ -616,6 +680,7 @@ func _start_guest() -> void:
 		look = atan2(-d.x, -d.y)
 	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look, rig.cam.global_transform)
 	walker.arrived.connect(_guest_arrived)
+	walker.show_route(start, route, Store.room_label(target_room))
 	walker._track_room()
 	var metres := 0.0
 	prev = start
@@ -677,7 +742,21 @@ func _guest_arrived() -> void:
 	if walker == null or _guest_room == "" or walker.room_key != _guest_room:
 		return
 	walker.confine(Store.room(_guest_room))
+	walker.hide_route()
 	Bus.walk_changed.emit({"on": true, "guest": "arrived", "room": _guest_room, "roomName": Store.room_label(Store.room(_guest_room))})
+
+
+## The guest chose another starting point: plan the way again from there.
+func _guest_restart(from_key: String) -> void:
+	if Store.guest_token == "" or walker == null:
+		return
+	walker = null
+	Store.walk = false
+	Store.guest_allowed = {}
+	if _walk_saved.has("h"):
+		Store.wall_height = _walk_saved.h
+		Store.furniture = _walk_saved.furniture
+	_start_guest(from_key)
 
 
 ## Straight into the room (the guest skipped the walk).

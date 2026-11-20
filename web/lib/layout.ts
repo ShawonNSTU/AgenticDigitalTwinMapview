@@ -3,10 +3,10 @@ import types from '@/lib/sim/data/device_types.json';
 
 export const DEVICE_TYPES = Object.entries(types as Record<string, { label: string }>).map(([key, t]) => ({ key, label: t.label }));
 
-export const PREFIX: Record<string, string> = { ac: 'AC', odu: 'ODU', light: 'LT', tv: 'TV', speaker: 'SP', blinds: 'BL', fridge: 'FR', oven: 'OV', vacuum: 'VC', camera: 'CM', doorbell: 'DB', lock: 'DL', leak: 'LK', washer: 'WA', dryer: 'DR', temphum: 'TH', motion: 'MS', plug: 'PL', purifier: 'AP' };
+export const PREFIX: Record<string, string> = { ac: 'AC', odu: 'ODU', light: 'LT', tv: 'TV', speaker: 'SP', blinds: 'BL', fridge: 'FR', oven: 'OV', vacuum: 'VC', camera: 'CM', doorbell: 'DB', lock: 'DL', leak: 'LK', washer: 'WA', dryer: 'DR', temphum: 'TH', motion: 'MS', plug: 'PL', purifier: 'AP', fan: 'FN' };
 
 /** Mount height in metres per type (same as the sample home). */
-export const MOUNT: Record<string, number> = { ac: 2.15, odu: 0, light: 2.6, tv: 1.2, speaker: 0.55, blinds: 1.7, fridge: 0.9, oven: 0.45, vacuum: 0.06, camera: 2.2, doorbell: 1.3, lock: 1, washer: 0.45, dryer: 0.45, leak: 0.02, temphum: 1.5, motion: 2.2, plug: 0.35, purifier: 0.3 };
+export const MOUNT: Record<string, number> = { ac: 2.15, odu: 0, light: 2.6, tv: 1.2, speaker: 0.55, blinds: 1.7, fridge: 0.9, oven: 0.45, vacuum: 0.06, camera: 2.2, doorbell: 1.3, lock: 1, washer: 0.45, dryer: 0.45, leak: 0.02, temphum: 1.5, motion: 2.2, plug: 0.35, purifier: 0.3, fan: 0.6 };
 
 const COLORS = ['#8fb4f2', '#a8d8a0', '#c7b7ef', '#f2dc8f', '#8fd8d0', '#f2b8c6', '#c3e6a4', '#9fd0f0', '#94b8e8', '#a6e3c8'];
 

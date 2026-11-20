@@ -8,7 +8,7 @@ const TYPES = types as Record<string, T>;
 
 /** Palette groups, in the order a facility team thinks about a floor. */
 export const GROUPS: { name: string; types: string[] }[] = [
-  { name: 'Climate', types: ['ac', 'odu', 'purifier', 'temphum'] },
+  { name: 'Climate', types: ['ac', 'odu', 'fan', 'purifier', 'temphum'] },
   { name: 'Light & shade', types: ['light', 'blinds'] },
   { name: 'Security', types: ['camera', 'motion', 'lock', 'doorbell', 'leak'] },
   { name: 'Appliances', types: ['fridge', 'oven', 'washer', 'dryer', 'vacuum'] },
@@ -19,7 +19,7 @@ export const GROUPS: { name: string; types: string[] }[] = [
 export const MOUNT_HINT: Record<string, string> = {
   ac: 'wall', odu: 'outdoors', purifier: 'floor', temphum: 'wall', light: 'ceiling', blinds: 'window wall', camera: 'wall',
   motion: 'wall', lock: 'door', doorbell: 'door', leak: 'floor', fridge: 'floor', oven: 'floor', washer: 'floor', dryer: 'floor',
-  vacuum: 'floor', tv: 'wall', speaker: 'floor', plug: 'wall',
+  vacuum: 'floor', tv: 'wall', speaker: 'floor', plug: 'wall', fan: 'floor',
 };
 
 export function DeviceIcon({ type, size = 22 }: { type: string; size?: number }) {

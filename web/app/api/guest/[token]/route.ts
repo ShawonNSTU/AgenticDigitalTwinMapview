@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { check, guestView, revoke } from '@/lib/sim/guests';
+import { cookieName, check, guestView, revoke } from '@/lib/sim/guests';
 
 export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ token: string }> };
 
 /** GET: the guest's room and its devices (state and allowed commands). DELETE: withdraw the pass (host). */
 export async function GET(_req: NextRequest, ctx: Ctx) {
-  const c = check((await ctx.params).token);
-  if ('error' in c) return NextResponse.json({ error: c.error }, { status: c.status });
+  const token = (await ctx.params).token;
+  const c = check(token, _req.cookies.get(cookieName(token))?.value);
+  if ('error' in c) return NextResponse.json({ error: c.error, verify: !!c.verify }, { status: c.status });
   return NextResponse.json(guestView(c.pass));
 }
 

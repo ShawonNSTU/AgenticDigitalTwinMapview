@@ -27,7 +27,8 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `dragEnd` | `u`, `v`, `drop` | `drop: true` reports `dropDevice`; `false` cancels |
 | `startMove` | `id` | the placed device follows the pointer inside the map; click puts it down (`moveDevice`), right-click or Esc cancels |
 | `refreshDevices` | | poll the platform now (the page just added, moved or removed a device) |
-| `walk` | `action`: `start`, `stop`, `toggle`, `goto` (`room`), `stick` (`x`, `y` in −1..1) | first-person walk-through: `start` drops to eye height where the view is centred (or in `room`); walls reach the ceiling and rooms are entered through doorways; `goto` walks the route to a room; `stick` is the on-screen joystick (`y` −1 walks forward, `x` turns) |
+| `selectRoom` | `room` | highlight a room's floor (`""` clears) |
+| `walk` | `action`: `start`, `stop`, `toggle`, `goto` (`room`), `stick` (`x`, `y` in −1..1), and for guests `skip`, `restart` (`from` room), `overview` (`on`), `look` (`id`: turn to a device) | first-person walk-through: `start` drops to eye height where the view is centred (or in `room`); walls reach the ceiling and rooms are entered through doorways; `goto` walks the route to a room; `stick` is the on-screen joystick (`y` −1 walks forward, `x` turns) |
 
 ## Renderer → host
 
@@ -42,7 +43,9 @@ Every message is `{ source: "twin-renderer", type, ...fields }`.
 | `deviceClicked` | `id` | click on a device (drags are ignored) |
 | `partClicked` | `id`, `part` | click on a part of an opened device |
 | `deviceClosed` | | the open device was closed (Esc, back, scenario change) |
-| `walk` | `on`, `room`, `roomName`, `note` | walk-through started (`on: true`), entered another room, or ended (`on: false`); `note` when a room can't be reached |
+| `roomClicked` | `room`, `roomName` | a click on a room's floor in the map view |
+| `guestDenied` | `code` | the guest link stopped working (404/410) |
+| `walk` | `on`, `room`, `roomName`, `note`, and for guests `guest: walking·arrived`, `from`, `to`, `metres` | walk-through started (`on: true`), entered another room, or ended (`on: false`); `note` when a room can't be reached |
 | `placeHover` | `room`, `roomName`, `valid`, `mount` | while dragging: the room under the pointer and how the device would be mounted |
 | `dropDevice` | `deviceType`, `x`, `y`, `z`, `rotationY`, `room` | a device was dropped; the page adds it with `POST /api/devices` |
 | `moveDevice` | `id`, `x`, `y`, `z`, `rotationY`, `room` | a placed device was put down somewhere else; the page saves it with `PATCH /api/devices/:id` |
@@ -65,3 +68,8 @@ The page only refreshes its own lists.
 - Part keys are the `key`s in `data/device_types.json`. Device ids are the `id`s in `data/devices.json`.
 - Unknown types are ignored with a warning, so the host can be newer than the renderer.
 - Change this file in the same pull request as any change to the messages.
+
+Guest mode: the page loads the renderer as `/godot/index.html?guest=<token>`. The renderer then reads only
+`/api/guest/<token>/building` and `/floor`, starts the walk from the entrance to the guest's room by itself, opens
+only the rooms on the way, and keeps the guest in the room once there. Map navigation, device placement and the
+internal twin are off for guests.

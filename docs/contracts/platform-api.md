@@ -85,3 +85,33 @@ photo corners in 0..1 image coordinates, or `{error}` (422 when nothing is found
 
 ## POST /api/chat
 Proxy to the agent. See `agent-api.md`.
+
+## Hotel and guests
+
+| Method · path | What |
+|---|---|
+| `GET /api/hotel` | rooms that can be guest rooms, and the guest-room device kit |
+| `POST /api/hotel` `{room}` or `{rooms?}` | refurnish and fit one room (or every candidate) as a guest room |
+| `GET /api/guest?room=` · `POST /api/guest` | active passes and entrance rooms · new pass `{room, until (ms) or hours, entrance?, label?, verify?, allowUnlock?}` → `{token, path, pin, expiresAt}` |
+| `DELETE /api/guest/:token` | withdraw a pass (host) |
+| `POST /api/guest/:token/verify` `{pin}` | check-in PIN; sets a signed cookie; 5 wrong tries lock the pass |
+| `GET /api/guest/:token` | the guest's room, its devices (state, status, allowed commands), entrances |
+| `GET /api/guest/:token/building` · `/floor` | layout and live state for the guest's 3D view: only the room's devices, no plan image |
+| `POST /api/guest/:token/devices/:id/commands` | a command on a device in the room; confirmation-only commands are refused, except unlocking when the pass allows it (403 otherwise, 503 when the device is offline) |
+| `POST /api/guest/:token/chat` | the room assistant (SSE: `text`, `plan {actions, ask_first}`, `result {results}`, `ui_action`, `error`, `done`); send `confirm: actions` to run an approved plan |
+
+Guest endpoints answer 401 `{verify: true}` until the PIN is entered (when the pass has one), 404 for an unknown
+token and 410 once the pass expired, was withdrawn or the plan was replaced.
+
+## Technician
+
+| Method · path | What |
+|---|---|
+| `GET /api/alerts` | open alerts: device, room, level, title, since, reported evidence, affected parts, steps, service notes, recent events, status |
+| `GET /api/maintenance?device=` · `POST /api/maintenance` | records `{deviceId, status: acknowledged·investigating·resolved, cause?, action?, notes?, by?}` |
+
+`/api/events` also sends `alert` when a device raises a new alert.
+
+Commands added for the hotel: AC `setMode`, `setSwing`, `setTimer`; light `power`, `setColorTemperature`; TV
+`power`, `setVolume`, `setInput`; fan `power`, `setSpeed`, `setOscillation`; blinds `open`, `close`; purifier
+`power`. Any device with a radio can get the `offline` fault: its commands then fail with `offline: true`.

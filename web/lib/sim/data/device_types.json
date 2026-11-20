@@ -1900,6 +1900,79 @@
         "size": null,
         "color": null,
         "inferred": false
+      },
+      {
+        "key": "wifi",
+        "name": "Wi-Fi module",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
+      }
+    ]
+  },
+  "fan": {
+    "label": "Fan",
+    "iconSvg": "<circle cx=\"12\" cy=\"9\" r=\"6\"/><path d=\"M12 9l3-4M12 9l-4 1M12 9l1 5M12 15v6M8 21h8\"/>",
+    "cameraDistance": 1.6,
+    "detailScale": 1,
+    "explodeRadius": 0.38,
+    "handBuilt": false,
+    "parts": [
+      {
+        "key": "blades",
+        "name": "Blades",
+        "unit": "rpm",
+        "shape": "cyl",
+        "size": [
+          0.18,
+          0.03
+        ],
+        "color": "#cbd5e1",
+        "inferred": false
+      },
+      {
+        "key": "motor",
+        "name": "Fan motor",
+        "unit": "W",
+        "shape": "cyl",
+        "size": [
+          0.06,
+          0.08
+        ],
+        "color": "#64748b",
+        "inferred": false
+      },
+      {
+        "key": "osc",
+        "name": "Oscillation motor",
+        "unit": "",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.04,
+          0.04
+        ],
+        "color": "#475569",
+        "inferred": false
+      },
+      {
+        "key": "wifi",
+        "name": "Wi-Fi module",
+        "unit": "dBm",
+        "shape": "box",
+        "size": [
+          0.05,
+          0.006,
+          0.04
+        ],
+        "color": "#1d7a4a",
+        "inferred": false
       }
     ]
   }
