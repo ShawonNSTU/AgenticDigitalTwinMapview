@@ -23,8 +23,8 @@ export async function GET() {
         if (LAYOUT.version !== version) { version = LAYOUT.version; devVersion = LAYOUT.devVersion; last = ''; send('layout', { version }); }
         else if (LAYOUT.devVersion !== devVersion) { devVersion = LAYOUT.devVersion; last = ''; send('devices', { version: devVersion }); }
         const f = floor();
-        const h = JSON.stringify(f.devices.map(d => [d.id, d.health]));
-        if (h !== last) { last = h; send('health', f.devices.map(d => ({ id: d.id, health: d.health }))); }
+        const h = JSON.stringify(f.devices.map(d => [d.id, d.health, (d as { fault?: string }).fault ?? '']));
+        if (h !== last) { last = h; send('health', f.devices.map(d => ({ id: d.id, health: d.health, fault: (d as { fault?: string }).fault ?? null }))); }
       };
       push();
       timer = setInterval(push, 500);

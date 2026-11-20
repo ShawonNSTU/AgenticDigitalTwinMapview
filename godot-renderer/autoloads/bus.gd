@@ -11,6 +11,8 @@ signal part_focus_requested(id: String, part: String)
 signal trace_requested(from_id: String)
 signal layer_changed(layer: String, on: bool)
 signal reset_view_requested
+signal camera_requested(action: String)  # zoomIn, zoomOut, fit, top, perspective, toggleTop, rotateLeft, rotateRight, reset
+signal insets_changed(left: float, right: float, top: float, bottom: float)  # host overlays, px
 
 # State changes
 signal time_changed(t: float)

@@ -21,7 +21,13 @@ func _ready() -> void:
 	var window := JavaScriptBridge.get_interface("window")
 	window.addEventListener("message", _cb)
 	# Tell the host we can take commands once the scene has been built.
-	get_tree().process_frame.connect(func(): emit_event({"type": "ready", "version": VERSION}), CONNECT_ONE_SHOT)
+	get_tree().process_frame.connect(func(): emit_event({"type": "ready", "version": VERSION, "view": _view_size()}), CONNECT_ONE_SHOT)
+	get_viewport().size_changed.connect(func(): emit_event({"type": "viewport", "view": _view_size()}))
+
+
+func _view_size() -> Array:
+	var v := get_viewport().get_visible_rect().size
+	return [int(v.x), int(v.y)]
 
 
 func emit_event(msg: Dictionary) -> void:
@@ -57,6 +63,8 @@ func handle(msg: Dictionary) -> void:
 		"setTime": Store.set_time(float(msg.get("t", Store.t)))
 		"setScenario": Store.set_scenario(str(msg.get("key", "normal")))
 		"resetView": Bus.reset_view_requested.emit()
+		"camera": Bus.camera_requested.emit(str(msg.get("action", "")))
+		"setInsets": Bus.insets_changed.emit(float(msg.get("left", 0)), float(msg.get("right", 0)), float(msg.get("top", 0)), float(msg.get("bottom", 0)))
 		"dragStart": Bus.place_started.emit(str(msg.get("deviceType", "")), "")
 		"dragMove": Bus.place_moved.emit(Vector2(float(msg.get("u", 0)), float(msg.get("v", 0))))
 		"dragEnd": Bus.place_ended.emit(Vector2(float(msg.get("u", 0)), float(msg.get("v", 0))), bool(msg.get("drop", false)))

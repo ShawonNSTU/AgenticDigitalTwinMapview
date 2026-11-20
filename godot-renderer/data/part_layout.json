@@ -1,5 +1,5 @@
 {
- "_doc": "Where each part sits inside the device and how it is drawn and animated. Entry: [x, y, z, sx, sy, sz, shape, kind, drives]. x/y/z and sizes are fractions of the device body (BODY in device_node.gd); z faces into the room. kind picks the 3D model in scripts/twin_part.gd. drives: [param, reading, scale, offset] sets param = reading × scale + offset; with scale \"=value\" it sets param = offset when the reading equals value, else 0. Several drives on one param take the largest. Params: spin (rad/s), temp (°C), glow, level, open, dirt, pulse (0..1), angle (degrees), vibrate (0..1), active, wet, text. _ports: named connection points on the body (pipes, air in/out, power, water), in body fractions.",
+ "_doc": "Where each part sits inside the device and how it is drawn and animated. Entry: [x, y, z, sx, sy, sz, shape, kind, drives]. x/y/z and sizes are fractions of the device body (BODY in device_node.gd); z faces into the room. kind picks the 3D model in scripts/twin_part.gd. drives: [param, reading, scale, offset] sets param = reading × scale + offset; with scale \"=value\" it sets param = offset when the reading equals value, else 0. Several drives on one param take the largest. vib (0..1) is set by simulated bearing faults. Params: spin (rad/s), temp (°C), glow, level, open, dirt, pulse (0..1), angle (degrees), vibrate (0..1), active, wet, text. _ports: named connection points on the body (pipes, air in/out, power, water), in body fractions.",
  "ac": {
   "filter": [
    0,
@@ -52,6 +52,12 @@
      "fan",
      0.12,
      0
+    ],
+    [
+     "vibrate",
+     "vib",
+     1,
+     0
     ]
    ]
   ],
@@ -75,6 +81,12 @@
      "glow",
      "amps",
      1.5,
+     0
+    ],
+    [
+     "vibrate",
+     "vib",
+     1,
      0
     ]
    ]
@@ -2176,6 +2188,12 @@
      "motor",
      0.01,
      0
+    ],
+    [
+     "vibrate",
+     "vib",
+     1,
+     0
     ]
    ]
   ],
@@ -2260,6 +2278,12 @@
      "level",
      "=High (not draining)",
      0.6
+    ],
+    [
+     "vibrate",
+     "vib",
+     1,
+     0
     ]
    ]
   ],

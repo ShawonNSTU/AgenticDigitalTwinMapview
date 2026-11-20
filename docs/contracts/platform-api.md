@@ -16,10 +16,21 @@ Time `t` is in hours (6.0 to 22.0). Health is `ok`, `watch` or `fault`.
 { id, type, label, room, name, time, health,
   readings: { ...raw simulated values },
   parts: [{ key, name, value, health, unit, series, inferred }],
-  finding: null | { lvl, title, conf, ev: string[], steps: [{ t, p, go? }], trace? },
+  finding: null | { lvl, title, conf, ev: string[], steps: [{ t, p, go? }], trace?, simulated? },
+  fault: null | { key, name, level, severity, developing, parts: string[] },
+  faults: [{ key, name, what, parts: string[] }],
   overrides: null | { ...values set by commands } }
 ```
+`fault` is the simulated fault running on the device (`severity` 0..1 ramps up over about 6 s); `faults` is what can
+be simulated on this device type.
 `steps[].p` is a part key. `steps[].go` links to another device id. `trace` is the AC id to trace from.
+
+## GET · POST · DELETE /api/devices/:id/fault
+Technician fault simulation. GET → `{ id, type, label, levels: [{key, name}], faults: [{ key, name, what, parts }], active }`.
+POST `{ key, level: early | developing | severe }` → starts the fault (the device snapshot is returned); it changes the
+readings, the damaged components' health (watch, then fault), the device's health on the map, the flows in the twin
+and the finding (diagnosis + guided repair). Changing only the level keeps the fault developed. DELETE → back to
+normal. 400 for an unknown fault or level, 404 for an unknown device. Faults are removed with their device.
 
 ## GET /api/devices/:id/history?part=KEY
 `{ id, part, unit, now, points: [[hour, value], ...] }` from 06:00 to 22:00 every 0.1 h.

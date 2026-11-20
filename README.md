@@ -14,8 +14,19 @@ Proof of concept with three features:
 3. **Device digital twin.** Click any device: it opens in place into its internal components (5 to 16 per type), with
    the internal flows between them and the device's connections (refrigerant cycle, cooled and warm air, water, drain,
    power, signal), the piping to the rest of the system and synthetic live data per part and per flow.
-4. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what
+4. **Fault simulation for technicians.** Every device type has a catalogue of realistic faults (55 in all: a
+   clogged AC filter, a refrigerant leak, worn fan bearings, a blocked drain, a seized outdoor fan, an inverter trip,
+   a fridge defrost failure, a blocked washer pump, an overloaded plug, low batteries, weak radios…). Pick a fault
+   and a severity (early, developing, severe) in the device panel: it develops over a few seconds and the twin shows
+   it where it happens. Damaged components glow red, flows through them stop, the readings change (airflow,
+   pressures, currents, temperatures), motors vibrate, coils frost, filters clog. The panel gives the diagnosis with
+   live evidence and a guided repair, each step flying the camera to its component.
+5. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what
    to do, and control devices (risky commands need confirmation).
+
+Map navigation works on any floor size (the camera is sized to the floor): zoom toward the cursor, pan, orbit,
+fit the whole floor, plan (2D) view and 45° rotation, from the controls on the right of the map, the mouse, touch
+or the keyboard (arrows/WASD, + −, Q E, F, T).
 
 All device data is simulated.
 
@@ -94,7 +105,10 @@ Try in the chat: "which air conditioners have a problem?", "what's wrong with OD
 ```bash
 cd agent-backend && pytest                              # search, tools, demo mode, eval cases
 cd web && npm run typecheck && npm run build
+cd web && npm run test:faults                           # every fault × severity: readings, parts, diagnosis
 cd godot-renderer && godot --headless --path . -- --smoke   # drives every bridge command
+cd godot-renderer && godot --path . -- --camera=/tmp/camera # fit, zoom range, plan view, rotate, pan limits on 8 m to 300 m floors
+cd godot-renderer && godot --path . -- --place=/tmp/place   # drag and drop 21 devices (platform running)
 ```
 
 ## Status

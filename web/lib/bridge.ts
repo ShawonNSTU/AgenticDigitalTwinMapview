@@ -13,6 +13,8 @@ export type ToRenderer =
   | { type: 'setTime'; t: number }
   | { type: 'setScenario'; key: string }
   | { type: 'resetView' }
+  | { type: 'setInsets'; left: number; right: number; top: number; bottom: number }
+  | { type: 'camera'; action: 'zoomIn' | 'zoomOut' | 'fit' | 'top' | 'perspective' | 'toggleTop' | 'rotateLeft' | 'rotateRight' | 'reset' }
   | { type: 'dragStart'; deviceType: string }
   | { type: 'dragMove'; u: number; v: number }
   | { type: 'dragEnd'; u: number; v: number; drop: boolean }

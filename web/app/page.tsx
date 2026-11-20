@@ -5,10 +5,11 @@ import DevicePanel from '@/components/DevicePanel';
 import ChatPanel from '@/components/ChatPanel';
 import DevicePalette, { DeviceIcon, type Hover } from '@/components/DevicePalette';
 import MapToolbar from '@/components/MapToolbar';
+import MapNav from '@/components/MapNav';
 import { send, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
-type Row = { id: string; type: string; label: string; room: string; name: string; health: string };
+type Row = { id: string; type: string; label: string; room: string; name: string; health: string; fault?: string };
 type Room = { key: string; name: string; label?: string; zone?: string };
 type Toast = { id: number; text: string; kind: 'ok' | 'bad' };
 
@@ -28,6 +29,27 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   // the "no devices yet" hint can be closed; remembered in this browser
   const [hintClosed, setHintClosed] = useState(false);
+  // Tell the renderer which parts of the map the overlays cover, so "fit" keeps the floor clear of them.
+  useEffect(() => {
+    if (!ready || !stage.current) return;
+    const el = stage.current;
+    const measure = () => {
+      const s = el.getBoundingClientRect();
+      const box = (q: string) => el.querySelector(q)?.getBoundingClientRect();
+      const pal = box('.palette'), bar = box('.map-toolbar'), nav = box('.map-nav');
+      // the palette blocks the left side only where it is tall; collapsed it is just a header
+      const left = pal && pal.height > s.height * 0.4 ? pal.right - s.left : 0;
+      const top = bar ? bar.bottom - s.top : 0;
+      const right = nav ? s.right - nav.left : 0;
+      send({ type: 'setInsets', left: Math.round(left), right: Math.round(right), top: Math.round(top), bottom: 0 });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    const pal = el.querySelector('.palette');
+    if (pal) ro.observe(pal);
+    return () => ro.disconnect();
+  }, [ready]);
   useEffect(() => { try { setHintClosed(localStorage.getItem('twin.hintClosed') === '1'); } catch { /* storage unavailable */ } }, []);
   const closeHint = () => { setHintClosed(true); try { localStorage.setItem('twin.hintClosed', '1'); } catch { /* storage unavailable */ } };
   const stage = useRef<HTMLElement>(null);
@@ -111,9 +133,10 @@ export default function Home() {
         </div>
       </header>
       <section className="stage" ref={stage}>
-        <TwinView onEvent={onEvent} />
+        <TwinView onEvent={onEvent} ready={ready} />
         <DevicePalette stage={stage} hover={hover} counts={counts} />
         <MapToolbar />
+        <MapNav />
         {ready && devices.length === 0 && !hintClosed && (
           <div className="empty-hint glass">
             <button className="hint-close" aria-label="Close" title="Close" onClick={closeHint}>✕</button>
@@ -137,7 +160,7 @@ export default function Home() {
                     {rows.map(d => (
                       <div key={d.id} className="dev-row" onClick={() => select(d.id)} onMouseEnter={() => send({ type: 'highlight', ids: [d.id] })} onMouseLeave={() => send({ type: 'clearHighlight' })}>
                         <span className="dev-ico"><DeviceIcon type={d.type} size={18} /></span>
-                        <span className="dev-txt"><b>{d.id}</b><small>{d.label}</small></span>
+                        <span className="dev-txt"><b>{d.id}</b><small>{d.label}{d.fault && <em> · simulated fault</em>}</small></span>
                         <i className={`dot ${d.health}`} />
                       </div>))}
                   </div>))}

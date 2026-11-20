@@ -3,6 +3,7 @@
 // Single source of truth for readings, part health and findings.
 import building from './data/building.json';
 import devices from './data/devices.json';
+import { FAULTS, LEVELS, partHealthUnder } from './faults';
 
 // The layout (rooms + devices) can be replaced at runtime by an uploaded floor plan (setLayout).
 // All mutable state lives on globalThis and is mutated in place: Next.js may load this module once per
@@ -13,7 +14,9 @@ const G = ((globalThis as any).__twinEngine ??= {
   R: { odu: null, far: [], circuit: [], filterAc: null, washer: null, leak: null, lowBatt: null, farNames: '' },
   state: { scen: 'normal', fixT: null },
   scenNames: {},
+  faults: {},
 });
+G.faults ??= {};
 export const ROOMS: any[] = G.ROOMS;
 export const DEV: any[] = G.DEV;
 export const byId: Record<string, any> = G.byId;
@@ -39,6 +42,9 @@ export function setDevices(devices: any[]) {
 }
 
 function assignDevices(devices: any[]) {
+  // faults stay only on devices that are still on the floor
+  const keep = new Set(devices.map(d => d.id));
+  for (const id of Object.keys(G.faults)) if (!keep.has(id)) delete G.faults[id];
   const counters = {};
   DEV.splice(0, DEV.length, ...devices.map(d => ({ ...d, p: d.position, n: (counters[d.type] = (counters[d.type] ?? -1) + 1) })));
   for (const k of Object.keys(byId)) delete byId[k];
@@ -138,9 +144,9 @@ export const TYPES: Record<string, any> = {
       { key: 'eev', name: 'Expansion valves', val: o => `${o.eev} step`, h: o => o.eev >= 470 ? 'watch' : 'ok', s: o => o.eev, u: 'step' },
       { key: 'hp', name: 'High-pressure sensor', val: o => `${o.hp.toFixed(1)} kgf/cm²`, h: () => 'ok', s: o => o.hp, u: 'kgf/cm²' },
       { key: 'fw', name: '4-way valve', val: () => 'Cooling', h: () => 'ok', s: () => 0, u: '' },
-      { key: 'coil', name: 'Outdoor coil', val: () => 'clean · 38 °C', h: () => 'ok', s: () => 38, u: '°C' },
+      { key: 'coil', name: 'Outdoor coil', val: o => `${o.coilNote ?? 'clean'} · ${(o.liq ?? 38).toFixed(0)} °C`, h: () => 'ok', s: o => o.liq ?? 38, u: '°C' },
       { key: 'fans', name: 'Fan', val: o => `step ${o.fan}`, h: () => 'ok', s: o => o.fan, u: 'step' },
-      { key: 'inv', name: 'Inverter board', val: () => 'No error', h: () => 'ok', s: () => 0, u: '' },
+      { key: 'inv', name: 'Inverter board', val: o => o.invErr ?? 'No error', h: o => o.invErr ? 'fault' : 'ok', s: o => o.invErr ? 1 : 0, u: '' },
     ] },
   light: { label: 'Smart light', icon: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/>', cam: 1.1, sf: 1, er: .32,
     parts: [{ key: 'led', name: 'LED board', shape: 'cyl', size: [.2, .01], col: 0xfef3c7, val: r => `${r.lv} % · ${r.ledT.toFixed(0)} °C`, h: () => 'ok', s: r => r.lv, u: '%' },
@@ -148,25 +154,25 @@ export const TYPES: Record<string, any> = {
       { key: 'diff', name: 'Diffuser', shape: 'cyl', size: [.23, .008], col: 0xf8fafc, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' }, radio()] },
   tv: { label: 'TV', icon: '<rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M8 21h8"/>', cam: 2.2, sf: 1, er: .7,
     parts: [{ key: 'panel', name: 'Display panel', shape: 'box', size: [1.2, .68, .02], col: 0x111827, val: r => r.on ? 'On' : 'Standby', h: () => 'ok', s: r => r.on ? 1 : 0, u: '' },
-      { key: 'main', name: 'Main board', shape: 'box', size: [.3, .2, .02], col: 0x1d7a4a, val: () => 'No error', h: () => 'ok', s: () => 0, u: '' },
+      { key: 'main', name: 'Main board', shape: 'box', size: [.3, .2, .02], col: 0x1d7a4a, val: r => r.mainNote ?? 'No error', h: () => 'ok', s: () => 0, u: '' },
       { key: 'psu', name: 'Power supply', shape: 'box', size: [.25, .15, .03], col: 0x475569, val: r => `${r.w} W`, h: () => 'ok', s: r => r.w, u: 'W' }, radio('wifi', 'Wi-Fi module')] },
   speaker: { label: 'Speaker', icon: '<rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7.5" r="1"/>', cam: .9, sf: 2, er: .16,
     parts: [{ key: 'woofer', name: 'Driver', shape: 'cyl', size: [.05, .03], col: 0x334155, val: r => `vol ${r.vol}`, h: () => 'ok', s: r => r.vol, u: '' },
-      { key: 'amp', name: 'Amplifier', shape: 'box', size: [.06, .04, .01], col: 0x1d7a4a, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' },
+      { key: 'amp', name: 'Amplifier', shape: 'box', size: [.06, .04, .01], col: 0x1d7a4a, val: r => r.ampNote ?? 'OK', h: () => 'ok', s: () => 0, u: '' },
       { key: 'mic', name: 'Mic array', shape: 'cyl', size: [.03, .005], col: 0x64748b, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' }, radio('wifi', 'Wi-Fi module')] },
   blinds: { label: 'Smart blinds', icon: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M4 7h16M4 11h16M4 15h16"/>', cam: 1.6, sf: 1, er: .45,
     parts: [{ key: 'motor', name: 'Tube motor', shape: 'cyl', size: [.03, .5], col: 0x475569, val: r => `position ${r.pos} %`, h: () => 'ok', s: r => r.pos, u: '%' }, batt('Battery pack'), radio()] },
   fridge: { label: 'Refrigerator', icon: '<rect x="6" y="2.5" width="12" height="19" rx="1.5"/><path d="M6 9h12M9 5.5v1.5M9 12v3"/>', cam: 2.6, sf: 1, er: .7,
     parts: [{ key: 'comp', name: 'Compressor', shape: 'cyl', size: [.1, .2], col: 0x1d2433, val: r => r.comp, h: () => 'ok', s: r => r.comp === 'Running' ? 1 : 0, u: '' },
-      { key: 'cond', name: 'Condenser coil', shape: 'box', size: [.5, .3, .03], col: 0x9aa6b8, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' },
-      { key: 'evap', name: 'Evaporator', shape: 'box', size: [.4, .25, .03], col: 0xbfdcff, val: () => 'No frost', h: () => 'ok', s: () => 0, u: '' },
+      { key: 'cond', name: 'Condenser coil', shape: 'box', size: [.5, .3, .03], col: 0x9aa6b8, val: r => r.condNote ?? 'OK', h: () => 'ok', s: () => 0, u: '' },
+      { key: 'evap', name: 'Evaporator', shape: 'box', size: [.4, .25, .03], col: 0xbfdcff, val: r => r.evapNote ?? 'No frost', h: () => 'ok', s: () => 0, u: '' },
       { key: 'ftemp', name: 'Fridge sensor', shape: 'sph', size: [.025], col: 0xe24b4a, val: r => `${r.fz.toFixed(1)} °C`, h: r => r.fz > 6 ? 'watch' : 'ok', s: r => r.fz, u: '°C' },
       { key: 'ztemp', name: 'Freezer sensor', shape: 'sph', size: [.025], col: 0x2563eb, val: r => `${r.fr.toFixed(1)} °C`, h: r => r.fr > -12 ? 'watch' : 'ok', s: r => r.fr, u: '°C' },
       { key: 'door', name: 'Door switch', shape: 'box', size: [.04, .02, .02], col: 0xf59e0b, val: r => r.door, h: () => 'ok', s: () => 0, u: '' }] },
   oven: { label: 'Oven', icon: '<rect x="3.5" y="4" width="17" height="16" rx="1.5"/><rect x="6.5" y="9" width="11" height="8" rx="1"/><path d="M7 6.5h1M10 6.5h1"/>', cam: 1.7, sf: 1, er: .45,
     parts: [{ key: 'elem', name: 'Heating element', shape: 'box', size: [.4, .02, .3], col: 0xb45309, val: r => r.on ? 'On' : 'Off', h: () => 'ok', s: r => r.on ? 1 : 0, u: '' },
       { key: 'probe', name: 'Cavity temp. sensor', shape: 'cyl', size: [.01, .12], col: 0xe24b4a, val: r => `${r.temp} °C`, h: () => 'ok', s: r => r.temp, u: '°C' },
-      { key: 'fan', name: 'Convection fan', shape: 'cyl', size: [.08, .02], col: 0x64748b, val: r => r.on ? 'Running' : 'Off', h: () => 'ok', s: () => 0, u: '' },
+      { key: 'fan', name: 'Convection fan', shape: 'cyl', size: [.08, .02], col: 0x64748b, val: r => r.fanNote ?? (r.on ? 'Running' : 'Off'), h: () => 'ok', s: () => 0, u: '' },
       { key: 'pcb', name: 'Control board', shape: 'box', size: [.15, .08, .01], col: 0x1d7a4a, val: () => 'No error', h: () => 'ok', s: () => 0, u: '' }] },
   vacuum: { label: 'Robot vacuum', icon: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="9" r="2"/>', cam: 1.0, sf: 1.6, er: .26,
     parts: [batt(), { key: 'brush', name: 'Brush motor', shape: 'cyl', size: [.02, .14], col: 0x334155, val: r => r.state, h: () => 'ok', s: () => 0, u: '' },
@@ -174,7 +180,7 @@ export const TYPES: Record<string, any> = {
       { key: 'bin', name: 'Dust bin', shape: 'box', size: [.1, .04, .06], col: 0x94a3b8, val: r => `${r.bin} % full`, h: r => r.bin > 90 ? 'watch' : 'ok', s: r => r.bin, u: '%' }] },
   camera: { label: 'Camera', icon: '<circle cx="12" cy="10" r="6"/><circle cx="12" cy="10" r="2.5"/><path d="M9 20h6M12 16v4"/>', cam: .8, sf: 3, er: .09,
     parts: [{ key: 'img', name: 'Image sensor', shape: 'box', size: [.02, .02, .004], col: 0x1d2433, val: r => r.rec ? 'Recording' : 'Off', h: () => 'ok', s: () => 1, u: '' },
-      { key: 'ir', name: 'IR LEDs', shape: 'cyl', size: [.012, .004], col: 0x7f1d1d, val: () => 'Auto', h: () => 'ok', s: () => 0, u: '' },
+      { key: 'ir', name: 'IR LEDs', shape: 'cyl', size: [.012, .004], col: 0x7f1d1d, val: r => r.irNote ?? 'Auto', h: () => 'ok', s: () => 0, u: '' },
       { key: 'mic', name: 'Microphone', shape: 'sph', size: [.006], col: 0x64748b, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' }, radio('wifi', 'Wi-Fi module')] },
   doorbell: { label: 'Video doorbell', icon: '<rect x="8" y="2.5" width="8" height="19" rx="4"/><circle cx="12" cy="8" r="1.8"/><circle cx="12" cy="15" r="2.3"/>', cam: .8, sf: 3, er: .09,
     parts: [{ key: 'cam', name: 'Camera module', shape: 'box', size: [.02, .02, .006], col: 0x1d2433, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' },
@@ -183,7 +189,7 @@ export const TYPES: Record<string, any> = {
     parts: [{ key: 'bolt', name: 'Bolt motor', shape: 'box', size: [.04, .012, .012], col: 0x94a3b8, val: r => r.locked ? 'Locked' : 'Unlocked', h: () => 'ok', s: r => r.locked ? 1 : 0, u: '' },
       { key: 'keypad', name: 'Keypad', shape: 'box', size: [.03, .05, .005], col: 0x1d2433, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' }, batt('Battery (4 × AA)'), radio()] },
   washer: { label: 'Washer', icon: '<rect x="4" y="2.5" width="16" height="19" rx="2"/><circle cx="12" cy="13" r="5"/><path d="M7 6h2"/>', cam: 1.9, sf: 1, er: .55,
-    parts: [{ key: 'pump', name: 'Drain pump', shape: 'box', size: [.1, .08, .08], col: 0x34445f, val: r => `${r.pump.toFixed(2)} A`, h: r => r.err ? 'fault' : 'ok', s: r => r.pump, u: 'A' },
+    parts: [{ key: 'pump', name: 'Drain pump', shape: 'box', size: [.1, .08, .08], col: 0x34445f, val: r => `${r.pump.toFixed(2)} A`, h: r => r.err && /drain/i.test(r.err) ? 'fault' : 'ok', s: r => r.pump, u: 'A' },
       { key: 'level', name: 'Water level sensor', shape: 'cyl', size: [.015, .05], col: 0x2563eb, val: r => r.level, h: r => r.err ? 'watch' : 'ok', s: r => r.level.startsWith('High') ? 2 : r.level === 'Normal' ? 1 : 0, u: '' },
       { key: 'motor', name: 'Drum motor', shape: 'cyl', size: [.08, .1], col: 0x475569, val: r => `${r.motor} rpm`, h: () => 'ok', s: r => r.motor, u: 'rpm' },
       { key: 'valve', name: 'Water inlet valve', shape: 'box', size: [.05, .04, .04], col: 0x2f6fed, val: r => r.valve, h: () => 'ok', s: r => r.valve === 'Open' ? 1 : 0, u: '' },
@@ -201,7 +207,7 @@ export const TYPES: Record<string, any> = {
       { key: 'hum', name: 'Humidity sensor', shape: 'box', size: [.01, .01, .003], col: 0x2563eb, val: r => `${r.hum} %`, h: r => r.hum > 85 ? 'watch' : 'ok', s: r => r.hum, u: '%' }, batt('Battery (CR2032)'), radio()] },
   motion: { label: 'Motion sensor', icon: '<circle cx="12" cy="5" r="2"/><path d="M9 21l2-6 2 2v4M11 15l-1-5 4 1 2 3M10 10l-3 2"/>', cam: .7, sf: 3, er: .08,
     parts: [{ key: 'pir', name: 'PIR motion sensor', shape: 'cyl', size: [.008, .008], col: 0x334155, val: r => r.motion ? 'Motion' : 'No motion', h: () => 'ok', s: r => r.motion ? 1 : 0, u: '' },
-      { key: 'lens', name: 'Fresnel lens', shape: 'sph', size: [.016], col: 0xf8fafc, val: () => 'OK', h: () => 'ok', s: () => 0, u: '' }, batt('Battery (CR123A)'), radio()] },
+      { key: 'lens', name: 'Fresnel lens', shape: 'sph', size: [.016], col: 0xf8fafc, val: r => r.lensNote ?? 'OK', h: () => 'ok', s: () => 0, u: '' }, batt('Battery (CR123A)'), radio()] },
   plug: { label: 'Smart plug', icon: '<path d="M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4"/>', cam: .7, sf: 3, er: .08,
     parts: [{ key: 'relay', name: 'Relay', shape: 'box', size: [.02, .015, .015], col: 0x1d2433, val: r => r.on ? 'On' : 'Off', h: () => 'ok', s: () => 1, u: '' },
       { key: 'meter', name: 'Power meter', shape: 'box', size: [.012, .003, .012], col: 0x1d7a4a, val: r => `${r.w} W · ${r.kwh} kWh`, h: () => 'ok', s: r => r.w, u: 'W' }, radio()] },
@@ -260,7 +266,43 @@ function derive(d, r, t) {
   }
   return {};
 }
-function read(d, t) { const r = readBase(d, t); return r ? { ...r, ...derive(d, r, t) } : r; }
+/* ---------------- per-device faults (technician fault simulation) ---------------- */
+const RAMP_MS = 6000; // a fault develops over a few seconds so the technician sees it come on
+/** The active fault on a device and its current severity (0..1, ramping up to the chosen level). */
+export function activeFault(d) {
+  const a = d && G.faults[d.id];
+  if (!a) return null;
+  const spec = (FAULTS[d.type] ?? []).find(f => f.key === a.key);
+  if (!spec) return null;
+  const ramp = clamp((Date.now() - a.since) / RAMP_MS, 0, 1);
+  return { spec, s: a.severity * ramp, target: a.severity, level: a.level, ramp };
+}
+export function faultCatalog(type: string) { return (FAULTS[type] ?? []).map(f => ({ key: f.key, name: f.name, what: f.what, parts: Object.keys(f.parts) })); }
+export function setFault(id: string, key: string, level = 'developing') {
+  const d = byId[id];
+  if (!d) return { ok: false, error: `Unknown device ${id}` };
+  if (!(FAULTS[d.type] ?? []).some(f => f.key === key)) return { ok: false, error: `No fault "${key}" for ${TYPES[d.type].label}` };
+  const L = LEVELS.find(l => l.key === level) ?? LEVELS[1];
+  const prev = G.faults[id];
+  // changing only the severity of the same fault keeps it developed; a new fault starts from zero
+  G.faults[id] = { key, level: L.key, severity: L.s, since: prev && prev.key === key ? prev.since - RAMP_MS : Date.now() };
+  return { ok: true };
+}
+export function clearFault(id: string) { const had = !!G.faults[id]; delete G.faults[id]; return { ok: had }; }
+export function faultList() { return Object.entries(G.faults).map(([id, a]: any) => ({ id, key: a.key, level: a.level })); }
+export { LEVELS };
+
+function read(d, t) {
+  const r = readBase(d, t);
+  if (!r) return r;
+  const f = activeFault(d);
+  if (f?.spec.base && f.s > 0) { f.spec.base(r, f.s); if (d.type === 'ac') r.sh = r.evOut - r.evIn; } // superheat follows the changed pipe temperatures
+  const full = { ...r, ...derive(d, r, t) };
+  if (f?.spec.post && f.s > 0) f.spec.post(full, f.s);
+  return full;
+}
+/** A part's health: its own rule on the readings, made worse by an active fault on that part. */
+function partHealth(d, p, r) { const f = activeFault(d); return worst([p.h(r), partHealthUnder(f?.spec, p.key, f?.s ?? 0)]); }
 
 const XP = (key, name, val, s, u, h = (_r) => 'ok') => ({ key, name, val, h, s, u });
 const EXTRA = {
@@ -375,11 +417,17 @@ for (const [k, ps] of Object.entries(EXTRA)) for (const p of ps) if (!TYPES[k].p
 
 const RANK = { ok: 0, watch: 1, fault: 2 };
 const worst = a => a.reduce((x, y) => RANK[y] > RANK[x] ? y : x, 'ok');
-export const health = (d, t) => { const r = read(d, t); return worst(TYPES[d.type].parts.map(p => p.h(r)).concat(r.err ? ['fault'] : [])); };
+export const health = (d, t) => { const r = read(d, t); return worst(TYPES[d.type].parts.map(p => partHealth(d, p, r)).concat(r.err ? ['fault'] : [])); };
 
 /* findings: evidence, confidence and guided steps, each step tied to a part */
 export function finding(d, t) {
   if (!d) return null;
+  const af = activeFault(d);
+  if (af && af.s > 0.12) {
+    const r = read(d, t), sp = af.spec;
+    const lvl = worst(TYPES[d.type].parts.map(p => partHealth(d, p, r)).concat(r.err ? ['fault'] : []));
+    return { lvl: lvl === 'ok' ? 'watch' : lvl, title: sp.title, conf: sp.conf, ev: sp.ev(r, af.s), steps: sp.steps, simulated: true, fault: sp.key };
+  }
   if (state.scen === 'filter' && d.id === R.filterAc && sev(t) > .3) { const r = read(d, t); return { lvl: 'fault', title: 'Airflow blocked: air filter most likely clogged', conf: 'Inferred · there is no filter sensor, but three readings agree', ev: [`Airflow down to ${r.air.toFixed(0)} %`, `Fan at ${r.fan.toFixed(0)} % to compensate`, `Coil inlet ${r.evIn.toFixed(1)} °C, close to freezing`, `Room ${r.room.toFixed(1)} °C, set point ${r.set} °C not reached`],
     steps: [{ t: 'Switch to fan-only for 10 minutes so ice on the coil melts', p: 'coil' }, { t: 'Lift the front panel and slide out the air filter', p: 'filter' }, { t: 'Wash the filter in lukewarm water, dry it and refit', p: 'filter' }, { t: 'Check airflow and fan speed return to normal', p: 'fan' }] }; }
   if (state.scen === 'refrig' && R.far.length && (d.id === R.odu || R.far.includes(d.id)) && sev(t) > .35) { const o = oduRead(t), r = acRead(byId[R.far[R.far.length - 1]], t); return { lvl: o.dis > 100 ? 'fault' : 'watch', title: 'Refrigerant shortage: likely a leak in the circuit', conf: 'Likely · four readings agree; the leak location is not measured', ev: [`Outdoor unit discharge ${o.dis.toFixed(1)} °C (normal under 100)`, `Low pressure ${o.lp.toFixed(1)} kgf/cm² and falling`, `Far rooms (${R.farNames}): superheat ${r.sh.toFixed(1)} K`, 'Rooms nearest the outdoor unit are least affected'],
@@ -403,8 +451,10 @@ export function snapshot(id: string, t: number, extra: Record<string, unknown> |
     id: d.id, type: d.type, label: T.label, room: d.room, name: d.name, time: t,
     health: health(d, t),
     readings: r,
-    parts: T.parts.map(p => ({ key: p.key, name: p.name, value: p.val(r), health: p.h(r), unit: p.u, series: +p.s(r), inferred: !!p.note })),
+    parts: T.parts.map(p => ({ key: p.key, name: p.name, value: p.val(r), health: partHealth(d, p, r), unit: p.u, series: +p.s(r), inferred: !!p.note })),
     finding: finding(d, t),
+    fault: (() => { const f = activeFault(d); return f ? { key: f.spec.key, name: f.spec.name, level: f.level, severity: +f.s.toFixed(2), developing: f.ramp < 1, parts: Object.keys(f.spec.parts) } : null; })(),
+    faults: faultCatalog(d.type),
   };
 }
 /** History of one part as [time, value] pairs between t0 and t1 (hours). */

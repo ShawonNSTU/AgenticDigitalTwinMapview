@@ -20,6 +20,8 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `setTime` | `t` (hours, 6–22) | scene clock (sun, HUD, time-driven effects) |
 | `setScenario` | `key: normal \| filter \| refrig \| washer` | closes any open device, refreshes flow |
 | `resetView` | | close, clear, camera home |
+| `camera` | `action`: `zoomIn`, `zoomOut`, `fit`, `top`, `perspective`, `toggleTop`, `rotateLeft`, `rotateRight`, `reset` | navigation: zoom, fit the whole floor, plan view, rotate 45° |
+| `setInsets` | `left`, `right`, `top`, `bottom` (px) | screen space covered by the page's overlays; fits keep the floor clear of them and re-fit until the user moves the view |
 | `dragStart` | `deviceType` | a palette tile is dragged over the map: a see-through device follows the pointer |
 | `dragMove` | `u`, `v` (pointer, 0–1 across the map) | the device snaps where that type is installed (wall, door, ceiling, floor); the room is outlined green, or red if it can't go there |
 | `dragEnd` | `u`, `v`, `drop` | `drop: true` reports `dropDevice`; `false` cancels |

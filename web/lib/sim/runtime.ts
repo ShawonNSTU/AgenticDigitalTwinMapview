@@ -1,6 +1,6 @@
 // Runtime state of the simulated device platform: scenario, clock and device overrides.
 // Kept on globalThis so it survives hot reloads in development. One process = one demo.
-import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, setDevices, scenarioName, scenarioAvailable } from './engine';
+import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, setDevices, scenarioName, scenarioAvailable, activeFault } from './engine';
 import building from './data/building.json';
 import sampleDevices from './data/devices.json';
 import { existsSync, readFileSync } from 'node:fs';
@@ -74,7 +74,7 @@ export function floor(t = tick()) {
     layoutVersion: LAYOUT.version,
     devicesVersion: LAYOUT.devVersion,
     rooms: ROOMS,
-    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h], ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
+    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h], ...(activeFault(d) ? { fault: activeFault(d)!.spec.name } : {}), ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
   };
 }
 

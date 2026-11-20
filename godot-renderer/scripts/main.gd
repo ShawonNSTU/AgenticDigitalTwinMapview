@@ -52,6 +52,8 @@ func _ready() -> void:
 	Bus.trace_requested.connect(_on_trace)
 	Bus.layer_changed.connect(_on_layer)
 	Bus.reset_view_requested.connect(_on_reset)
+	Bus.camera_requested.connect(func(action): rig.command(action))
+	Bus.insets_changed.connect(func(l, r, t, b): rig.set_insets(l, r, t, b))
 	Bus.time_changed.connect(_on_time)
 	Bus.scenario_changed.connect(_on_scenario)
 	_on_time(Store.t)
@@ -68,6 +70,10 @@ func _ready() -> void:
 			var g := Node.new()
 			g.set_script(load("res://tests/twin_gallery.gd"))
 			add_child(g)
+		if a.begins_with("--camera="):
+			var ct := Node.new()
+			ct.set_script(load("res://tests/camera_test.gd"))
+			add_child(ct)
 		if a.begins_with("--demo-shots="):
 			var shots := Node.new()
 			shots.set_script(load("res://tests/demo_shots.gd"))
@@ -106,7 +112,7 @@ func _build_world(animate: bool) -> void:
 	placer.rig = rig
 	world.add_child(placer)
 	var fr: Rect2 = Store.floor_rect()
-	rig.set_home(Vector3(fr.get_center().x, 0, fr.get_center().y), clampf(fr.size.length() * 0.95, 8.0, 60.0))
+	rig.set_bounds(fr)  # zoom range, pan limits and the home view follow the floor's size
 	_on_time(Store.t)
 	if animate:
 		_play_plan_to_3d()

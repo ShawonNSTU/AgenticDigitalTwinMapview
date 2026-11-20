@@ -96,7 +96,7 @@ func _run() -> void:
 		["lock", "medical-room", Vector3(1.5, 0, 2.2)], ["motion", "zone-d-workspace", Vector3(3, 0, -2)],
 		["ac", "zone-d-workspace", Vector3(0, 0, -3)], ["ac", "gym-room", Vector3(-3, 0, 0)], ["ac", "cafeteria-208-seats", Vector3(0, 0, -6)],
 		["temphum", "male-toilet", Vector3(0, 0, 0)], ["leak", "male-toilet", Vector3(-0.5, 0, 0.5)], ["washer", "utility-room", Vector3(0, 0, 0)],
-		["plug", "hub-room", Vector3(0, 0, 0)], ["odu", "ac-outdoor", Vector3(0, 0, 0)], ["blinds", "male-pray-room", Vector3(0, 0, 3)],
+		["plug", "hub-room", Vector3(0, 0, 0)], ["odu", "ac-outdoor", Vector3(0, 0, 0)], ["blinds", "male-pray-room", Vector3(0, 0, 2)],
 		["vacuum", "female-pray-room", Vector3(0, 0, 0)], ["oven", "cafeteria-6-seats", Vector3(1, 0, 0)], ["doorbell", "store-room", Vector3(0, 0, -1)]]
 	main.rig.reset(0.01)
 	await _wait(0.6)
