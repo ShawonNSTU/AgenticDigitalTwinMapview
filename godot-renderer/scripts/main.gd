@@ -107,6 +107,10 @@ func _ready() -> void:
 			var wt := Node.new()
 			wt.set_script(load("res://tests/walk_test.gd"))
 			add_child(wt)
+		if a.begins_with("--lift-shots="):
+			var ls := Node.new()
+			ls.set_script(load("res://tests/lift_shots.gd"))
+			add_child(ls)
 		if a.begins_with("--routes="):
 			var rc := Node.new()
 			rc.set_script(load("res://tests/route_check.gd"))
@@ -812,6 +816,15 @@ func _start_guest(from_key := "") -> void:
 				allowed[r.key] = true
 		prev = q
 	Store.guest_allowed = allowed
+	if not _arrival_lift.is_empty():
+		# the lift the guest arrives in: an opening in the lobby wall, its own doors drawn moving, its shaft open
+		_arrival_lift["arrival"] = true
+		var lr := float(_arrival_lift.get("rot", 0.0))
+		var wall_at := Vector2(float(_arrival_lift.x), float(_arrival_lift.z)) - Vector2(sin(lr), cos(lr)) * 0.09
+		Store.furniture = Store.furniture + [{"kind": "door", "opening": true, "x": wall_at.x, "z": wall_at.y, "w": float(_arrival_lift.w), "d": 0.17, "rot": lr}]
+		for f in Store.furniture:
+			if f.get("kind", "") == "lift_shaft" and absf(float(f.x) - float(_arrival_lift.x)) < 0.3:
+				f["arrival"] = true
 	_build_world(false)
 	_walk_build = false
 	rig.set_process_unhandled_input(false)
@@ -829,6 +842,10 @@ func _start_guest(from_key := "") -> void:
 		look = atan2(-d.x, -d.y)
 	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look, rig.cam.global_transform)
 	walker.arrived.connect(_guest_arrived)
+	if not _arrival_lift.is_empty():
+		var lr := float(_arrival_lift.get("rot", 0.0))
+		var wall_at := Vector2(float(_arrival_lift.x), float(_arrival_lift.z)) - Vector2(sin(lr), cos(lr)) * 0.09
+		walker.arrive_by_lift(wall_at, lr, float(_arrival_lift.w), start, look)
 	walker.show_route(start, route, Store.room_label(target_room))
 	walker._track_room()
 	var metres := 0.0
@@ -840,15 +857,22 @@ func _start_guest(from_key := "") -> void:
 	for q in route:
 		pts.append([snappedf(q.x, 0.01), snappedf(q.y, 0.01)])
 	Bus.walk_changed.emit({"on": true, "guest": "walking", "from": _guest_from, "to": Store.room_label(target_room), "metres": snappedf(metres, 0.1), "route": pts})
-	get_tree().create_timer(Walker.INTRO + 0.3).timeout.connect(func():
+	var go := func():
 		if walker and not _live and _guest_target != Vector2.INF and not walker.go_to(_guest_target):
-			_guest_skip())
+			_guest_skip()
+	if walker.lift_busy():
+		walker.stepped_out.connect(func(): go.call(), CONNECT_ONE_SHOT)  # set off once out of the lift
+	else:
+		get_tree().create_timer(Walker.INTRO + 0.3).timeout.connect(go)
 	if _live:
 		walker.set_live(true)
 
 
 ## Where a guest's walk begins: the entrance the host chose; else just inside a door to the outside;
 ## else a lift, lobby, reception or stair; else the best-connected room (usually the corridor).
+var _arrival_lift := {}  # the lift a guest arrives in (its door item), if the walk starts at a lift lobby
+
+
 func _guest_entrance(nav: WalkNav, target_room: Dictionary) -> Vector2:
 	var chosen: Dictionary = Store.room(str(Store.guest.get("entrance", "")))
 	# a lift lobby: the guest steps out of the middle lift
@@ -863,6 +887,7 @@ func _guest_entrance(nav: WalkNav, target_room: Dictionary) -> Vector2:
 			var lf: Dictionary = lifts[lifts.size() / 2]
 			var rot := float(lf.get("rot", 0.0))
 			var out := Vector2(float(lf.x), float(lf.z)) + Vector2(sin(rot), cos(rot)) * 0.9
+			_arrival_lift = lf
 			return nav.nearest_free(out, 8)
 	if not chosen.is_empty():
 		var p := nav.room_target(chosen, PlanGeo.interior_point(PlanGeo.room_poly(target_room)))

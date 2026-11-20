@@ -515,10 +515,14 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 		"lift_door":
 			# a lift on the lobby wall: stainless frame and doors with the centre seam, call buttons beside it;
 			# the panelled ones (the other wall) are dressed with light blue box frames on dark steel
-			var dh := minf(h - 0.25, 2.2)
+			var dh := minf(h - 0.25, 2.05)
 			var panel: bool = _cur.get("panel", false)
-			_bm("chrome", Vector3(0, dh / 2, 0), Vector3(w + 0.14, dh + 0.08, 0.06))
-			_bm("dark" if panel else "steel_door", Vector3(0, dh / 2, 0.035), Vector3(w, dh, 0.02))
+			var arriving: bool = _cur.get("arrival", false)
+			for sx in [-1, 1]:  # frame: jambs and head
+				_bm("chrome", Vector3(sx * (w / 2 + 0.035), dh / 2, 0.02), Vector3(0.07, dh + 0.04, 0.06))
+			_bm("chrome", Vector3(0, dh + 0.02, 0.02), Vector3(w + 0.14, 0.06, 0.06))
+			if not arriving:
+				_bm("dark" if panel else "steel_door", Vector3(0, dh / 2, 0.035), Vector3(w, dh, 0.02))
 			if panel:
 				var boxes := [[-0.25, 0.25, 0.4, 0.35], [0.1, 0.42, 0.3, 0.32], [0.33, 0.62, 0.2, 0.55], [-0.3, 1.0, 0.3, 0.5], [0.05, 0.9, 0.35, 0.22],
 						[0.3, 1.25, 0.25, 0.3], [-0.22, 1.55, 0.45, 0.3], [0.2, 1.65, 0.4, 0.45], [-0.3, 1.95, 0.3, 0.3], [0.1, 2.0, 0.25, 0.2]]
@@ -530,7 +534,7 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 					for e in [[Vector3(bx - bw / 2, b[1], 0.05), Vector3(0.03, b[3], 0.04)], [Vector3(bx + bw / 2, b[1], 0.05), Vector3(0.03, b[3], 0.04)],
 							[Vector3(bx, float(b[1]) - float(b[3]) / 2, 0.05), Vector3(bw, 0.03, 0.04)], [Vector3(bx, float(b[1]) + float(b[3]) / 2, 0.05), Vector3(bw, 0.03, 0.04)]]:
 						_bm("box_blue", e[0], e[1])
-			else:
+			elif not arriving:
 				_bm("dark", Vector3(0, dh / 2, 0.047), Vector3(0.008, dh - 0.02, 0.004))
 			# call panel with two buttons and a floor display
 			_bm("chrome", Vector3(w / 2 + 0.55, 1.2, 0.035), Vector3(0.1, 0.38, 0.02))
@@ -538,8 +542,9 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_bm("led", Vector3(w / 2 + 0.55, 1.15, 0.047), Vector3(0.025, 0.025, 0.006), "cyl")
 			_bm("led", Vector3(w / 2 + 0.55, 1.08, 0.047), Vector3(0.025, 0.025, 0.006), "cyl")
 		"lift_shaft":
-			# a lift shaft behind the lobby wall: a solid concrete block, full height
-			_bm("concrete", Vector3(0, h / 2, 0), Vector3(w, h, d))
+			# a lift shaft behind the lobby wall: a solid concrete block, full height (left open for the arriving car)
+			if not _cur.get("arrival", false):
+				_bm("concrete", Vector3(0, h / 2, 0), Vector3(w, h, d))
 		"exit_sign":
 			# green EXIT sign over the glass doors
 			var sy := minf(h - 0.2, 2.4)
@@ -564,6 +569,8 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_swap = {"wood": "pot", "woodDark": "soil"}
 			_model("pottedPlant", Vector3.ZERO, w, d, maxf(0.9, w * 2.2))
 			_swap = {}
+		"door" when _cur.get("opening", false):
+			pass  # a plain opening in the wall (the arrival lift); its frame is the lift's own
 		"door":
 			# frame jambs, one or two leaves standing open 70 degrees towards +z, handle, and the swing drawn on the floor
 			var lh := minf(h, 2.05) - 0.02

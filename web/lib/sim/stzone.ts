@@ -46,6 +46,9 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   if (!r) return false;
   r.finish = ZONE_FINISH;
   fitLiftLobby(rt);
+  // no pillars: the drawing's structural columns (filled squares) are left out of the 3D floor so they don't block
+  // views and walks
+  rt.furniture = rt.furniture.filter(f => f.kind !== 'column');
   setArrival();
   growZone(r, rt.furniture);
   const P = polyOf(r);

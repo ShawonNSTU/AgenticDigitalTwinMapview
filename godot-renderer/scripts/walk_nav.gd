@@ -384,10 +384,16 @@ func room_target(r: Dictionary, from: Vector2) -> Vector2:
 			z += step
 		x += step
 	grid.sort_custom(func(p1, p2): return p1.distance_to(mid) < p2.distance_to(mid))
+	# stop on open floor (clear of furniture by the margin) when the room has some; else anywhere free
+	var fallback := Vector2.INF
 	for q in cands + grid:
 		if Geometry2D.is_point_in_polygon(q, poly) and is_free(q) and reaches(from, q):
-			return q
-	return Vector2.INF
+			var c := to_cell(q)
+			if _near.size() == 0 or _near[c.y * size.x + c.x] == 0:
+				return q
+			if fallback == Vector2.INF:
+				fallback = q
+	return fallback
 
 
 static func _link(p: Vector2, polys: Dictionary, adj: Dictionary) -> void:

@@ -27,10 +27,12 @@ Proof of concept with three features:
 
 **Hotel use case** (the 4th floor is treated as a hotel floor):
 
+0. **No pillars.** The drawing's structural columns are left out of the 3D floor so they don't block views and walks.
 0. **Lift lobby.** In Zone D, between two rows of three lift shafts (the drawing's large boxes): L1-L3 with steel
    doors and call buttons, L4-L6 with panelled doors, blue walls, wood-plank floor, an oval lit ceiling with
    downlights. Its door onto the passage always stands open, and across the passage are the main cafeteria's glass
-   double doors with the EXIT sign and the water bottles beside them. Guests arrive here (the middle steel lift).
+   double doors with the EXIT sign and the water bottles beside them. Guests arrive here: the walk starts inside the middle steel lift with its doors shut; the doors slide open, the
+   guest steps out, turns towards the way to go while the doors close behind, then sets off.
 0. **SmartThings Experience Zone, modelled as it is.** The zone is a real, already fitted room and the floor starts
    with it furnished (the plan draws it a little small to walk round in 3D, so it is enlarged by about a fifth each
    way, taken from the Maternity and Medical rooms beside it) and its SmartThings devices installed: wood-panelled walls, cream floor tiles, a drop ceiling

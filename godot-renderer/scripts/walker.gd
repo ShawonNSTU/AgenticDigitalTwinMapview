@@ -14,6 +14,7 @@ const INTRO := 1.3
 
 signal arrived  # a route (click, room or guest walk) has ended
 signal landed   # the drop from the map view to eye height has finished
+signal stepped_out  # a lift arrival has finished: out of the lift, doors closed behind
 
 var cam: Camera3D
 var nav := WalkNav.new()
@@ -320,9 +321,134 @@ func _fit_fov() -> void:
 	cam.fov = clampf(v, 68.0, 100.0)
 
 
+# ---- arriving by lift: inside the car with the doors shut, the doors slide open, step out into the lobby, turn
+# towards the way to go while the doors close behind
+
+var _lift := {}          # car, leaves, positions and timing while arriving
+const LIFT_T := {"open": 1.0, "opened": 2.3, "out": 4.1, "close": 4.5, "closed": 5.7}
+
+
+func arrive_by_lift(door_at: Vector2, facing: float, door_w: float, out_to: Vector2, then_yaw: float) -> void:
+	var f := Vector2(sin(facing), cos(facing))       # out of the lift, into the lobby
+	var side := Vector2(f.y, -f.x)
+	var car_c := door_at - f * 0.95
+	var node := Node3D.new()
+	node.name = "LiftCar"
+	add_child(node)
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color("c3c7cc")
+	steel.metallic = 0.6
+	steel.roughness = 0.3
+	var floor_m := StandardMaterial3D.new()
+	floor_m.albedo_color = Color("3b3f45")
+	floor_m.roughness = 0.4
+	var light := StandardMaterial3D.new()
+	light.albedo_color = Color.WHITE
+	light.emission_enabled = true
+	light.emission = Color(1, 0.98, 0.94)
+	light.emission_energy_multiplier = 1.1
+	var rot := -atan2(f.x, f.y)
+	var box := func(c: Vector2, y: float, size: Vector3, m: Material) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = size
+		mi.mesh = bm
+		mi.material_override = m
+		mi.position = Vector3(c.x, y, c.y)
+		mi.rotation.y = rot
+		node.add_child(mi)
+		return mi
+	var cw := maxf(door_w + 0.5, 1.6)
+	var cd := 1.5
+	var ch := 2.4
+	var back := car_c - f * (cd / 2)
+	box.call(car_c, -0.02, Vector3(cw, 0.04, cd), floor_m)
+	box.call(car_c, ch, Vector3(cw, 0.04, cd), steel)
+	box.call(car_c, ch - 0.03, Vector3(cw * 0.6, 0.02, cd * 0.6), light)
+	box.call(back, ch / 2, Vector3(cw, ch, 0.04), steel)
+	for sgn in [-1.0, 1.0]:
+		var wall_c: Vector2 = car_c + side * (cw / 2) * sgn
+		var w := box.call(wall_c, ch / 2, Vector3(0.04, ch, cd), steel) as MeshInstance3D
+		# handrail
+		box.call(car_c + side * (cw / 2 - 0.05) * sgn, 0.9, Vector3(0.03, 0.03, cd * 0.8), steel)
+	box.call(back + f * 0.03, 0.95, Vector3(cw * 0.9, 0.03, 0.03), steel)
+	# floor display over the doors, inside the car
+	var lbl := Label3D.new()
+	lbl.text = "▲ 4"
+	lbl.font_size = 48
+	lbl.pixel_size = 0.0011
+	lbl.modulate = Color(1.0, 0.45, 0.2)
+	lbl.position = Vector3(door_at.x - f.x * 0.06, 2.22, door_at.y - f.y * 0.06)
+	lbl.rotation.y = rot + PI
+	node.add_child(lbl)
+	var cl := OmniLight3D.new()
+	cl.position = Vector3(car_c.x, ch - 0.3, car_c.y)
+	cl.light_energy = 0.7
+	cl.omni_range = 2.2
+	node.add_child(cl)
+	# the two doors, closed across the opening
+	var leaves: Array = []
+	var dh := minf(Store.wall_height - 0.25, 2.05)
+	for sgn in [-1.0, 1.0]:
+		var lc: Vector2 = door_at - f * 0.02 + side * (door_w / 4) * sgn
+		leaves.append(box.call(lc, dh / 2, Vector3(door_w / 2, dh, 0.03), steel))
+	_lift = {"t": 0.0, "car": car_c, "out": out_to, "door": door_at, "side": side, "f": f, "w": door_w, "leaves": leaves, "yaw": then_yaw, "label": lbl}
+	p = car_c
+	yaw = atan2(-f.x, -f.y)
+	pitch = deg_to_rad(-3.0)
+	_intro = 0.0
+	_apply()
+	landed.emit.call_deferred()
+
+
+func lift_busy() -> bool:
+	return not _lift.is_empty()
+
+
+func _lift_tick(delta: float) -> void:
+	var L := _lift
+	L.t = float(L.t) + delta
+	var t: float = L.t
+	var ease := func(a: float) -> float: return a * a * (3.0 - 2.0 * a)
+	# doors: open between "open" and "opened", close between "close" and "closed"
+	var o := 0.0
+	if t < LIFT_T.open:
+		o = 0.0
+	elif t < LIFT_T.opened:
+		o = ease.call((t - LIFT_T.open) / (LIFT_T.opened - LIFT_T.open))
+	elif t < LIFT_T.close:
+		o = 1.0
+	elif t < LIFT_T.closed:
+		o = 1.0 - ease.call((t - LIFT_T.close) / (LIFT_T.closed - LIFT_T.close))
+	var side: Vector2 = L.side
+	var door: Vector2 = L.door
+	var f: Vector2 = L.f
+	var w: float = L.w
+	for i in 2:
+		var sgn := -1.0 if i == 0 else 1.0
+		var c: Vector2 = door - f * 0.02 + side * (w / 4 + o * w / 2) * sgn
+		var leaf: MeshInstance3D = L.leaves[i]
+		leaf.position = Vector3(c.x, leaf.position.y, c.y)
+	# step out once the doors are open, then turn towards the way to go
+	if t >= LIFT_T.opened and t < LIFT_T.out:
+		var a: float = ease.call((t - LIFT_T.opened) / (LIFT_T.out - LIFT_T.opened))
+		p = (L.car as Vector2).lerp(L.out, a)
+		_bob += delta * 6.5
+	elif t >= LIFT_T.out:
+		p = L.out
+		yaw = lerp_angle(yaw, float(L.yaw), 1.0 - exp(-3.5 * delta))
+	if t >= LIFT_T.closed + 0.2:
+		_lift = {}
+		stepped_out.emit()
+	_apply()
+
+
 func _process(delta: float) -> void:
 	delta = minf(delta, 0.25)
 	_fit_fov()
+	if not _lift.is_empty():
+		_lift_tick(delta)
+		return
 	if _beacon_node and is_instance_valid(_beacon_node):
 		var k := 1.0 + 0.15 * sin(Time.get_ticks_msec() / 250.0)
 		_beacon_node.get_child(0).position.y = 2.35 + 0.08 * sin(Time.get_ticks_msec() / 400.0)
@@ -469,7 +595,7 @@ func _look(rel: Vector2) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if _intro > 0.4 or _over:
+	if _intro > 0.4 or _over or not _lift.is_empty():
 		return
 	if e is InputEventMouseButton:
 		if e.device == InputEvent.DEVICE_ID_EMULATION:
