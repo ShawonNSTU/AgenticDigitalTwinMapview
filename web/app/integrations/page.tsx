@@ -49,6 +49,10 @@ export default function Integrations() {
     const d = await post('/api/integrations/links', { localId, stId, label: acct.find(a => a.stId === stId)?.label });
     if (d.error) flash(d.error); else { flash(`${localId} linked`); load(); }
   };
+  const byName = async () => {
+    const d = await post('/api/integrations/links', { byName: true });
+    if (d.error) flash(d.error); else { flash(d.linked.length ? `${d.linked.length} linked by name` : 'No twin device has a SmartThings device of the same name'); load(); }
+  };
   const unlink = async (localId: string) => { await fetch(`/api/integrations/links?localId=${localId}`, { method: 'DELETE' }); load(); };
   const linkOf = (id: string) => st?.links.find(l => l.localId === id);
 
@@ -67,6 +71,7 @@ export default function Integrations() {
           <span className="muted">Or set SMARTTHINGS_TOKEN on the server. A token entered here is kept in memory only.</span>
           {st?.lastError && <div className="bad-text">Last error: {st.lastError}</div>}
           {acctErr && <div className="bad-text">{acctErr}</div>}
+          {st?.configured && <div className="row"><button onClick={byName}>Link by name</button><span className="muted">Links every twin device whose name is the name of a device in the SmartThings app (the SmartThings Experience Zone uses the app's names).</span></div>}
           <table className="tbl">
             <thead><tr><th>Twin device</th><th>Room</th><th>SmartThings device</th><th /></tr></thead>
             <tbody>{devs.filter(d => CONTROLLED.includes(d.type)).map(d => {

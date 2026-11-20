@@ -90,6 +90,8 @@ Renderer → host:
 |---|---|
 | `{type:'anchor', id, x, y, visible}` | Device position on the renderer viewport, `x`/`y` as 0–1 fractions; `visible` false when it is behind the camera or off screen. |
 
-Device variants (by device name, see `DeviceNode.variant`): "Ceiling AC…" is a ceiling cassette, "Floor lamp…" a
-bulb inside a floor lamp, "Projector screen…" a roller screen (blinds motor), "TV 65"…" a TV on a stand.
+Device variants (by device name, see `DeviceNode.variant`): "Ceiling AC…" is a ceiling cassette; lights named
+"Floor lamp…"/"side lamp…" sit in a floor lamp, "Desk lamp" on the desk, "TV lamp"/"Main ceiling…" drive the
+zone's LED ceiling panels, "…window" are back-lit window panes behind the curtain; blinds named "…roller shade…" or
+"…curtain…" are a roller curtain and "Projector screen…" a roller screen; "TV 65"…" is a TV on a stand.
 Rooms with `finish: "st-zone"` get the SmartThings Experience Zone finish (panelling, tiles, drop ceiling).

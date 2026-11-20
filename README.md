@@ -31,10 +31,16 @@ Proof of concept with three features:
    with it furnished and its SmartThings devices installed: wood-panelled walls, cream floor tiles, a drop ceiling
    with LED panels and AC diffusers and a lowered band for the spot bulbs, a grey tufted sofa facing a 65" TV on a
    walnut unit, a coffee table, a roller projector screen, four brass floor lamps, a white bookcase beside the
-   panelled column, an L-desk with chairs under a wall TV, a Bespoke air purifier and a frosted glass door. Devices:
-   ceiling cassette AC, two TVs, six spot bulbs and four floor-lamp bulbs, projector screen motor, purifier, smart
-   speaker, door lock, temperature/humidity and motion sensors, two indoor cameras (never shown to guests). A guest
-   QR can be made for it straight away; every other room needs Hotel setup first (the room card says so and the
+   panelled column, an L-desk with chairs under a wall TV, a Bespoke air purifier and a frosted glass door. Its
+   lights and curtain carry the names they have in the zone's SmartThings app (room 401): Light 1 (back of the main
+   TV), Light 2 (top of the TV), Light 3 (above the shelf), Light 4 (between the curtain and the shelf), Light 5
+   (door entrance), Desk lamp, TV lamp (the main ceiling lights; the LED ceiling panels follow it), aqara roller
+   shade control (the white roller curtain), blinds switch (powers the curtain motor; it is switched on by itself
+   when the curtain is moved), Left window and Right window (lights behind the curtain), side lamp (dining room)
+   (the big standing lamp). Also in the room: ceiling cassette AC, two TVs, purifier, door lock, temperature
+   sensor and two indoor cameras (never shown to guests). On `/integrations`, "Link by name" links them to the
+   real devices in one step. A guest QR can be made for it straight away; every other room needs Hotel setup
+   first (the room card says so and the
    API refuses a pass for a room without its devices). Layout: `web/lib/sim/stzone.ts`.
 
 6. **Hotel set-up.** "Hotel setup" (or "Set up as guest room" on a clicked room) refurnishes suitable rooms as guest

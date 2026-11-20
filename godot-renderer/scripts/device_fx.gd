@@ -131,7 +131,9 @@ func _process(delta: float) -> void:
 			var k: float = clampf((float(live.get("ct", 3000.0)) - 2700.0) / 3800.0, 0.0, 1.0)
 			var col: Color = Color(1.0, 0.78, 0.52).lerp(Color(0.86, 0.92, 1.0), k)
 			_lamp.light_color = col
-			_lamp.light_energy = _light_level * (2.6 if Store.walk else 3.2) * (0.55 if variant == "lamp" else 1.0)
+			_lamp.light_energy = _light_level * (2.6 if Store.walk else 3.2) * {"lamp": 0.55, "desk": 0.35, "window": 0.45}.get(variant, 1.0)
+			if variant == "panel" and FloorBuilder.current:
+				FloorBuilder.current.set_panels(_room_key, _light_level)
 			_lamp.visible = _light_level > 0.01
 			_glow_mat.emission = col
 			_glow_mat.emission_energy_multiplier = 0.2 + _light_level * 3.0
@@ -160,7 +162,7 @@ func _process(delta: float) -> void:
 				(_window.material_override as StandardMaterial3D).emission_energy_multiplier = 0.25 + 1.4 * _blind_pos
 				_sun.visible = _blind_pos > 0.05
 				(_sun.material_override as StandardMaterial3D).albedo_color.a = 0.22 * _blind_pos
-			else:  # projector screen: a soft projected picture once it is mostly down
+			elif variant == "projector":  # a soft projected picture once it is mostly down
 				(_slats.material_override as StandardMaterial3D).emission_energy_multiplier = clampf((0.6 - _blind_pos) * 1.2, 0.0, 0.5)
 		"fan":
 			var on: bool = online and bool(live.get("on", false))
@@ -235,6 +237,25 @@ func _build_light() -> void:
 	_lamp.light_energy = 0.0
 	add_child(_lamp)
 	_glow_mat = _mat(Color(1.0, 0.9, 0.75), true)
+	if variant == "window":
+		# a back-lit window pane on the wall behind the curtain: it glows as the light comes on
+		var k := minf(Store.wall_height / Placer.REAL_STOREY, 1.0)
+		var pane := MeshInstance3D.new()
+		var pb := BoxMesh.new()
+		pb.size = Vector3(size.x, 1.2 * k, 0.015)
+		pane.mesh = pb
+		pane.material_override = _glow_mat
+		add_child(pane)
+		var frame := MeshInstance3D.new()
+		var fb := BoxMesh.new()
+		fb.size = Vector3(size.x + 0.06, 1.2 * k + 0.06, 0.01)
+		frame.mesh = fb
+		frame.material_override = _mat(Color("d8dde3"))
+		frame.position.z = -0.008
+		add_child(frame)
+		_lamp.position = Vector3(0, 0, 0.4)
+		_lamp.omni_range = 2.2
+		return
 	var disc := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = size.x * 0.45
@@ -337,7 +358,7 @@ func _build_tv() -> void:
 
 func _build_blinds() -> void:
 	_win_h = 1.35 * minf(Store.wall_height / Placer.REAL_STOREY, 1.0)
-	if variant == "projector":
+	if variant == "projector" or variant == "curtain":
 		_slats = MeshInstance3D.new()
 		var pm := BoxMesh.new()
 		pm.size = Vector3(size.x * 0.96, 1.0, 0.008)

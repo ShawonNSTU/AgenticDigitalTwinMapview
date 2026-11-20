@@ -98,7 +98,7 @@ export default function GuestPage() {
     if (r.status === 428 && d.stepUp) { setStepUp({ id, command }); setStepPin(''); setStepErr(''); return; }   // the policy wants the PIN again
     if (stepUp && !r.ok) { setStepErr(d.error ?? 'That didn’t work'); return; }
     setStepUp(null);
-    const what = command === 'unlock' && r.ok ? `Door unlocked${d.relockIn ? ` · locks again in ${d.relockIn} s` : ''}` : `${CMD_LABEL[command] ?? command} · done`;
+    const what = command === 'unlock' && r.ok ? `Door unlocked${d.relockIn ? ` · locks again in ${d.relockIn} s` : ''}` : `${CMD_LABEL[command] ?? command} · done${d.note ? ` (${d.note})` : ''}`;
     setMsg(r.ok ? { text: what, bad: false } : { text: d.error ?? 'That didn’t work', bad: true });
     setTimeout(() => setMsg(null), 3200);
     send({ type: 'refreshDevices' });

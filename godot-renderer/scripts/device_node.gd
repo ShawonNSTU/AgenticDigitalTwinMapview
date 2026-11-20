@@ -26,9 +26,19 @@ static func variant(d: Dictionary) -> String:
 		"ac":
 			return "cassette" if n.begins_with("ceiling") else ""
 		"light":
-			return "lamp" if n.begins_with("floor lamp") else ""
+			if n.begins_with("floor lamp") or n.begins_with("side lamp"):
+				return "lamp"
+			if n.begins_with("desk lamp"):
+				return "desk"
+			if n.ends_with("window"):
+				return "window"
+			if n == "tv lamp" or n.begins_with("main ceiling"):
+				return "panel"
+			return ""
 		"blinds":
-			return "projector" if n.begins_with("projector") else ""
+			if n.begins_with("projector"):
+				return "projector"
+			return "curtain" if n.contains("roller shade") or n.contains("curtain") else ""
 		"tv":
 			return "stand" if n.begins_with("tv 6") or n.begins_with("tv 7") or n.begins_with("tv 8") else ""
 	return ""
@@ -38,7 +48,10 @@ static func body_size(d: Dictionary) -> Vector3:
 	match variant(d):
 		"cassette": return Vector3(0.62, 0.07, 0.62)
 		"lamp": return Vector3(0.1, 0.1, 0.1)
-		"projector": return Vector3(1.7, 0.1, 0.09)
+		"projector", "curtain": return Vector3(1.7, 0.1, 0.09)
+		"desk": return Vector3(0.1, 0.1, 0.1)
+		"panel": return Vector3(0.16, 0.04, 0.16)
+		"window": return Vector3(0.72, 0.04, 0.03)
 		"stand": return Vector3(1.45, 0.84, 0.05)
 	return BODY.get(str(d.get("type", "")), Vector3(0.2, 0.2, 0.2))
 var fx: DeviceFx  # what the device is doing, shown in the room (light, airflow, screen, blinds...)
@@ -209,7 +222,8 @@ func _details(type: String, s: Vector3) -> void:
 			_add_box(Vector3(s.x * (0.8 - k * 0.22), 0.006, s.z * (0.8 - k * 0.22)), Vector3(0, -s.y * 0.5 - 0.003 - k * 0.002, 0), dark if k % 2 == 0 else _m(Color("d8dde3")))
 		_add_box(Vector3(0.03, 0.006, 0.012), Vector3(s.x * 0.36, -s.y * 0.5 - 0.004, s.z * 0.36), _glow(Color("3fb950")))
 		return
-	if _variant == "lamp":
+	if _variant in ["lamp", "desk", "panel", "window"]:
+		body.visible = _variant == "panel"
 		return
 	if _variant == "stand":
 		_add_box(Vector3(s.x * 0.94, s.y * 0.88, 0.005), Vector3(0, 0, s.z * 0.5 + 0.003), _glow(Color("2b4f8f")))

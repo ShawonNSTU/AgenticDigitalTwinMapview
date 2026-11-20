@@ -99,6 +99,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   // L-desk in the corner of the door wall and the start wall, under the wall TV, with a monitor and two chairs
   put('desk', g + 0.65, g + 0.31, 1.3, 0.62, OUT);
   put('desk', g + 0.29, g + 0.62 + 0.45, 0.9, 0.58, BACK);
+  put('desk_lamp', g + 0.3, g + 0.3, 0.25, 0.25, IN);
   put('task_chair', g + 1.22, g + 0.95, 0.6, 0.6, OUT);
   put('task_chair', g + 0.82, 1.33, 0.6, 0.6, BACK);
   // door wall between the desk and the door, and beside the TV unit: two more lamps
@@ -106,33 +107,48 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   put('floor_lamp', L - g - 0.25, mid - 1.15, 0.42, 0.42, 0);
   rt.furniture = [...rt.furniture, ...items];
 
-  // 2. SmartThings devices (the zone's real kit)
+  // 2. SmartThings devices: named exactly as in the zone's SmartThings app (room 401), so real devices link by
+  // name on /integrations. Where each one is comes from the room's device list:
+  //   Light 1 back of the main TV · Light 2 top of the TV · Light 3 left, above the shelf · Light 4 between the
+  //   curtain and the shelf · Light 5 door entrance · Desk lamp · TV lamp = the main ceiling lights ·
+  //   aqara roller shade control = the white roller curtain · blinds switch powers the curtain motor ·
+  //   Left window / Right window = lights behind the curtain · side lamp (dining room) = the big standing lamp
+  //   between the shelf and the curtain
   for (const d of DEV.filter((d: any) => d.room === r.key)) removeDevice(d.id);
-  const dev = (type: string, s: number, q: number, rot: number, name: string) => { const [x, z] = at(s, q); addDevice({ type, x, z, rotationY: rot, room: r.key, name }); };
+  const ids: Record<string, string> = {};
+  const dev = (type: string, s: number, q: number, rot: number, name: string) => { const [x, z] = at(s, q); const res: any = addDevice({ type, x, z, rotationY: rot, room: r.key, name }); if (res?.device) ids[name] = res.device.id; };
+  const shelfQ = Math.min(D - 1.65, 2.9);
+  const blindS = L / 2 + 0.25;
+  dev('light', L - 0.3, mid, 0, 'Light 1');
+  dev('light', L - 0.85, mid + 0.45, 0, 'Light 2');
+  dev('light', g + 0.45, shelfQ, 0, 'Light 3');
+  dev('light', g + 0.75, D - 0.55, 0, 'Light 4');
+  const dt = door ? Math.abs((door.x - o[0]) * u[0] + (door.z - o[1]) * u[1]) : L - 0.6;
+  dev('light', dt, 0.55, 0, 'Light 5');
+  dev('light', g + 0.3, g + 0.3, 0, 'Desk lamp');
+  dev('light', L * 0.5, D * 0.42, 0, 'TV lamp');
+  dev('blinds', blindS, D - g - 0.055, OUT, 'aqara roller shade control');
+  dev('plug', blindS + 1.05, D - g - 0.02, OUT, 'blinds switch');
+  dev('light', blindS - 0.42, D - g - 0.03, IN, 'Left window');
+  dev('light', blindS + 0.42, D - g - 0.03, IN, 'Right window');
+  dev('light', L * 0.28, D - g - 0.25, 0, 'side lamp (dining room)');
+  // the rest of the room's Samsung kit
   dev('tv', L - g - 0.23, mid, BACK, 'TV 65"');
   dev('tv', g + 0.72, g + 0.04, IN, 'Wall TV');
-  dev('blinds', L / 2 + 0.25, D - g - 0.05, OUT, 'Projector screen');
   dev('ac', L * 0.62, D * 0.5, 0, 'Ceiling AC');
   dev('purifier', g + 1.72, g + 0.26, IN, 'Air purifier');
-  dev('speaker', g + 0.21, Math.min(D - 1.65, 2.9) + 0.3, ALONG, 'Smart speaker');
-  // spot bulbs along the lowered ceiling band over the projector wall and the TV wall
-  const spots: [number, number][] = [[L * 0.2, D - 0.35], [L * 0.45, D - 0.35], [L * 0.7, D - 0.35], [L - 0.35, D * 0.55], [L - 0.35, D * 0.2], [0.6, D * 0.5]];
-  spots.forEach(([s, q], i) => dev('light', s, q, 0, `Spot bulb ${i + 1}`));
-  // floor lamps carry smart bulbs too (same spots as the lamps above)
-  dev('light', L * 0.28, D - g - 0.25, 0, 'Floor lamp 1');
-  dev('light', L * 0.78, D - g - 0.25, 0, 'Floor lamp 2');
-  dev('light', 2.4, g + 0.25, 0, 'Floor lamp 3');
-  dev('light', L - g - 0.25, mid - 1.15, 0, 'Floor lamp 4');
-  // by the glass door: lock, temperature/humidity sensor and a motion sensor; cameras in two corners
-  const dt = door ? Math.abs((door.x - o[0]) * u[0] + (door.z - o[1]) * u[1]) : L - 0.6;
   const side = dt - 0.75 > 0.3 ? dt - 0.75 : dt + 0.75;
   dev('lock', side, 0.06, IN, 'Door lock');
   dev('temphum', side - 0.35, 0.04, IN, 'Temp & humidity');
-  dev('motion', side - 0.7, 0.04, IN, 'Motion sensor');
   dev('camera', 0.75, D - 0.12, face([u[0] - n[0], u[1] - n[1]]), 'Indoor camera 1');
   dev('camera', L - 0.12, 0.2, face([n[0] - u[0], n[1] - u[1]]), 'Indoor camera 2');
+  // the curtain motor only moves while its switch is on
+  if (ids['aqara roller shade control'] && ids['blinds switch']) REQUIRES[ids['aqara roller shade control']] = ids['blinds switch'];
   return true;
 }
+
+/** Devices that only work while another one is on (the curtain motor and its switch): id -> id of the switch. */
+export const REQUIRES: Record<string, string> = ((globalThis as any).__twinRequires ??= {});
 
 /** Device types a guest neither sees nor controls (privacy). */
 export const GUEST_HIDDEN = ['camera'];

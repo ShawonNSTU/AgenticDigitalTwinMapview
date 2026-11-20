@@ -180,7 +180,7 @@ export async function guestCommand(p: GuestPass, id: string, command: string, ar
     }
   }
   const r = await dispatch(id, command, args, !!(allowed as any).confirm, who);
-  return { status: r.ok ? 200 : r.offline ? 503 : 400, body: r.ok ? { ok: true, via: r.via, ...(command === 'unlock' && policy().autoRelockSec ? { relockIn: policy().autoRelockSec } : {}) } : { ok: false, error: r.error, offline: !!r.offline } };
+  return { status: r.ok ? 200 : r.offline ? 503 : 400, body: r.ok ? { ok: true, via: r.via, ...(r.note ? { note: r.note } : {}), ...(command === 'unlock' && policy().autoRelockSec ? { relockIn: policy().autoRelockSec } : {}) } : { ok: false, error: r.error, offline: !!r.offline } };
 }
 
 /** How the room's lock is connected, for the guest page. */

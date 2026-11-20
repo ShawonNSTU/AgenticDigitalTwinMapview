@@ -44,7 +44,7 @@ export default function HoloControl({ dev, anchor, run, onClose, lockNote }: { d
   if (!dev.online) body = <p className="holo-off">Not responding. Hotel staff have been alerted.</p>;
   else if (dev.type === 'ac' && cmd('setTemperature')) body = <ClimateDial dev={dev} val={val} cmd={cmd} run={run} preview={preview} />;
   else if (dev.type === 'light' && cmd('setLevel')) body = <LightBeam val={val} cmd={cmd} run={run} preview={preview} />;
-  else if (dev.type === 'blinds' && cmd('setPosition')) body = <Roller val={val} cmd={cmd} run={run} preview={preview} projector={/projector/i.test(dev.name)} />;
+  else if (dev.type === 'blinds' && cmd('setPosition')) body = <Roller val={val} cmd={cmd} run={run} preview={preview} projector={/projector/i.test(dev.name)} curtain={/roller shade|curtain/i.test(dev.name)} />;
   else if (dev.type === 'tv' && cmd('power')) body = <Remote val={val} cmd={cmd} run={run} preview={preview} />;
   else if ((dev.type === 'purifier' || dev.type === 'fan') && cmd('power')) body = <SpeedRing dev={dev} val={val} cmd={cmd} run={run} preview={preview} />;
   else if (dev.type === 'lock') body = <LockRing val={val} cmd={cmd} run={run} note={lockNote} />;
@@ -169,7 +169,7 @@ function LightBeam({ val, cmd, run, preview }: P) {
   );
 }
 
-function Roller({ val, cmd, run, preview, projector }: P & { projector: boolean }) {
+function Roller({ val, cmd, run, preview, projector, curtain }: P & { projector: boolean; curtain?: boolean }) {
   const c = cmd('setPosition')!;
   const [draft, setDraft] = useState<number | null>(null);
   const pos = draft ?? Math.round(num(val('pos'), 100)); // 100 = rolled up / open
@@ -185,7 +185,7 @@ function Roller({ val, cmd, run, preview, projector }: P & { projector: boolean 
       </div>
       <div className="holo-side">
         <b>{say(pos)}</b>
-        <small className="muted">Drag the {projector ? 'screen' : 'blind'} up or down</small>
+        <small className="muted">Drag the {projector ? 'screen' : curtain ? 'curtain' : 'blind'} up or down{curtain ? ' · its switch comes on by itself' : ''}</small>
         <div className="presets">
           {cmd('close') && <button onClick={() => { preview({ pos: 0 }, say(0)); run('close'); }}>{projector ? 'Lower' : 'Close'}</button>}
           {cmd('open') && <button onClick={() => { preview({ pos: 100 }, say(100)); run('open'); }}>{projector ? 'Raise' : 'Open'}</button>}

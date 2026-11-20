@@ -510,6 +510,12 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_bm("white", Vector3(0, 1.55, 0), Vector3(w, w * 1.3, 0.025))
 			_bm("poster", Vector3(0, 1.62, 0.014), Vector3(w * 0.8, w * 0.55, 0.005))
 			_bm("dark", Vector3(-w * 0.1, 1.3, 0.014), Vector3(w * 0.5, w * 0.25, 0.005))
+		"desk_lamp":
+			# white desk lamp on the desk: round base, curved neck, head over the desk
+			_bm("gloss_white", Vector3(0, 0.765, 0), Vector3(0.16, 0.02, 0.16), "cyl")
+			_bm("frosted", Vector3(0, 0.95, -0.02), Vector3(0.03, 0.36, 0.03), "cyl")
+			_bm("gloss_white", Vector3(0, 1.15, 0.06), Vector3(0.2, 0.06, 0.12), "sphere")
+			_bm("shade_glow", Vector3(0, 1.12, 0.07), Vector3(0.12, 0.01, 0.07))
 		"monitor":
 			_setup(-w * 0.15, d)
 		"plant":

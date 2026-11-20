@@ -256,6 +256,12 @@ static func device_y(d: Dictionary) -> float:
 			return h - 0.05 if Store.walk else h + 0.05
 		"lamp":
 			return minf(1.55, Store.wall_height - 0.22) - 0.05  # inside the floor lamp's shade
+		"desk":
+			return minf(0.75 + 0.42, Store.wall_height - 0.1)  # the desk lamp's head
+		"panel":
+			return mount_y("light")
+		"window":
+			return (0.9 + 2.1) / 2.0 * k  # the middle of a window behind the curtain
 		"stand":
 			return (0.58 + 0.42 + 0.05) * k if Store.walk else maxf(0.58 * k + 0.47, 0.6)
 	return mount_y(t)

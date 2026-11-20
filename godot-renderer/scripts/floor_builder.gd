@@ -417,6 +417,7 @@ func _zone_ceiling(r: Dictionary, h: float) -> void:
 		hi = hi.max(p)
 	var sz := hi - lo
 	var panel := StandardMaterial3D.new()
+	_zone_panels[str(r.key)] = panel
 	panel.albedo_color = Color(1, 1, 1)
 	panel.emission_enabled = true
 	panel.emission = Color(1.0, 0.98, 0.94)
@@ -447,6 +448,17 @@ func _zone_ceiling(r: Dictionary, h: float) -> void:
 	# lowered band (bulkhead) along the room's west edge
 	var bw := minf(0.55, sz.x * 0.15)
 	ceilings.add_child(_ceil_box(Vector3(lo.x + bw / 2 + WALL / 2, h - 0.14, (lo.y + hi.y) / 2), Vector3(bw, 0.28, sz.y - WALL), frame))
+
+
+var _zone_panels := {}
+
+
+## The zone's LED ceiling panels follow its "main ceiling lights" device (level 0..1).
+func set_panels(room_key: String, level: float) -> void:
+	var m: StandardMaterial3D = _zone_panels.get(room_key)
+	if m:
+		m.emission_energy_multiplier = 0.05 + level * 1.8
+		m.albedo_color = Color(0.75, 0.75, 0.73).lerp(Color.WHITE, level)
 
 
 func _ceil_box(c: Vector3, s: Vector3, m: Material) -> MeshInstance3D:

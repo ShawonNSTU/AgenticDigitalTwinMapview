@@ -10,6 +10,10 @@ DEV = {
                 "state": {"switch": {"switch": {"value": "on"}}, "thermostatCoolingSetpoint": {"coolingSetpoint": {"value": 25}}, "temperatureMeasurement": {"temperature": {"value": 27.5}},
                           "airConditionerMode": {"airConditionerMode": {"value": "cool"}, "supportedAcModes": {"value": ["cool", "dry", "auto"]}}}, "health": "ONLINE"},
     "st-light-1": {"label": "Ceiling light 403", "caps": ["switch", "switchLevel"], "state": {"switch": {"switch": {"value": "off"}}, "switchLevel": {"level": {"value": 0}}}, "health": "ONLINE"},
+    # a few of the SmartThings Experience Zone's devices, under the names its SmartThings app uses
+    "st-z-light1": {"label": "Light 1", "caps": ["switch", "switchLevel"], "state": {"switch": {"switch": {"value": "on"}}, "switchLevel": {"level": {"value": 60}}}, "health": "ONLINE"},
+    "st-z-shade": {"label": "aqara roller shade control", "caps": ["windowShade", "windowShadeLevel"], "state": {"windowShade": {"windowShade": {"value": "open"}}, "windowShadeLevel": {"shadeLevel": {"value": 100}}}, "health": "ONLINE"},
+    "st-z-switch": {"label": "blinds switch", "caps": ["switch"], "state": {"switch": {"switch": {"value": "off"}}}, "health": "ONLINE"},
 }
 LOG = []
 FAIL = {"next": False}
@@ -67,6 +71,11 @@ class H(BaseHTTPRequestHandler):
                 s["switchLevel"]["level"]["value"] = c["arguments"][0]
             if c["capability"] == "thermostatCoolingSetpoint":
                 s["thermostatCoolingSetpoint"]["coolingSetpoint"]["value"] = c["arguments"][0]
+            if c["capability"] == "windowShadeLevel":
+                s["windowShadeLevel"]["shadeLevel"]["value"] = c["arguments"][0]
+            if c["capability"] == "windowShade":
+                s["windowShade"]["windowShade"]["value"] = "open" if c["command"] == "open" else "closed"
+                s["windowShadeLevel"]["shadeLevel"]["value"] = 100 if c["command"] == "open" else 0
             if c["capability"] == "airConditionerMode":
                 s["airConditionerMode"]["airConditionerMode"]["value"] = c["arguments"][0]
         self._send(200, {"results": [{"id": "x", "status": "ACCEPTED"}]})
