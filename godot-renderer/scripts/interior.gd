@@ -34,6 +34,8 @@ const PALETTE := {
 	"shade": [Color("17181b"), 0.1, 0.55], "shade_glow": [Color("ffcf8a"), 0.0, 0.5], "gloss_white": [Color("f4f4f2"), 0.0, 0.18],
 	"book_red": [Color("c0392b"), 0.0, 0.6], "walnut": [Color("6e4a2f"), 0.0, 0.5], "poster": [Color("d8343f"), 0.0, 0.6],
 	"frosted": [Color(0.86, 0.9, 0.93, 0.5), 0.05, 0.15],
+	"steel_door": [Color("b9bdc3"), 0.55, 0.28], "box_blue": [Color("b9d3ea"), 0.0, 0.5], "exit_green": [Color("33e07a"), 0.0, 0.4],
+	"bottle": [Color(0.32, 0.5, 0.85, 0.55), 0.1, 0.1], "bottle_cap": [Color("1d4fd1"), 0.0, 0.4],
 }
 const MODEL_DIR := "res://assets/furniture/kenney/"
 ## Kenney material name -> palette key (the kit's pastel colours read as toys in an office)
@@ -42,7 +44,7 @@ const RECOLOUR := {
 	"metal": "chrome", "metalLight": "porcelain", "metalMedium": "frame", "metalDark": "dark", "plant": "leaf",
 	"_defaultMat": "porcelain", "glass": "glass", "paper": "white", "darkWood": "wood_dark",
 }
-const GLOW := ["led", "console", "display", "slide", "drinks", "shade_glow"]
+const GLOW := ["led", "console", "display", "slide", "drinks", "shade_glow", "exit_green"]
 const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6}
 
 var counts := {}         # kind -> number of items built (for the HUD / tests)
@@ -510,6 +512,43 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_bm("white", Vector3(0, 1.55, 0), Vector3(w, w * 1.3, 0.025))
 			_bm("poster", Vector3(0, 1.62, 0.014), Vector3(w * 0.8, w * 0.55, 0.005))
 			_bm("dark", Vector3(-w * 0.1, 1.3, 0.014), Vector3(w * 0.5, w * 0.25, 0.005))
+		"lift_door":
+			# a lift on the lobby wall: stainless frame and doors with the centre seam, call buttons beside it;
+			# the panelled ones (the other wall) are dressed with light blue box frames on dark steel
+			var dh := minf(h - 0.25, 2.2)
+			var panel: bool = _cur.get("panel", false)
+			_bm("chrome", Vector3(0, dh / 2, 0), Vector3(w + 0.14, dh + 0.08, 0.06))
+			_bm("dark" if panel else "steel_door", Vector3(0, dh / 2, 0.035), Vector3(w, dh, 0.02))
+			if panel:
+				var boxes := [[-0.25, 0.25, 0.4, 0.35], [0.1, 0.42, 0.3, 0.32], [0.33, 0.62, 0.2, 0.55], [-0.3, 1.0, 0.3, 0.5], [0.05, 0.9, 0.35, 0.22],
+						[0.3, 1.25, 0.25, 0.3], [-0.22, 1.55, 0.45, 0.3], [0.2, 1.65, 0.4, 0.45], [-0.3, 1.95, 0.3, 0.3], [0.1, 2.0, 0.25, 0.2]]
+				for b in boxes:
+					if float(b[1]) + float(b[3]) / 2 > dh:
+						continue
+					var bx: float = float(b[0]) * w
+					var bw: float = float(b[2]) * w
+					for e in [[Vector3(bx - bw / 2, b[1], 0.05), Vector3(0.03, b[3], 0.04)], [Vector3(bx + bw / 2, b[1], 0.05), Vector3(0.03, b[3], 0.04)],
+							[Vector3(bx, float(b[1]) - float(b[3]) / 2, 0.05), Vector3(bw, 0.03, 0.04)], [Vector3(bx, float(b[1]) + float(b[3]) / 2, 0.05), Vector3(bw, 0.03, 0.04)]]:
+						_bm("box_blue", e[0], e[1])
+			else:
+				_bm("dark", Vector3(0, dh / 2, 0.047), Vector3(0.008, dh - 0.02, 0.004))
+			# call panel with two buttons and a floor display
+			_bm("chrome", Vector3(w / 2 + 0.55, 1.2, 0.035), Vector3(0.1, 0.38, 0.02))
+			_bm("monitor", Vector3(w / 2 + 0.55, 1.32, 0.047), Vector3(0.06, 0.08, 0.004))
+			_bm("led", Vector3(w / 2 + 0.55, 1.15, 0.047), Vector3(0.025, 0.025, 0.006), "cyl")
+			_bm("led", Vector3(w / 2 + 0.55, 1.08, 0.047), Vector3(0.025, 0.025, 0.006), "cyl")
+		"exit_sign":
+			# green EXIT sign over the glass doors
+			var sy := minf(h - 0.2, 2.4)
+			_bm("white", Vector3(0, sy + 0.12, 0), Vector3(0.42, 0.06, 0.12))
+			_bm("exit_green", Vector3(0, sy, 0.0), Vector3(0.4, 0.16, 0.02))
+		"water_bottles":
+			# 20-litre water bottles stacked by the doors
+			for i in 10:
+				var bx := -w / 2 + 0.14 + (i % 5) * (w - 0.28) / 4.0
+				var bz := -d / 4 if i < 5 else d / 4
+				_bm("bottle", Vector3(bx, 0.25, bz), Vector3(0.27, 0.5, 0.27), "cyl")
+				_bm("bottle_cap", Vector3(bx, 0.53, bz), Vector3(0.07, 0.06, 0.07), "cyl")
 		"desk_lamp":
 			# white desk lamp on the desk: round base, curved neck, head over the desk
 			_bm("gloss_white", Vector3(0, 0.765, 0), Vector3(0.16, 0.02, 0.16), "cyl")

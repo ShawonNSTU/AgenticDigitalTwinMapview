@@ -27,6 +27,10 @@ Proof of concept with three features:
 
 **Hotel use case** (the 4th floor is treated as a hotel floor):
 
+0. **Lift lobby.** The fire-safety drawing leaves the lift lobby out (it is outside the floor's own boundary); it is
+   added in the notch above the small cafeteria and the gym, as in the photos: three steel lifts with call buttons,
+   three panelled lift doors opposite, blue walls, wood-plank floor, an oval lit ceiling with downlights, and glass
+   double doors with an EXIT sign into the main cafeteria. Guests arrive here.
 0. **SmartThings Experience Zone, modelled as it is.** The zone is a real, already fitted room and the floor starts
    with it furnished (the plan draws it a little small to walk round in 3D, so it is enlarged by about a fifth each
    way, taken from the Maternity and Medical rooms beside it) and its SmartThings devices installed: wood-panelled walls, cream floor tiles, a drop ceiling
@@ -56,7 +60,8 @@ Proof of concept with three features:
    `/api/guest/<token>/…`, which returns and controls nothing outside their room. Optional `ADMIN_KEY` keeps the
    host pages and APIs behind a sign-in (`?key=…` once).
 8. **3D guidance to the room.** After scanning, the guest enters the PIN and walks in 3D from an entrance (the host's
-   choice; by default the South-West Stair, the main staircase opening onto the main corridor) to the room along a route drawn on the floor with
+   choice; by default the lift lobby: the guest steps out of the middle lift, goes through the glass doors and across
+   the main cafeteria to the corridor) to the room along a route drawn on the floor with
    tags where it enters the corridor, stairs and the room; they can pick another starting point, see the way from
    above or skip. Only rooms on the way open; other doors stay shut and show nothing.
    **Live indoor position** ("Find me" on the guest page): the view follows the guest's real position, snapped

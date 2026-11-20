@@ -4,7 +4,7 @@ extends Node
 ## Renderer -> host: parent.postMessage({source: "twin-renderer", type, ...})
 ## Contract: docs/contracts/bridge-api.md
 
-const VERSION := "0.5.4"  # bump with every renderer change the page depends on (web/lib/bridge.ts RENDERER_VERSION)
+const VERSION := "0.5.5"  # bump with every renderer change the page depends on (web/lib/bridge.ts RENDERER_VERSION)
 var _cb: JavaScriptObject  # keep a reference or the callback is collected
 
 

@@ -7,7 +7,7 @@ extends RefCounted
 const RADIUS := 0.22   # body radius: metres kept between the walker's centre and any wall or furniture
 const MARGIN := 0.45   # routes prefer to stay this far from obstacles (middle of corridors and doorways)
 # only rugs and door leaves (open flat against the wall while walking) can be walked over
-const SOFT := ["door", "rug"]
+const SOFT := ["door", "rug", "exit_sign", "poster"]  # walked over or under (signs and prints hang on the wall)
 
 var astar := AStarGrid2D.new()
 var cell := 0.15

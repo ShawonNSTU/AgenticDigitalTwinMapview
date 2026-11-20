@@ -10,7 +10,7 @@
 import { ROOMS, DEV } from './engine';
 
 type V = [number, number];
-type Item = { kind: string; x: number; z: number; w: number; d: number; rot: number; glass?: boolean; room?: string };
+type Item = { kind: string; x: number; z: number; w: number; d: number; rot: number; glass?: boolean; panel?: boolean; room?: string };
 
 export const ZONE_FINISH = 'st-zone';
 const isZone = (r: any) => /smartthings|smart things/i.test(`${r.name} ${r.label ?? ''}`);
@@ -45,6 +45,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   const r = zoneRoom();
   if (!r) return false;
   r.finish = ZONE_FINISH;
+  fitLiftLobby(rt);
   setArrival();
   growZone(r, rt.furniture);
   const P = polyOf(r);
@@ -94,7 +95,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   const tvS = Math.min(L - 0.95, (dt + dw / 2 + 0.25 + L - 0.35) / 2);   // centred on the wall beyond the door
   put('tv_unit', tvS, g + 0.23, 1.6, 0.45, IN);
   put('coffee_table', tvS, D * 0.27, 0.9, 0.6, IN);
-  put('tufted_sofa', tvS, D * 0.5, 1.9, 0.85, OUT);
+  put('tufted_sofa', Math.min(L - 1.45, tvS + 0.35), D * 0.5, 1.9, 0.85, OUT);  // a clear way in from the door beside it
   // end wall: white shelf beside the pillar, then the standing lamp, the curtain and another lamp by the TV corner
   const shelfQ = Math.min(D - 1.6, 2.95);
   const curtQ = Math.max(1.0, shelfQ - 1.75);
@@ -103,7 +104,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   put('floor_lamp', L - g - 0.3, g + 0.22, 0.42, 0.42, 0);        // corner by the TV
   // start wall, from the door corner: standing lamp, (purifier), desk under the wall TV
   const deskQ = D - g - 0.75;
-  put('floor_lamp', g + 0.25, dw + 0.35, 0.42, 0.42, 0);
+  put('floor_lamp', g + 0.25, dw + 0.85, 0.42, 0.42, 0);
   put('desk', g + 0.31, deskQ, 1.5, 0.62, BACK);
   put('task_chair', g + 0.88, deskQ - 0.42, 0.6, 0.6, BACK);
   // far wall: desk return, desk lamp, framed print above
@@ -134,7 +135,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   dev('tv', tvS, g + 0.23, IN, 'TV 65"');
   dev('tv', g + 0.04, deskQ, ALONG, 'Wall TV');
   dev('ac', L * 0.45, D * 0.3, 0, 'Ceiling AC');
-  dev('purifier', g + 0.26, dw + 0.95, ALONG, 'Air purifier');
+  dev('purifier', g + 0.26, dw + 1.5, ALONG, 'Air purifier');
   dev('lock', dt + dw / 2 + 0.2, 0.06, IN, 'Door lock');
   dev('temphum', dt + dw / 2 + 0.5, 0.04, IN, 'Temp & humidity');
   dev('camera', L - 0.15, 0.15, face([n[0] - u[0], n[1] - u[1]]), 'Indoor camera 1');
@@ -168,9 +169,11 @@ function growZone(r: any, furniture: any[]) {
   if (Number.isFinite(snap) && Math.abs(snap - nx0) < 0.35) nx0 = snap;
   const nz1 = z1 + (z1 - z0) * (GROW - 1) * 1.07;
   const dz = nz1 - z1, dx = nx0 - x0;
+  const inZone = (x: number, z: number) => x > x0 && x < x1 && z > z0 && z < z1;
   for (const o of ROOMS as any[]) {
     if (o === r || !o.poly) continue;
     let moved = false;
+    const ob = { x: [...o.x], z: [...o.z] }, opoly = o.poly.map((p: number[]) => [...p]);
     o.poly = o.poly.map(([x, z]: [number, number]) => {
       let nx = x, nz = z;
       if (near(x, x0) && z >= z0 - 0.05 && z <= z1 + 0.05) { nx = nx0; moved = true; }
@@ -188,6 +191,22 @@ function growZone(r: any, furniture: any[]) {
     if (moved) {
       const oxs = o.poly.map((p: number[]) => p[0]), ozs = o.poly.map((p: number[]) => p[1]);
       o.x = [Math.min(...oxs), Math.max(...oxs)]; o.z = [Math.min(...ozs), Math.max(...ozs)];
+      // the room's own furniture moves in with its wall (squeezed along the side that moved), so nothing is left
+      // in the strip it gave up or crowded against its new wall
+      const inOld = (x: number, z: number) => {
+        let c = false;
+        for (let i = 0, j = opoly.length - 1; i < opoly.length; j = i++) {
+          const [xi, zi] = opoly[i], [xj, zj] = opoly[j];
+          if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+        }
+        return c;
+      };
+      const sx = (o.x[1] - o.x[0]) / (ob.x[1] - ob.x[0] || 1), sz = (o.z[1] - o.z[0]) / (ob.z[1] - ob.z[0] || 1);
+      for (const f of furniture) {
+        if (f.kind === 'door' || f.kind === 'column' || !inOld(f.x, f.z) || inZone(f.x, f.z)) continue;
+        if (Math.abs(sx - 1) > 0.001) f.x = +(o.x[0] + (f.x - ob.x[0]) * sx).toFixed(3);
+        if (Math.abs(sz - 1) > 0.001) f.z = +(o.z[0] + (f.z - ob.z[0]) * sz).toFixed(3);
+      }
     }
   }
   r.poly = [[nx0, z0], [x1, z0], [x1, nz1], [nx0, nz1]].map(p => p.map(v => +v.toFixed(3)));
@@ -203,6 +222,39 @@ function growZone(r: any, furniture: any[]) {
 }
 
 /**
+ * The 4th floor's lift lobby. The fire-safety drawing leaves it out (it is outside the floor's own boundary), but
+ * it fills the notch in that boundary above the small cafeteria and the gym, west of the main cafeteria (photos:
+ * three steel lifts on one long wall, three panelled lift doors on the other, blue walls, wood-plank floor, an
+ * oval lit ceiling, glass double doors with frosted side panels and an EXIT sign into the main cafeteria at the
+ * far end, water bottles stacked beside them). Guests arrive here.
+ */
+export const LOBBY_FINISH = 'lift-lobby';
+function fitLiftLobby(rt: { furniture: any[] }) {
+  if ((ROOMS as any[]).some(r => r.key === 'lift-lobby')) return;
+  const small = (ROOMS as any[]).find(r => /cafeteria \(6/i.test(String(r.name)));
+  const main = (ROOMS as any[]).find(r => /cafeteria \(208/i.test(String(r.name)));
+  if (!small || !main) return;
+  const x0 = small.x[0], x1 = main.x[0], z1 = small.z[0];
+  const z0 = +(main.z[0] - 0.95).toFixed(3);       // the drawing's outer line, about 4 m deep
+  if (x1 - x0 < 5 || z1 - z0 < 3) return;
+  const L = x1 - x0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  (ROOMS as any[]).push({ key: 'lift-lobby', name: 'Lift Lobby', label: 'Lift Lobby', x: [x0, x1], z: [z0, z1],
+    poly: [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], color: '#9fb0e6', labelAt: [cx, cz], zone: small.zone ?? 'A', finish: LOBBY_FINISH });
+  const doorZ = +(((Math.max(z0, main.z[0]) + z1) / 2)).toFixed(3);
+  const items: Item[] = [
+    { kind: 'door', x: x1, z: doorZ, w: 1.8, d: 0.17, rot: -Math.PI / 2, glass: true, room: 'lift-lobby' },
+    { kind: 'exit_sign', x: x1 - 0.08, z: doorZ, w: 0.5, d: 0.08, rot: -Math.PI / 2, room: 'lift-lobby' },
+    { kind: 'water_bottles', x: x1 - 0.55, z: z0 + 0.45, w: 0.9, d: 0.6, rot: 0, room: 'lift-lobby' },
+  ];
+  for (const f of [0.2, 0.45, 0.7]) {
+    const x = +(x0 + L * f).toFixed(3);
+    items.push({ kind: 'lift_door', x, z: +(z0 + 0.09).toFixed(3), w: 1.1, d: 0.12, rot: 0, room: 'lift-lobby' });                         // steel
+    items.push({ kind: 'lift_door', x, z: +(z1 - 0.09).toFixed(3), w: 1.1, d: 0.12, rot: Math.PI, panel: true, room: 'lift-lobby' } as any); // panelled
+  }
+  rt.furniture = [...rt.furniture.filter(f => !(f.x > x0 && f.x < x1 && f.z > z0 && f.z < z1)), ...items];
+}
+
+/**
  * Where guests arrive on the floor. On the 4th floor that is the South-West Stair: the wide main staircase,
  * opening straight onto the main corridor in front of the training rooms, from where every guest room is reached
  * along the corridor. The Core Stair is closed in behind the Utility Room (no way through to the guest rooms), so
@@ -211,7 +263,7 @@ function growZone(r: any, furniture: any[]) {
 export const ARRIVAL: { key: string; closed: string[] } = ((globalThis as any).__twinArrival ??= { key: '', closed: [] });
 export function setArrival() {
   const find = (re: RegExp) => (ROOMS as any[]).find(r => re.test(String(r.name)))?.key ?? '';
-  ARRIVAL.key = find(/south-?west stair/i);
+  ARRIVAL.key = find(/lift lobby/i) || find(/south-?west stair/i);
   ARRIVAL.closed = [find(/core stair/i)].filter(Boolean);
 }
 

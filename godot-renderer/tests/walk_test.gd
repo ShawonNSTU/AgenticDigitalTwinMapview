@@ -45,6 +45,7 @@ func _crosses(a: Vector2, b: Vector2, pieces: Array) -> bool:
 
 
 var hard: Array = []  # furniture outlines the walker's body must never overlap
+var hard_kind: Array = []
 var bumps := 0
 var gaps: Array = []
 var door_cross := 0
@@ -66,9 +67,11 @@ func _walk_route(w: Walker, pieces: Array, max_steps := 3000) -> bool:
 				door_cross += 1
 				if (x as Vector2).distance_to((g[0] + g[1]) / 2) > 0.15:
 					door_off += 1
-		for poly in hard:
-			if Geometry2D.is_point_in_polygon(w.p, poly):
+		for hi in hard.size():
+			if Geometry2D.is_point_in_polygon(w.p, hard[hi]):
 				bumps += 1
+				if bumps <= 3:
+					print("bump into %s at %s (in %s)" % [hard_kind[hi], w.p, w.room_key])
 				break
 		if w._path.is_empty():
 			break
@@ -105,6 +108,7 @@ func _run() -> void:
 	for f in Store.furniture:
 		if not WalkNav.SOFT.has(f.get("kind", "")):
 			hard.append(Placer._rect(Vector2(float(f.x), float(f.z)), Vector2(float(f.w) + 0.4, float(f.d) + 0.4), float(f.get("rot", 0.0))))
+			hard_kind.append(str(f.get("kind", "")))
 	_check(w.nav.is_free(w.p), "the walker starts on walkable floor (%s, in %s)" % [w.p, w.room_key])
 	await _shot("w0_start")
 	# every room is reachable on foot

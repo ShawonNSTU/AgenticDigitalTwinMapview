@@ -27,6 +27,8 @@ func build() -> void:
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		if str(r.get("finish", "")) == "st-zone":
 			_zone_floor(mat)
+		elif str(r.get("finish", "")) == "lift-lobby":
+			_lobby_floor(mat)
 		else:
 			_finish(mat, str(r.name).to_lower())
 		_slabs[r.key] = mat
@@ -58,7 +60,9 @@ func build() -> void:
 		# an outside wall (a room on one side only) gets windows
 		var nrm := Vector2(-u.y, u.x)
 		var mid_s := (a + b) / 2
-		var exterior := Store.room_at(mid_s + nrm * 0.3).is_empty() != Store.room_at(mid_s - nrm * 0.3).is_empty()
+		var side_a: Dictionary = Store.room_at(mid_s + nrm * 0.3)
+		var side_b: Dictionary = Store.room_at(mid_s - nrm * 0.3)
+		var exterior := side_a.is_empty() != side_b.is_empty() and str(side_a.get("finish", "")) != "lift-lobby" and str(side_b.get("finish", "")) != "lift-lobby"
 		var start := -WALL / 2
 		for g in gaps + [[length + WALL / 2, length + WALL / 2]]:
 			var end: float = g[0]
@@ -76,6 +80,8 @@ func build() -> void:
 	for r in Store.rooms:
 		if str(r.get("finish", "")) == "st-zone":
 			_zone_walls(r, h, doors)
+		elif str(r.get("finish", "")) == "lift-lobby":
+			_zone_walls(r, h, doors, _lobby_wall_mat(), Color("2e3a5c"))
 	if Store.walk:
 		_ceilings(h)
 	if Store.outdoor_pad.has("x"):
@@ -327,8 +333,8 @@ var _panel_mat: StandardMaterial3D
 
 ## Wood cladding on the inside of every wall of the room (big panels with dark grooves), a dark skirting, and
 ## nothing across the door opening.
-func _zone_walls(r: Dictionary, h: float, doors: Array) -> void:
-	if _panel_mat == null:
+func _zone_walls(r: Dictionary, h: float, doors: Array, lining: StandardMaterial3D = null, skirt_col := Color("3a2418")) -> void:
+	if lining == null and _panel_mat == null:
 		_panel_mat = StandardMaterial3D.new()
 		_panel_mat.albedo_color = Color("9b6b40")
 		_panel_mat.roughness = 0.38
@@ -354,8 +360,9 @@ func _zone_walls(r: Dictionary, h: float, doors: Array) -> void:
 		_panel_mat.uv2_triplanar = true
 		_panel_mat.uv2_world_triplanar = true
 		_panel_mat.uv2_scale = Vector3(0.35, 3.0, 0.35)  # grain runs along the panels
+	var wall_mat: StandardMaterial3D = lining if lining else _panel_mat
 	var skirt := StandardMaterial3D.new()
-	skirt.albedo_color = Color("3a2418")
+	skirt.albedo_color = skirt_col
 	skirt.roughness = 0.5
 	var poly := PlanGeo.room_poly(r)
 	var centre := Vector2.ZERO
@@ -384,7 +391,7 @@ func _zone_walls(r: Dictionary, h: float, doors: Array) -> void:
 			var end: float = minf(g[0], length - off)
 			if end - start > 0.05:
 				var c := a + u * ((start + end) / 2) + nrm * off
-				var pnl := _box(Vector3(c.x, h / 2, c.y), Vector3(end - start, h, 0.024), _panel_mat)
+				var pnl := _box(Vector3(c.x, h / 2, c.y), Vector3(end - start, h, 0.024), wall_mat)
 				pnl.rotation.y = -atan2(u.y, u.x)
 				_walls.append(pnl)
 				var c2 := a + u * ((start + end) / 2) + nrm * (off + 0.018)
@@ -461,6 +468,123 @@ func set_panels(room_key: String, level: float) -> void:
 		m.albedo_color = Color(0.75, 0.75, 0.73).lerp(Color.WHITE, level)
 
 
+# ---- the 4th-floor lift lobby (web/lib/sim/stzone.ts): blue walls, wood-plank floor, oval lit ceiling
+
+var _lobby_wall: StandardMaterial3D
+
+
+func _lobby_wall_mat() -> StandardMaterial3D:
+	if _lobby_wall == null:
+		_lobby_wall = StandardMaterial3D.new()
+		_lobby_wall.albedo_color = Color("5f78bd")
+		_lobby_wall.roughness = 0.55
+		_lobby_wall.albedo_texture = _grid_tex(128, Color(1, 1, 1), Color(0.88, 0.9, 0.95), 1)
+		_lobby_wall.uv1_triplanar = true
+		_lobby_wall.uv1_world_triplanar = true
+		_lobby_wall.uv1_scale = Vector3(1.0 / 2.6, 1.0 / 4.0, 1.0 / 2.6)  # large painted board joints
+	return _lobby_wall
+
+
+func _lobby_floor(mat: StandardMaterial3D) -> void:
+	# warm wood planks: 1.2 m x 0.18 m boards, staggered, with grain
+	var w := 256
+	var img := Image.create(w, w, false, Image.FORMAT_RGB8)
+	var n := FastNoiseLite.new()
+	n.frequency = 0.05
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var rows := 8
+	var tones: Array = []
+	for i in rows * 3:
+		tones.append(rng.randf_range(-0.06, 0.06))
+	for y in w:
+		var row := y * rows / w
+		for x in w:
+			var off := (row % 3) * w / 3
+			var board := ((x + off) % w) * 2 / w
+			var t: float = tones[(row * 2 + board) % tones.size()]
+			var g := n.get_noise_2d(x * 0.15, y * 3.0) * 0.08
+			var c := Color(0.58 + t + g, 0.33 + t * 0.7 + g * 0.6, 0.19 + t * 0.4 + g * 0.3)
+			if y % (w / rows) == 0 or (x + off) % (w / 2) == 0:
+				c = c.darkened(0.35)
+			img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	mat.albedo_color = Color.WHITE
+	mat.albedo_texture = ImageTexture.create_from_image(img)
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3.ONE / 1.44
+	mat.roughness = 0.35
+	mat.metallic_specular = 0.6
+
+
+## White ceiling with a big oval lit cove in the middle and a row of downlights round it.
+func _lobby_ceiling(r: Dictionary, h: float) -> void:
+	var poly := PlanGeo.room_poly(r)
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for p in poly:
+		lo = lo.min(p)
+		hi = hi.max(p)
+	var c := (lo + hi) / 2
+	var sz := hi - lo
+	var cove := StandardMaterial3D.new()
+	cove.albedo_color = Color(0.95, 1.0, 0.96)
+	cove.emission_enabled = true
+	cove.emission = Color(0.9, 1.0, 0.92)
+	cove.emission_energy_multiplier = 0.8
+	var white := StandardMaterial3D.new()
+	white.albedo_color = Color("f2f2f0")
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.92
+	tm.outer_radius = 1.0
+	tm.rings = 64
+	ring.mesh = tm
+	ring.material_override = cove
+	ring.scale = Vector3(sz.x * 0.42, 0.06, sz.y * 0.42)
+	ring.position = Vector3(c.x, h - 0.03, c.y)
+	ceilings.add_child(ring)
+	# the raised oval inside the cove, a shade brighter
+	var disc := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.92
+	cm.bottom_radius = 0.92
+	cm.height = 0.01
+	disc.mesh = cm
+	var inner := white.duplicate() as StandardMaterial3D
+	inner.emission_enabled = true
+	inner.emission = Color(1, 1, 1)
+	inner.emission_energy_multiplier = 0.08
+	disc.material_override = inner
+	disc.scale = Vector3(sz.x * 0.42, 1, sz.y * 0.42)
+	disc.position = Vector3(c.x, h - 0.012, c.y)
+	ceilings.add_child(disc)
+	var dl := StandardMaterial3D.new()
+	dl.albedo_color = Color.WHITE
+	dl.emission_enabled = true
+	dl.emission = Color(1, 1, 0.97)
+	dl.emission_energy_multiplier = 3.0
+	for i in 7:
+		var x := lo.x + sz.x * (0.12 + i * 0.125)
+		for z in [lo.y + 0.45, hi.y - 0.45]:
+			var d := MeshInstance3D.new()
+			var dm := CylinderMesh.new()
+			dm.top_radius = 0.07
+			dm.bottom_radius = 0.07
+			dm.height = 0.01
+			d.mesh = dm
+			d.material_override = dl
+			d.position = Vector3(x, h - 0.012, z)
+			ceilings.add_child(d)
+	var lamp := OmniLight3D.new()
+	lamp.position = Vector3(c.x, h - 0.4, c.y)
+	lamp.omni_range = maxf(sz.x, sz.y) * 0.8
+	lamp.light_energy = 1.4
+	lamp.light_color = Color(0.92, 1.0, 0.95)
+	ceilings.add_child(lamp)
+
+
 func _ceil_box(c: Vector3, s: Vector3, m: Material) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -501,6 +625,8 @@ func _ceilings(h: float) -> void:
 		if str(r.get("finish", "")) == "st-zone":
 			m.material_override = _zone_ceiling_mat()
 			_zone_ceiling(r, h)
+		elif str(r.get("finish", "")) == "lift-lobby":
+			_lobby_ceiling(r, h)
 
 
 ## Floor slab for any simple polygon: triangulated top face plus side faces.

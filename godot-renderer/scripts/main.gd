@@ -851,6 +851,19 @@ func _start_guest(from_key := "") -> void:
 ## else a lift, lobby, reception or stair; else the best-connected room (usually the corridor).
 func _guest_entrance(nav: WalkNav, target_room: Dictionary) -> Vector2:
 	var chosen: Dictionary = Store.room(str(Store.guest.get("entrance", "")))
+	# a lift lobby: the guest steps out of the middle lift
+	if not chosen.is_empty():
+		var lifts: Array = []
+		var cpoly := PlanGeo.room_poly(chosen)
+		for f in Store.furniture:
+			if f.get("kind", "") == "lift_door" and not f.get("panel", false) and Geometry2D.is_point_in_polygon(Vector2(float(f.x), float(f.z)), cpoly):
+				lifts.append(f)
+		if not lifts.is_empty():
+			lifts.sort_custom(func(a, b): return float(a.x) < float(b.x))
+			var lf: Dictionary = lifts[lifts.size() / 2]
+			var rot := float(lf.get("rot", 0.0))
+			var out := Vector2(float(lf.x), float(lf.z)) + Vector2(sin(rot), cos(rot)) * 0.9
+			return nav.nearest_free(out, 8)
 	if not chosen.is_empty():
 		var p := nav.room_target(chosen, PlanGeo.interior_point(PlanGeo.room_poly(target_room)))
 		if p != Vector2.INF:
