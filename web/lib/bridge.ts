@@ -24,7 +24,9 @@ export type ToRenderer =
   | { type: 'selectRoom'; room: string }
   // guest 3D controls: show a value in the room while it is being dragged, and report a device's screen position
   | { type: 'preview'; id: string; readings: Record<string, unknown>; text?: string }
-  | { type: 'track'; id: string };
+  | { type: 'track'; id: string }
+  // story mode (app/story): cinematic shots, data wave, guest/technician walks, TV text, heatmap, night
+  | { type: 'story'; action: 'build' | 'shot' | 'room' | 'wave' | 'walk' | 'endWalk' | 'tv' | 'heat' | 'night'; [k: string]: unknown };
 
 /** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */
 export type Placement = { x: number; y: number; z: number; rotationY: number; room: string };
@@ -47,7 +49,7 @@ export type FromRenderer =
 
 /** The renderer build this page expects (godot-renderer/autoloads/bridge.gd VERSION). An older export in
  *  web/public/godot is reported on the page, so a stale build is never mistaken for a bug. */
-export const RENDERER_VERSION = '0.5.7';
+export const RENDERER_VERSION = '0.6.0';
 
 let frame: HTMLIFrameElement | null = null;
 const queue: ToRenderer[] = [];

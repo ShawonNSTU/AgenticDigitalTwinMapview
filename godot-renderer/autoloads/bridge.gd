@@ -4,7 +4,7 @@ extends Node
 ## Renderer -> host: parent.postMessage({source: "twin-renderer", type, ...})
 ## Contract: docs/contracts/bridge-api.md
 
-const VERSION := "0.5.7"  # bump with every renderer change the page depends on (web/lib/bridge.ts RENDERER_VERSION)
+const VERSION := "0.6.0"  # bump with every renderer change the page depends on (web/lib/bridge.ts RENDERER_VERSION)
 var _cb: JavaScriptObject  # keep a reference or the callback is collected
 
 
@@ -73,6 +73,7 @@ func handle(msg: Dictionary) -> void:
 		"refreshDevices": Store.refresh_now()
 		"selectRoom": Bus.room_selected.emit(str(msg.get("room", "")))
 		"walk": Bus.walk_requested.emit(str(msg.get("action", "toggle")), msg)
+		"story": Bus.story_requested.emit(msg)
 		"preview": Bus.preview_requested.emit(str(msg.get("id", "")), msg.get("readings", {}) if msg.get("readings") is Dictionary else {}, str(msg.get("text", "")))
 		"track": Bus.track_requested.emit(str(msg.get("id", "")))
 		_: push_warning("Bridge: unknown message %s" % msg)

@@ -84,8 +84,8 @@ SCENES = {
     "movie": r"movie|film|cinema|সিনেমা",
     "morning": r"wake|morning|good morning|সকাল",
     "away": r"leaving|going out|goodbye|check ?out|away|চলে যা|বাইরে যা",
-    "hot": r"too hot|i'?m hot|feel hot|warm in here|গরম",
-    "cold": r"too cold|i'?m cold|feel cold|chilly|ঠান্ডা লাগ",
+    "hot": r"too hot|i'?m (a bit |a little |so |very )?hot|feel(ing)? (a bit |a little )?hot|warm in here|stuffy|গরম",
+    "cold": r"too cold|i'?m (a bit |a little |so |very )?cold|feel(ing)? (a bit |a little )?cold|chilly|freezing|ঠান্ডা লাগ",
     "clean": r"clean the room|clean my room|start cleaning|পরিষ্কার",
 }
 
@@ -97,6 +97,8 @@ def scene_actions(name: str, view: dict) -> list[dict]:
         if name == "sleep":
             if t == "light" and _can(d, "setLevel"):
                 out.append(_act(d, "setLevel", {"percent": 10 if "reading" in d["name"].lower() else 0}, "dim to a night glow" if "reading" in d["name"].lower() else "off"))
+            elif t == "light" and _can(d, "power"):
+                out.append(_act(d, "power", {"on": "false"}, "off"))
             elif t == "ac" and _can(d, "setTemperature"):
                 out += [_act(d, "setMode", {"mode": "cool"}, "cool mode"), _act(d, "setTemperature", {"celsius": 24}, "24 °C"), _act(d, "setFanSpeed", {"percent": 35}, "quiet fan")]
             elif t == "blinds" and _can(d, "close"):
@@ -110,6 +112,8 @@ def scene_actions(name: str, view: dict) -> list[dict]:
         elif name == "movie":
             if t == "light" and _can(d, "setLevel"):
                 out.append(_act(d, "setLevel", {"percent": 15}, "dim to 15 %"))
+            elif t == "light" and _can(d, "power"):
+                out.append(_act(d, "power", {"on": "false"}, "off for the film"))
             elif t == "tv" and _can(d, "power"):
                 out.append(_act(d, "power", {"on": "true"}, "on"))
             elif t == "blinds" and _can(d, "close"):
@@ -178,6 +182,13 @@ def device_actions(clause: str, view: dict) -> tuple[list[dict], list[str]]:
                     acts.append(_act(d, "setSwing", {"position": "swing"}, "swing louvers"))
                 if (m := re.search(r"(\d+)\s*(hour|hr|ঘণ্টা)", c.translate(BN_DIGITS))) and _can(d, "setTimer"):
                     acts.append(_act(d, "setTimer", {"hours": min(12, int(m.group(1)))}, f"off in {m.group(1)} h"))
+            elif t == "light" and not _can(d, "setLevel"):
+                if not _can(d, "power"):
+                    continue
+                if re.search(OFF, c) or re.search(r"dim|lower|softer|কম", c):
+                    acts.append(_act(d, "power", {"on": "false"}, "off"))
+                elif re.search(ON, c) or re.search(r"bright|full|max", c):
+                    acts.append(_act(d, "power", {"on": "true"}, "on"))
             elif t == "light":
                 if re.search(r"dim|lower|softer|কম", c):
                     acts.append(_act(d, "setLevel", {"percent": int(n) if n is not None and n <= 100 else 30}, f"dim to {int(n) if n is not None and n <= 100 else 30} %"))
@@ -237,31 +248,30 @@ def device_actions(clause: str, view: dict) -> tuple[list[dict], list[str]]:
 
 
 def read_request(text: str, view: dict) -> dict:
-    """Plan for a guest request: {actions, ask_first, scene, missing}."""
+    """Plan for a guest request: {actions, ask_first, scene, missing}. A request can mix a feeling ("I'm a bit
+    cold"), a scene ("it's movie time") and direct commands ("dim the lights"): all of them are planned, scenes
+    first and direct commands after (so "dim the lights to 20" overrides the scene's level), and broad wishes are
+    confirmed before anything runs."""
     low = text.lower()
-    for name, pat in SCENES.items():
-        if re.search(pat, low) and not re.search(r"\b(set|turn|switch|dim)\b", low):
-            return {"actions": scene_actions(name, view), "ask_first": name not in ("clean",), "scene": name, "missing": []}
+    scenes = [name for name, pat in SCENES.items() if re.search(pat, low)]
     acts: list[dict] = []
+    for name in scenes:
+        acts += scene_actions(name, view)
     missing: list[str] = []
-    for clause in re.split(r"\band\b|,|;|\bthen\b|এবং|আর", low):
+    for clause in re.split(r"\band\b|,|;|\.|\bthen\b|এবং|আর", low):
+        if any(re.search(SCENES[nm], clause) for nm in scenes) and not re.search(r"\b(set|turn|switch)\b|\d", clause):
+            continue  # the scene already covers this clause
         a, m = device_actions(clause, view)
         acts += a
         missing += m
-    for name, pat in SCENES.items():  # "it's too hot, set the fan high" style
-        if not acts and re.search(pat, low):
-            return {"actions": scene_actions(name, view), "ask_first": True, "scene": name, "missing": []}
-    seen: set = set()
-    uniq = []
+    # one action per device and command: the last one wins (direct commands come after the scenes)
+    last: dict = {}
     for a in acts:
-        k = (a["device_id"], a["command"])
-        if k not in seen:
-            seen.add(k)
-            uniq.append(a)
-    return {"actions": uniq, "ask_first": False, "scene": None, "missing": missing}
+        last[(a["device_id"], a["command"])] = a
+    uniq = list(last.values())
+    broad = bool(scenes) and "clean" not in scenes
+    return {"actions": uniq, "ask_first": broad or len(uniq) > 4, "scene": scenes[0] if scenes else None, "scenes": scenes, "missing": [] if uniq else missing}
 
-
-# ------------------------------------------------------------------ wording
 
 def is_bangla(text: str) -> bool:
     return bool(re.search(r"[ঀ-৿]", text))
@@ -278,7 +288,8 @@ def plan_text(plan: dict, bn: bool) -> str:
             return ("এই রুমে নেই: " if bn else "This room doesn't have ") + ", ".join(plan["missing"]) + "."
         return "দুঃখিত, বুঝতে পারিনি। যেমন বলুন: “এসি ২৪ ডিগ্রি করো”।" if bn else "Sorry, I didn't catch which device you mean. Try “set the AC to 24 degrees” or “dim the lights”."
     if plan["ask_first"]:
-        what = SCENE_EN.get(plan["scene"], "do this")
+        names = [SCENE_EN[n] for n in plan.get("scenes") or ([plan["scene"]] if plan.get("scene") else []) if n in SCENE_EN]
+        what = " and ".join(names) if names else "do this"
         return ("আমি নিচের কাজগুলো করতে পারি। করব?" if bn else f"To {what}, I can do the following. Shall I go ahead?")
     return "করছি…" if bn else "On it:"
 

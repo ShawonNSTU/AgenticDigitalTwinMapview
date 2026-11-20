@@ -45,6 +45,7 @@ func _ready() -> void:
 	Bus.health_changed.connect(_on_health)
 	Bus.live_updated.connect(_apply_live)
 	Bus.preview_requested.connect(_on_preview)
+	Bus.story_requested.connect(_on_story)
 	Bus.track_requested.connect(func(id): _track = id; _anchor_t = 0.0; _holo(id))
 	Bus.highlight_requested.connect(_on_highlight)
 	Bus.highlight_cleared.connect(func(): _on_highlight([], ""))
@@ -204,6 +205,182 @@ func _apply_live() -> void:
 		if is_instance_valid(n):
 			n.apply_live(_live_of(id))
 	_room_light()
+
+
+# ---- story mode (web/app/story): the host page plays a guest's night on the floor in chapters and drives the
+# renderer with {type: "story", action: ...}
+
+var _story_tv := {}    # device id -> Label3D welcome text on its screen
+var _heat: Node3D      # room overlay (energy or occupancy)
+var _night_on := false
+
+
+func _on_story(msg: Dictionary) -> void:
+	if world == null:
+		return
+	match str(msg.get("action", "")):
+		"build":  # replay the plan-to-3D build
+			if walker:
+				stop_walk(false)
+			_build_world(true)
+		"shot":  # a cinematic camera move: target [x, z], distance, pitch and yaw in degrees, seconds
+			var t: Array = msg.get("target", [rig.target.x, rig.target.z])
+			rig.fly_to(Vector3(float(t[0]), 0, float(t[1])), float(msg.get("distance", rig.distance)),
+				deg_to_rad(float(msg.get("pitch", rad_to_deg(rig.pitch)))), deg_to_rad(float(msg.get("yaw", rad_to_deg(rig.yaw)))), float(msg.get("secs", 2.5)))
+		"room":  # frame a room from above at an angle
+			var r: Dictionary = Store.room(str(msg.get("room", "")))
+			if not r.is_empty():
+				var c := PlanGeo.interior_point(PlanGeo.room_poly(r))
+				var span := maxf(float(r.x[1]) - float(r.x[0]), float(r.z[1]) - float(r.z[0]))
+				rig.fly_to(Vector3(c.x, 0, c.y), clampf(span * 1.6, 7.0, 30.0), deg_to_rad(float(msg.get("pitch", -48.0))),
+					deg_to_rad(float(msg.get("yaw", rad_to_deg(rig.yaw)))), float(msg.get("secs", 2.2)))
+		"wave":  # live data reaching every device, swept across the floor
+			_story_wave(float(msg.get("secs", 3.0)))
+		"walk":  # a guest (by lift) or a technician (from a room) walks to a room, first person
+			if walker:
+				stop_walk(false)
+			Store.guest = {"room": str(msg.get("room", "")), "entrance": str(msg.get("from", ""))}
+			_start_guest()
+		"endWalk":
+			if walker:
+				stop_walk(bool(msg.get("fly", true)))
+			Store.guest = {}
+			Store.guest_allowed = {}
+		"tv":  # text on a TV's screen (the welcome message); empty text clears it
+			_story_tv_text(str(msg.get("id", "")), str(msg.get("text", "")), str(msg.get("sub", "")))
+		"heat":  # colour each room by a value 0..1 with a label; {on: false} clears
+			_story_heat(msg.get("values", {}) if msg.get("values") is Dictionary else {}, msg.get("labels", {}) if msg.get("labels") is Dictionary else {}, bool(msg.get("on", true)))
+		"night":
+			_story_night(bool(msg.get("on", true)))
+
+
+func _story_wave(secs: float) -> void:
+	var ids: Array = devices.keys()
+	if ids.is_empty():
+		return
+	var minx := INF
+	var maxx := -INF
+	for id in ids:
+		var x: float = devices[id].global_position.x
+		minx = minf(minx, x)
+		maxx = maxf(maxx, x)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_color = Color(0.35, 0.75, 1.0, 0.0)
+	for id in ids:
+		var n: Node3D = devices[id]
+		var delay := (n.global_position.x - minx) / maxf(maxx - minx, 0.1) * secs
+		var beam := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.02
+		cm.bottom_radius = 0.18
+		cm.height = 3.0
+		beam.mesh = cm
+		var bm := m.duplicate() as StandardMaterial3D
+		beam.material_override = bm
+		beam.position = n.global_position + Vector3(0, 1.4, 0)
+		world.add_child(beam)
+		var tw := beam.create_tween()
+		tw.tween_interval(delay)
+		tw.tween_property(bm, "albedo_color:a", 0.85, 0.25)
+		tw.parallel().tween_property(beam, "scale", Vector3(1.6, 1, 1.6), 0.25)
+		tw.tween_property(bm, "albedo_color:a", 0.0, 0.9)
+		tw.tween_callback(beam.queue_free)
+		get_tree().create_timer(delay + 0.1).timeout.connect(func():
+			if is_instance_valid(n):
+				n.set_highlight(true, false)
+				get_tree().create_timer(1.2).timeout.connect(func():
+					if is_instance_valid(n) and not _highlight.has(id):
+						n.set_highlight(false, false)))
+
+
+func _story_tv_text(id: String, text: String, sub: String) -> void:
+	if _story_tv.has(id) and is_instance_valid(_story_tv[id]):
+		_story_tv[id].queue_free()
+	_story_tv.erase(id)
+	if text == "" or not devices.has(id):
+		return
+	var n: Node3D = devices[id]
+	var l := Label3D.new()
+	l.text = text + ("\n" + sub if sub != "" else "")
+	l.font_size = 40
+	l.pixel_size = 0.0016
+	l.outline_size = 14
+	l.outline_modulate = Color(0.04, 0.07, 0.16)
+	l.modulate = Color(1, 1, 1)
+	l.position = Vector3(0, 0.02, 0.06)
+	var back := MeshInstance3D.new()  # dark card behind the text so it reads on a bright screen
+	var q := QuadMesh.new()
+	q.size = Vector2(0.95, 0.42)
+	back.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.05, 0.09, 0.22)
+	back.material_override = m
+	back.position = Vector3(0, 0, -0.004)
+	l.add_child(back)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	n.add_child(l)
+	_story_tv[id] = l
+
+
+func _story_heat(values: Dictionary, labels: Dictionary, on: bool) -> void:
+	if _heat and is_instance_valid(_heat):
+		_heat.queue_free()
+	_heat = null
+	if not on or values.is_empty():
+		return
+	_heat = Node3D.new()
+	_heat.name = "StoryHeat"
+	world.add_child(_heat)
+	for k in values:
+		var r: Dictionary = Store.room(str(k))
+		if r.is_empty():
+			continue
+		var v := clampf(float(values[k]), 0.0, 1.0)
+		var col := Color(0.2, 0.75, 0.45).lerp(Color(0.98, 0.75, 0.2), minf(v * 2.0, 1.0)).lerp(Color(0.95, 0.3, 0.25), maxf(v * 2.0 - 1.0, 0.0))
+		col.a = 0.5
+		var poly := PlanGeo.room_poly(r)
+		var tris := Geometry2D.triangulate_polygon(poly)
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for i in tris:
+			st.add_vertex(Vector3(poly[i].x, 0.06, poly[i].y))
+		var mi := MeshInstance3D.new()
+		mi.mesh = st.commit()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.albedo_color = Color(col.r, col.g, col.b, 0.0)
+		mi.material_override = m
+		_heat.add_child(mi)
+		mi.create_tween().tween_property(m, "albedo_color:a", col.a, 0.8)
+		if labels.has(k):
+			var c := PlanGeo.interior_point(poly)
+			var l := Label3D.new()
+			l.text = str(labels[k])
+			l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			l.fixed_size = true
+			l.pixel_size = 0.0011
+			l.font_size = 44
+			l.outline_size = 12
+			l.outline_modulate = Color(0, 0, 0, 0.8)
+			l.no_depth_test = true
+			l.position = Vector3(c.x, 1.6, c.y)
+			_heat.add_child(l)
+
+
+func _story_night(on: bool) -> void:
+	_night_on = on
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(env, "background_color", Color("05070c") if on else Color("0b0e12"), 1.5)
+	tw.tween_property(env, "ambient_light_color", Color("4a5a80") if on else Color("aab4c3"), 1.5)
+	tw.tween_property(env, "ambient_light_energy", 0.22 if on else 0.55, 1.5)
+	tw.tween_property(sun, "light_energy", 0.02 if on else SUN, 1.5)
+	tw.tween_property(env, "glow_intensity", 1.2 if on else 0.6, 1.5)
 
 
 # ---- 3D device control for guests: previews while a control is dragged, a pinned anchor, a hologram value --------
@@ -732,6 +909,8 @@ func _end_walk_state(restore := true) -> void:
 	if walker == null:
 		return
 	walker = null
+	for f in Store.furniture:  # the arrival lift's doors and shaft go back to normal
+		f.erase("arrival")
 	if Store.walk:
 		Store.walk = false
 		if restore and _walk_saved.has("h"):
@@ -782,6 +961,7 @@ var _guest_from := ""
 func _start_guest(from_key := "") -> void:
 	if walker or world == null:
 		return
+	_arrival_lift = {}
 	_guest_room = str(Store.guest.get("room", ""))
 	var target_room: Dictionary = Store.room(_guest_room)
 	if target_room.is_empty():

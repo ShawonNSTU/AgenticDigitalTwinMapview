@@ -132,6 +132,30 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
                    └─ ui_action events ─▶ page ─▶ Godot
 ```
 
+## Story mode: one guest, one night
+
+Open `/story` for a guided showcase on the live system (nothing is recorded: every step calls the platform and
+the renderer). Five chapters on the 4th floor, with captions and a phone beside the 3D view:
+
+1. **The building comes alive.** The fire-safety drawing builds into the 3D floor; a wave of light runs across
+   every SmartThings device as it reports in; the AC circuits show; the camera settles on the SmartThings
+   Experience Zone, tonight's Room 401.
+2. **Check-in, lift, welcome.** The front desk issues a pass (QR on the phone). The guest arrives by lift, follows
+   her route, the door unlocks for her pass only, and the room welcomes her: lights fade up, the curtain rises over
+   the lit window, the AC starts and the TV says "Welcome, Nadia".
+3. **The smart stay.** She types "I'm a bit cold. Dim the lights, it's movie time." The assistant plans it (AC 2°
+   warmer, dimmable lights down, on/off lights off, curtain closed, TV on), asks first, then runs it on the devices.
+4. **Something breaks.** At 02:10 the AC develops a refrigerant fault; the twin highlights it, opens the unit into
+   its parts (X-ray), the assigned technician gets the alert on his phone, walks the route to the unit in first
+   person, and the fix clears it.
+5. **The operator's view.** The floor at night with each room coloured by tonight's energy; at checkout the pass
+   ends and the room switches itself off, with the energy saved.
+
+Presenter mode: the Next button, → / space / Page Down (a presentation clicker works), ← for the previous chapter,
+1-5 to jump, Esc to stop. `/story?autoplay=1` plays by itself and loops (for a screen or kiosk). The guest is
+fictional; chapter 3 uses the guest assistant (with Claude when `ANTHROPIC_API_KEY` is set, else the built-in
+rules) and falls back to the same changes made directly if the assistant is not running.
+
 ## Run locally
 
 Requirements: Node 20+, Python 3.11+, Godot 4.7.x.

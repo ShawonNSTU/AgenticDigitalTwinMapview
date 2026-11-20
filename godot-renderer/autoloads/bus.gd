@@ -41,3 +41,4 @@ signal place_hover(info: Dictionary)      # {room, valid, mount}
 
 signal preview_requested(id: String, readings: Dictionary, text: String)  # guest dragging a 3D control: show the result now
 signal track_requested(id: String)  # report this device's screen position (anchor events) so the host can pin a control to it
+signal story_requested(msg: Dictionary)  # story mode: cinematic shots, data wave, guest/technician walks, overlays
