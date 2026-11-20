@@ -32,6 +32,7 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
   const [entrance, setEntrance] = useState('');
   const [label, setLabel] = useState('');
   const [entrances, setEntrances] = useState<Entrance[]>([]);
+  const [defEntrance, setDefEntrance] = useState('');
   const [passes, setPasses] = useState<Pass[]>([]);
   const [made, setMade] = useState<Pass | null>(null);
   const [qr, setQr] = useState('');
@@ -39,7 +40,7 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
   const [err, setErr] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const load = useCallback(() => fetch(`/api/guest?room=${encodeURIComponent(room)}`).then(r => r.json()).then(x => { setPasses(x.passes); setEntrances(x.entrances); }), [room]);
+  const load = useCallback(() => fetch(`/api/guest?room=${encodeURIComponent(room)}`).then(r => r.json()).then(x => { setPasses(x.passes); setEntrances(x.entrances); setDefEntrance(x.defaultEntrance ?? ''); }), [room]);
   useEffect(() => { load(); setBase(window.location.origin); }, [load]);
   const url = (p: Pass) => `${base.replace(/\/$/, '')}${p.path}`;
   useEffect(() => {
@@ -69,8 +70,8 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
             <label>Guest name<input value={label} maxLength={60} placeholder="e.g. Ms. Rahman" onChange={e => setLabel(e.target.value)} /></label>
             <label>Checkout (access ends)<input type="datetime-local" value={checkout} onChange={e => setCheckout(e.target.value)} /></label>
             <label>Walk starts at<select value={entrance} onChange={e => setEntrance(e.target.value)}>
-              <option value="">Nearest entrance (automatic)</option>
-              {entrances.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
+              <option value="">{defEntrance ? `${entrances.find(x => x.key === defEntrance)?.name ?? defEntrance} (default)` : 'Nearest entrance (automatic)'}</option>
+              {entrances.filter(x => x.key !== defEntrance).map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
             </select></label>
             <label>Location badge (optional: the tag id of the badge or key card the hotel's positioning system tracks)<input value={tag} maxLength={64} placeholder="e.g. BADGE-0042" onChange={e => setTag(e.target.value.trim())} /></label>
             {types.length > 0 && (

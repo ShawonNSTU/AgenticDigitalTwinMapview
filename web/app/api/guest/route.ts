@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createPass, listPasses, entranceRooms } from '@/lib/sim/guests';
+import { createPass, listPasses, entranceRooms, defaultEntrance } from '@/lib/sim/guests';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +9,7 @@ const Body = z.object({ room: z.string().min(1), hours: z.number().min(0.25).max
 /** GET: active guest passes (optionally ?room=key) and the rooms a walk can start from. POST: a new pass for one room. */
 export async function GET(req: NextRequest) {
   const room = req.nextUrl.searchParams.get('room') ?? undefined;
-  return NextResponse.json({ passes: listPasses(room), entrances: entranceRooms() });
+  return NextResponse.json({ passes: listPasses(room), entrances: entranceRooms(), defaultEntrance: defaultEntrance() });
 }
 
 export async function POST(req: NextRequest) {

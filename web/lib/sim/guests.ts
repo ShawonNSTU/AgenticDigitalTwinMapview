@@ -55,16 +55,26 @@ const ENTRANCE = /lift|elevator|lobby|reception|entrance|entry|foyer|stair/i;
 const roomOf = (key: string) => ROOMS.find((r: any) => r.key === key) as any;
 const roomName = (r: any) => String(r?.label ?? r?.name ?? '').split('\n')[0] || r?.key;
 
-/** Rooms a walk can sensibly start from (lifts, lobbies, stairs, entrances), best first. */
+/** Rooms a walk can sensibly start from, best first: lifts and lobbies, then the core stair (where guests come
+ *  up to the 4th floor), then other stairs and entrances. */
+const rank = (name: string) => /lift|elevator|lobby|reception/i.test(name) ? 0 : /core stair/i.test(name) ? 1 : /entrance|entry|foyer/i.test(name) ? 2 : 3;
 export function entranceRooms() {
   return ROOMS.filter((r: any) => ENTRANCE.test(`${r.name} ${r.label ?? ''}`))
     .map((r: any) => ({ key: r.key, name: roomName(r) }))
-    .sort((a, b) => (/lift|elevator|lobby|reception|entrance|entry|foyer/i.test(a.name) ? 0 : 1) - (/lift|elevator|lobby|reception|entrance|entry|foyer/i.test(b.name) ? 0 : 1));
+    .sort((a, b) => rank(a.name) - rank(b.name));
+}
+
+/** Where a guest's walk starts when the host doesn't choose: a lift or lobby if the plan has one, else the core
+ *  stair; '' (nearest door to the outside) only if the plan has neither. */
+export function defaultEntrance() {
+  const best = entranceRooms()[0];
+  return best && rank(best.name) <= 1 ? best.key : '';
 }
 
 export function createPass(room: string, hours: number, entrance = '', label = '', opts: { until?: number; verify?: boolean; allowUnlock?: boolean; tag?: string; controls?: string[]; acRange?: [number, number] } = {}) {
   if (!roomOf(room)) throw new Error(`Unknown room ${room}`);
   if (!guestReady(room)) throw new Error('This room has no SmartThings devices for a guest yet: run Hotel setup for it first');
+  if (!entrance) entrance = defaultEntrance();
   if (entrance && !roomOf(entrance)) throw new Error(`Unknown entrance ${entrance}`);
   const now = Date.now();
   const expiresAt = opts.until && opts.until > now ? opts.until : now + hours * 3600_000;
