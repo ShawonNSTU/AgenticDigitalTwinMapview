@@ -138,6 +138,15 @@ func _process(delta: float) -> void:
 			col = _cur_col
 			_lamp.light_color = col
 			_lamp.light_energy = _light_level * (2.6 if Store.walk else 3.2) * {"lamp": 0.55, "desk": 0.35, "window": 0.45}.get(variant, 1.0)
+			if variant == "window":
+				var cur := _window_curtain()
+				var open := cur._blind_pos if cur and cur._blind_pos >= 0.0 else 1.0
+				_lamp.light_energy *= 0.25 + 0.75 * open  # the curtain holds most of it back
+				_scene_mat.albedo_color = Color(0.06, 0.07, 0.1).lerp(Color.WHITE, _light_level)
+				_cloud_mat.albedo_color = Color(1, 1, 1, _light_level)
+				_cloud_mat.uv1_offset.x = (0.0 if _left else 0.5) + fmod(_t * 0.004, 1.0)
+				if cur:
+					cur._backlight[dev.data.get("id", "")] = _light_level
 			if variant == "panel" and FloorBuilder.current:
 				FloorBuilder.current.set_panels(_room_key, _light_level)
 			_lamp.visible = _light_level > 0.01
@@ -168,6 +177,12 @@ func _process(delta: float) -> void:
 				(_window.material_override as StandardMaterial3D).emission_energy_multiplier = 0.25 + 1.4 * _blind_pos
 				_sun.visible = _blind_pos > 0.05
 				(_sun.material_override as StandardMaterial3D).albedo_color.a = 0.22 * _blind_pos
+			elif variant == "curtain":  # lit windows behind glow through the white fabric
+				var bl := 0.0
+				for v in _backlight.values():
+					bl = maxf(bl, float(v))
+				(_slats.material_override as StandardMaterial3D).emission_energy_multiplier = bl * 0.16 * (1.0 - _blind_pos)
+				(_slats.material_override as StandardMaterial3D).albedo_color = Color("f6f3ec").darkened(0.12 * (1.0 - bl))
 			elif variant == "projector":  # a soft projected picture once it is mostly down
 				(_slats.material_override as StandardMaterial3D).emission_energy_multiplier = clampf((0.6 - _blind_pos) * 1.2, 0.0, 0.5)
 		"fan":
@@ -244,23 +259,7 @@ func _build_light() -> void:
 	add_child(_lamp)
 	_glow_mat = _mat(Color(1.0, 0.9, 0.75), true)
 	if variant == "window":
-		# a back-lit window pane on the wall behind the curtain: it glows as the light comes on
-		var k := minf(Store.wall_height / Placer.REAL_STOREY, 1.0)
-		var pane := MeshInstance3D.new()
-		var pb := BoxMesh.new()
-		pb.size = Vector3(size.x, 1.2 * k, 0.015)
-		pane.mesh = pb
-		pane.material_override = _glow_mat
-		add_child(pane)
-		var frame := MeshInstance3D.new()
-		var fb := BoxMesh.new()
-		fb.size = Vector3(size.x + 0.06, 1.2 * k + 0.06, 0.01)
-		frame.mesh = fb
-		frame.material_override = _mat(Color("d8dde3"))
-		frame.position.z = -0.008
-		add_child(frame)
-		_lamp.position = Vector3(0, 0, 0.4)
-		_lamp.omni_range = 2.2
+		_build_window()
 		return
 	var disc := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
@@ -271,6 +270,184 @@ func _build_light() -> void:
 	disc.material_override = _glow_mat
 	disc.position.y = -size.y * 0.62
 	add_child(disc)
+
+
+# ---- the zone's window behind the curtain: one window, a left and a right pane, each lit from behind by its own
+# smart light ("Left window" / "Right window"). Lit, a pane shows the outdoor view (sky with drifting clouds, sun,
+# hills, trees, a lake); unlit it is dark glass. The curtain in front hides it as it comes down, and a lit window
+# glows through the white fabric.
+
+static var _scene_tex: ImageTexture
+static var _cloud_tex: ImageTexture
+var _scene_mat: StandardMaterial3D
+var _cloud_mat: StandardMaterial3D
+var _curtain: DeviceFx
+var _left := true
+
+
+static func _scene() -> ImageTexture:
+	if _scene_tex:
+		return _scene_tex
+	var w := 512
+	var h := 256
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 401
+	var sun := Vector2(w * 0.68, h * 0.26)
+	# far, middle and near hill lines
+	var ridge := func(x: float, base: float, amp: float, f1: float, f2: float, ph: float) -> float:
+		return base + amp * (0.6 * sin(x * f1 + ph) + 0.4 * sin(x * f2 + ph * 1.7))
+	for x in w:
+		var fx := float(x)
+		var r1: float = ridge.call(fx, h * 0.55, h * 0.06, 0.018, 0.047, 0.4)
+		var r2: float = ridge.call(fx, h * 0.64, h * 0.05, 0.027, 0.071, 2.1)
+		var lake_top := h * 0.74
+		for y in h:
+			var fy := float(y)
+			var c: Color
+			if fy < r1:  # sky: deep blue at the top to pale at the horizon, a warm glow round the sun
+				var t := fy / r1
+				c = Color(0.23, 0.5, 0.86).lerp(Color(0.72, 0.86, 0.97), t)
+				var d := Vector2(fx, fy).distance_to(sun)
+				c = c.lerp(Color(1.0, 0.96, 0.82), clampf(1.0 - d / 70.0, 0.0, 1.0) * 0.8)
+				if d < 11.0:
+					c = Color(1.0, 0.99, 0.92)
+			elif fy < r2:  # far hills, hazy
+				c = Color(0.46, 0.6, 0.62).lerp(Color(0.38, 0.55, 0.45), (fy - r1) / maxf(r2 - r1, 1.0))
+			elif fy < lake_top:  # near hills, green
+				c = Color(0.3, 0.55, 0.28).lerp(Color(0.22, 0.45, 0.2), (fy - r2) / maxf(lake_top - r2, 1.0))
+			elif fy < h * 0.84:  # lake reflecting the sky
+				var t2 := (fy - lake_top) / (h * 0.1)
+				c = Color(0.45, 0.68, 0.86).lerp(Color(0.3, 0.52, 0.72), t2)
+				if absf(fx - sun.x) < 14.0 - t2 * 6.0 and int(fy) % 3 != 0:
+					c = c.lerp(Color(1, 0.97, 0.85), 0.55)
+			else:  # grass in front
+				c = Color(0.36, 0.6, 0.25).lerp(Color(0.27, 0.5, 0.2), (fy - h * 0.84) / (h * 0.16))
+			img.set_pixel(x, y, c)
+	# trees: dark rounded crowns on trunks along the near hills
+	for i in 34:
+		var tx := rng.randf_range(0, w)
+		var base_y := h * rng.randf_range(0.69, 0.76)
+		var rr := rng.randf_range(7.0, 15.0)
+		var col := Color(0.13, rng.randf_range(0.3, 0.38), 0.14)
+		for y in range(int(base_y - rr * 2.2), int(base_y)):
+			for x in range(int(tx - rr), int(tx + rr)):
+				if x < 0 or x >= w or y < 0 or y >= h:
+					continue
+				var dy := (y - (base_y - rr * 1.4)) / (rr * 1.1)
+				var dx := (x - tx) / rr
+				if dx * dx + dy * dy < 1.0:
+					img.set_pixel(x, y, col.lerp(Color(0.25, 0.5, 0.22), clampf(-dx * 0.5 - dy * 0.3, 0.0, 0.6)))
+				elif absf(x - tx) < 1.5 and y > base_y - rr * 0.6:
+					img.set_pixel(x, y, Color(0.3, 0.22, 0.14))
+	img.generate_mipmaps()
+	_scene_tex = ImageTexture.create_from_image(img)
+	return _scene_tex
+
+
+static func _clouds() -> ImageTexture:
+	if _cloud_tex:
+		return _cloud_tex
+	var n := FastNoiseLite.new()
+	n.seed = 7
+	n.frequency = 0.012
+	n.fractal_octaves = 4
+	var w := 512
+	var h := 128
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		for x in w:
+			# seamless in x: blend the noise with its own wrap
+			var a := n.get_noise_2d(x, y) * (1.0 - x / float(w)) + n.get_noise_2d(x - w, y) * (x / float(w))
+			var cov := clampf((a + 0.05) * 2.4, 0.0, 1.0) * clampf(1.0 - y / float(h) * 0.9, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, cov * 0.85))
+	img.generate_mipmaps()
+	_cloud_tex = ImageTexture.create_from_image(img)
+	return _cloud_tex
+
+
+func _build_window() -> void:
+	_left = str(dev.data.get("name", "")).to_lower().begins_with("left")
+	var k := minf(Store.wall_height / Placer.REAL_STOREY, 1.0)
+	var ph := 1.05 * k
+	var pw := size.x
+	_lamp.position = Vector3(0, 0, 0.5)
+	_lamp.omni_range = 2.4
+	# outdoor view (each pane shows its half of one panorama)
+	_scene_mat = StandardMaterial3D.new()
+	_scene_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_scene_mat.albedo_texture = _scene()
+	_scene_mat.uv1_scale = Vector3(0.5, 1, 1)
+	_scene_mat.uv1_offset = Vector3(0.0 if _left else 0.5, 0, 0)
+	_scene_mat.albedo_color = Color(0.06, 0.07, 0.1)
+	var scene := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(pw, ph)
+	scene.mesh = qm
+	scene.material_override = _scene_mat
+	scene.position.z = -0.012
+	add_child(scene)
+	# clouds drifting across the sky part
+	_cloud_mat = StandardMaterial3D.new()
+	_cloud_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_cloud_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_cloud_mat.albedo_texture = _clouds()
+	_cloud_mat.uv1_scale = Vector3(0.5, 1, 1)
+	_cloud_mat.albedo_color = Color(1, 1, 1, 0)
+	var cl := MeshInstance3D.new()
+	var cq := QuadMesh.new()
+	cq.size = Vector2(pw, ph * 0.5)
+	cl.mesh = cq
+	cl.material_override = _cloud_mat
+	cl.position = Vector3(0, ph * 0.25, -0.009)
+	add_child(cl)
+	# glass with a faint reflection
+	var gl := MeshInstance3D.new()
+	var gq := QuadMesh.new()
+	gq.size = Vector2(pw, ph)
+	gl.mesh = gq
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = Color(0.85, 0.92, 1.0, 0.1)
+	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gm.metallic = 0.0
+	gm.roughness = 0.25
+	gm.metallic_specular = 0.15
+	gl.material_override = gm
+	gl.position.z = -0.004
+	add_child(gl)
+	# white aluminium frame: sides, top, bottom, the outer side doubled as the shared mullion's half
+	var fm := _mat(Color("eef0f2"))
+	fm.roughness = 0.35
+	fm.metallic = 0.3
+	for e in [[Vector3(-pw / 2, 0, -0.005), Vector3(0.035, ph + 0.07, 0.03)], [Vector3(pw / 2, 0, -0.005), Vector3(0.035, ph + 0.07, 0.03)],
+			[Vector3(0, ph / 2, -0.005), Vector3(pw + 0.07, 0.035, 0.03)], [Vector3(0, -ph / 2, -0.005), Vector3(pw + 0.07, 0.035, 0.03)]]:
+		var bx := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = e[1]
+		bx.mesh = bm
+		bx.material_override = fm
+		bx.position = e[0]
+		add_child(bx)
+	var sill := MeshInstance3D.new()
+	var sm := BoxMesh.new()
+	sm.size = Vector3(pw + 0.1, 0.03, 0.06)
+	sill.mesh = sm
+	sill.material_override = fm
+	sill.position = Vector3(0, -ph / 2 - 0.03, 0.0)
+	add_child(sill)
+
+
+## The curtain in front of this window (the zone's roller curtain), found once.
+func _window_curtain() -> DeviceFx:
+	if _curtain and is_instance_valid(_curtain):
+		return _curtain
+	for n in get_tree().get_nodes_in_group("zone_curtain"):
+		if n is DeviceFx and n._room_key == _room_key:
+			_curtain = n
+	return _curtain
+
+
+var _backlight := {}  # curtain: window light levels behind it
 
 
 func _particles(col: Color, amount: int, life: float) -> CPUParticles3D:
@@ -370,7 +547,18 @@ func _build_blinds() -> void:
 		pm.size = Vector3(size.x * 0.96, 1.0, 0.008)
 		_slats.mesh = pm
 		var scr := _mat(Color("f6f3ec"), true)
-		scr.emission = Color(0.85, 0.9, 1.0)
+		scr.emission = Color(1.0, 0.94, 0.82) if variant == "curtain" else Color(0.85, 0.9, 1.0)
+		if variant == "curtain":
+			add_to_group("zone_curtain")
+			var img := Image.create(64, 64, false, Image.FORMAT_RGB8)
+			for yy in 64:
+				for xx in 64:
+					var v := 0.93 + 0.05 * (1 if (xx + yy) % 4 < 2 else 0) - (0.06 if yy % 16 == 0 else 0.0)
+					img.set_pixel(xx, yy, Color(v, v, v * 0.98))
+			img.generate_mipmaps()
+			scr.albedo_texture = ImageTexture.create_from_image(img)
+			scr.emission_texture = scr.albedo_texture
+			scr.uv1_scale = Vector3(6, 4, 1)
 		scr.emission_energy_multiplier = 0.0
 		_slats.material_override = scr
 		add_child(_slats)

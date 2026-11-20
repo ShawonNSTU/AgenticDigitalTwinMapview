@@ -36,7 +36,7 @@ Proof of concept with three features:
    TV), Light 2 (top of the TV), Light 3 (above the shelf), Light 4 (between the curtain and the shelf), Light 5
    (door entrance), Desk lamp, TV lamp (the main ceiling lights; the LED ceiling panels follow it), aqara roller
    shade control (the white roller curtain), blinds switch (powers the curtain motor; it is switched on by itself
-   when the curtain is moved), Left window and Right window (lights behind the curtain), side lamp (dining room)
+   when the curtain is moved), Left window and Right window (hidden lights behind the left and right panes of the window behind the curtain: a lit pane shows the outdoor view with drifting clouds, an unlit one is dark glass; raising the curtain reveals the window, and lit panes glow through the lowered curtain), side lamp (dining room)
    (the big standing lamp). Also in the room: ceiling cassette AC, two TVs, purifier, door lock, temperature
    sensor and two indoor cameras (never shown to guests). On `/integrations`, "Link by name" links them to the
    real devices in one step. A guest QR can be made for it straight away; every other room needs Hotel setup

@@ -123,9 +123,9 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   dev('light', dt, 0.6, 0, 'Light 5');                        // door entrance
   dev('light', g + 1.25, D - g - 0.25, 0, 'Desk lamp');
   dev('light', L * 0.5, D * 0.5, 0, 'TV lamp');               // the main ceiling lights
-  dev('blinds', L - g - 0.055, curtQ, BACK, 'aqara roller shade control');
-  dev('light', L - g - 0.03, curtQ + 0.42, BACK, 'Left window');
-  dev('light', L - g - 0.03, curtQ - 0.42, BACK, 'Right window');
+  dev('blinds', L - g - 0.085, curtQ, BACK, 'aqara roller shade control');
+  dev('light', L - g - 0.035, curtQ + 0.33, BACK, 'Left window');   // left pane, as seen from the room
+  dev('light', L - g - 0.035, curtQ - 0.33, BACK, 'Right window');
   dev('plug', L - g - 0.02, curtQ - 1.0, BACK, 'blinds switch');
   dev('light', L - g - 0.25, shelfQ - 0.7, 0, 'side lamp (dining room)');
   // the rest of the room's Samsung kit
