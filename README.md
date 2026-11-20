@@ -71,7 +71,8 @@ Proof of concept with three features:
    you drag up or down with a warm-to-daylight strip and scenes, a roller you pull for blinds and the projector
    screen, a TV remote, a speed ring for the purifier or fan and a hold-to-unlock ring for the door. While a
    control is dragged the room already shows the result and the new value floats over the device; the command is
-   sent when the guest lets go. The side panel shows states only. In the SmartThings Experience Zone the 3D control
+   sent when the guest lets go. The control can be dragged anywhere over the 3D view by its grip or title bar (a
+   dashed line keeps it tied to its device; double-click the grip to put it back). The side panel shows states only. In the SmartThings Experience Zone the 3D control
    for the room's SmartThings app devices is a SmartThings app tile pinned beside the device:
    colour bulbs (Light 1-5, Desk lamp) have a brightness bar that glows in the light's colour, Night / Relax / Read
    / Day scenes and colour pills (pink, purple, and more on a colour strip); TV lamp, Left and Right window, side

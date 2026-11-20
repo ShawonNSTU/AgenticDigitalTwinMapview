@@ -41,6 +41,40 @@ export default function HoloControl({ dev, anchor, run, onClose, lockNote }: { d
     : last.current ?? { right: 16, top: 72 };
   if (held.current && last.current) style = last.current; else last.current = style;
 
+  // the guest can drag the panel anywhere over the 3D view (by its grip or title bar); a line keeps it tied to its
+  // device, and a double-click on the grip puts it back beside the device
+  const box = useRef<HTMLDivElement>(null);
+  const [moved, setMoved] = useState<{ x: number; y: number } | null>(null);
+  const [stage, setStage] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => { setMoved(null); }, [dev.id]);
+  const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
+  const startMove = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    const el = box.current, parent = el?.offsetParent as HTMLElement | null;
+    if (!el || !parent) return;
+    e.preventDefault();
+    const pr = parent.getBoundingClientRect(), r = el.getBoundingClientRect();
+    drag.current = { px: e.clientX, py: e.clientY, x: r.left - pr.left, y: r.top - pr.top };
+    setStage({ w: pr.width, h: pr.height });
+    const mv = (ev: PointerEvent) => {
+      const d = drag.current; if (!d) return;
+      const x = Math.max(-r.width + 60, Math.min(pr.width - 60, d.x + ev.clientX - d.px));
+      const y = Math.max(0, Math.min(pr.height - 40, d.y + ev.clientY - d.py));
+      setMoved({ x, y });
+    };
+    const up = () => { drag.current = null; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  };
+  if (moved) style = { left: moved.x, top: moved.y, transform: 'none' };
+  const grip = <div className="holo-grip" onPointerDown={startMove} onDoubleClick={() => setMoved(null)} title="Drag to move · double-click to put it back by the device"><span /></div>;
+  // the tie line, from the device to the nearest side of the moved panel
+  let tie: React.ReactNode = null;
+  if (moved && a && stage && box.current) {
+    const ax = a.x * stage.w, ay = a.y * stage.h, w = box.current.offsetWidth, h = box.current.offsetHeight;
+    const tx = Math.max(moved.x, Math.min(moved.x + w, ax)), ty = Math.max(moved.y, Math.min(moved.y + h, ay));
+    tie = <svg className="holo-tie" width={stage.w} height={stage.h}><line x1={ax} y1={ay} x2={tx} y2={ty} /><circle cx={tx} cy={ty} r="3.5" /></svg>;
+  }
+
   let body: React.ReactNode;
   if (dev.st) body = <StTile dev={dev} run={run} big />;
   else if (!dev.online) body = <p className="holo-off">Not responding. Hotel staff have been alerted.</p>;
@@ -56,9 +90,11 @@ export default function HoloControl({ dev, anchor, run, onClose, lockNote }: { d
   return (
     <>
       {a && <span className="holo-pin" style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%` }} />}
-      <div className={`holo glass ${right ? 'r' : 'l'} ${dev.st ? 'st-holo' : ''}`} style={style} role="dialog" aria-label={`${dev.name} controls`} onPointerDownCapture={() => { held.current = true; }}>
+      {tie}
+      <div ref={box} className={`holo glass ${right ? 'r' : 'l'} ${dev.st ? 'st-holo' : ''} ${moved ? 'moved' : ''}`} style={style} role="dialog" aria-label={`${dev.name} controls`} onPointerDownCapture={() => { held.current = true; }}>
+        {grip}
         {dev.st ? <button className="hint-close st-close" aria-label="Close" onClick={onClose}>✕</button>
-          : <header><b>{dev.name}</b><small>{dev.label}</small><button className="hint-close" aria-label="Close" onClick={onClose}>✕</button></header>}
+          : <header onPointerDown={startMove} className="holo-drag"><b>{dev.name}</b><small>{dev.label}</small><button className="hint-close" aria-label="Close" onClick={onClose}>✕</button></header>}
         {body}
       </div>
     </>

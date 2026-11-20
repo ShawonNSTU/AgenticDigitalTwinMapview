@@ -469,7 +469,7 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .holo-lock svg.hold { cursor:pointer; }
 .guest-dev .holo-open { margin-top:8px; width:100%; border-radius:10px; border:1px solid rgba(94,200,255,.35); background:rgba(94,200,255,.08); }
 .guest-dev.holo-on { border-color:rgba(94,200,255,.55); box-shadow:0 0 0 1px rgba(94,200,255,.25); }
-@media (max-width: 760px) { .holo { left:8px !important; right:8px; top:auto !important; bottom:8px; width:auto; transform:none !important; } }
+@media (max-width: 760px) { .holo:not(.moved) { left:8px !important; right:8px; top:auto !important; bottom:8px; width:auto; transform:none !important; } }
 
 /* ---- SmartThings app-style tiles for the SmartThings Experience Zone (components/StZone.tsx) ---- */
 .st-dash { background:#f2f3f6; border-radius:18px; padding:12px; margin-bottom:12px; color:#1d1f23; font-family:"SamsungOne","Segoe UI",system-ui,sans-serif; }
@@ -532,3 +532,14 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .holo.st-holo .st-tile.is-on .st-iconbtn { background:color-mix(in srgb, var(--lc) 22%, #fff); }
 .holo.st-holo .st-switch { background:#d7dae0; } .holo.st-holo .st-switch.on { background:#3e91ff; }
 .holo.st-holo .muted, .holo.st-holo small { color:#8a8f98; }
+
+/* moving the 3D control panel */
+.holo-grip { display:flex; justify-content:center; align-items:center; height:14px; margin:-6px -8px 4px; cursor:grab; touch-action:none; }
+.holo-grip:active, .holo-drag:active { cursor:grabbing; }
+.holo-grip span { width:40px; height:5px; border-radius:3px; background:rgba(140,150,165,.55); }
+.holo.st-holo .holo-grip { margin:0 0 2px; }
+.holo-drag { cursor:grab; touch-action:none; }
+.holo.moved { transition:none; animation:none; }
+.holo-tie { position:absolute; inset:0; pointer-events:none; z-index:6; overflow:visible; }
+.holo-tie line { stroke:#5ec8ff; stroke-width:2; stroke-dasharray:5 4; opacity:.85; }
+.holo-tie circle { fill:#5ec8ff; }
