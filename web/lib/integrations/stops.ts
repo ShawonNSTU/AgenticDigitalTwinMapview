@@ -7,15 +7,15 @@ import { COMMANDS, buildingState, device, setSim, simState } from '@/lib/sim/run
 import { dispatch } from '@/lib/sim/dispatch';
 import { alerts, addRecord } from '@/lib/sim/maintenance';
 import { createPass, listPasses, revoke, entranceRooms, guestCommand, guestCommands } from '@/lib/sim/guests';
-import { ROUTINES, routineById } from '@/lib/sim/routines';
+import { ROUTINES, routineById, savedFor, savedById, saveRoutine, deleteRoutine, type SavedStep } from '@/lib/sim/routines';
 import { supported } from './smartthings';
-import { devicesInScope, agentNames, type Scope } from './stagent';
+import { devicesInScope, agentNames, allowedCommands, toTwin, ownerKey, resolveDevice, type Scope, type StCmd } from './stagent';
 
 type Out = { status: number; body: unknown };
 const ok = (body: unknown): Out => ({ status: 200, body });
 const bad = (status: number, error: string): Out => ({ status, body: { error } });
 const roomLabel = (key: string) => { const r = (ROOMS as any[]).find(x => x.key === key); return r ? String(r.label ?? r.name).split('\n')[0] : key; };
-const GUEST_OPS = new Set(['routines', 'routine_run']);
+const GUEST_OPS = new Set(['routines', 'routine_run', 'routine_save', 'routine_delete']);
 
 export async function runOp(op: string, b: Record<string, any>, scope: Scope): Promise<Out> {
   const staff = scope.kind === 'host';
@@ -72,8 +72,10 @@ export async function runOp(op: string, b: Record<string, any>, scope: Scope): P
       } catch (e) { return bad(400, (e as Error).message); }
     }
     case 'pass_revoke': return revoke(String(b.token)) ? ok({ ok: true }) : bad(404, 'No such guest pass');
-    case 'routines': return ok({ routines: ROUTINES.map(r => ({ id: r.id, name: r.name, about: r.about })), rooms: staff ? [...new Set(devicesInScope(scope).map(d => d.room))].map(k => ({ id: k, name: roomLabel(k) })) : undefined });
-    case 'routine_run': return runRoutine(String(b.routine), staff ? String(b.room ?? '') : scope.pass.room, scope, by);
+    case 'routines': return ok({ routines: [...ROUTINES.map(r => ({ id: r.id, name: r.name, about: r.about })), ...savedFor(ownerKey(scope)).map(r => ({ id: r.id, name: r.name, about: `your routine: ${r.steps.length} step(s) on ${new Set(r.steps.map(x => x.deviceId)).size} device(s)`, custom: true }))], rooms: staff ? [...new Set(devicesInScope(scope).map(d => d.room))].map(k => ({ id: k, name: roomLabel(k) })) : undefined });
+    case 'routine_save': return saveFromActions(String(b.name ?? ''), Array.isArray(b.actions) ? b.actions : [], scope);
+    case 'routine_delete': return deleteRoutine(ownerKey(scope), String(b.routine)) ? ok({ ok: true }) : bad(404, 'No such saved routine');
+    case 'routine_run': if (String(b.routine).startsWith('c-')) return runSaved(String(b.routine), scope, by); return runRoutine(String(b.routine), staff ? String(b.room ?? '') : scope.pass.room, scope, by);
   }
   return bad(404, `Unknown op ${op}`);
 }
@@ -103,4 +105,42 @@ async function runRoutine(id: string, room: string, scope: Scope, by: string): P
   }
   if (!results.length) return ok({ routine: r.name, room: roomLabel(room), results, note: 'This room has no devices this routine can use.' });
   return ok({ routine: r.name, room: roomLabel(room), results });
+}
+
+/** Save what the assistant just did (device ids + SmartThings commands) as a named routine. Every command is
+ *  checked again: the device is in scope and the command is one this role may run. */
+function saveFromActions(name: string, actions: { device_id: string; commands: StCmd[] }[], scope: Scope): Out {
+  const steps: SavedStep[] = [];
+  for (const a of actions) {
+    const d = resolveDevice(String(a.device_id), scope);
+    if (!d) return bad(422, `${a.device_id} is not available to you`);
+    const allowed = new Set(allowedCommands(d, scope));
+    for (const c of Array.isArray(a.commands) ? a.commands : []) {
+      const t = toTwin(d, c);
+      if ('error' in t || !allowed.has(t.name)) return bad(422, `${d.id}: ${'error' in t ? t.error : `"${t.name}" is not allowed here`}`);
+      steps.push({ deviceId: d.id, command: t.name, args: t.args });
+    }
+  }
+  try { const r = saveRoutine(ownerKey(scope), name, steps); return ok({ ok: true, id: r.id, name: r.name, steps: r.steps.length, devices: new Set(r.steps.map(s => s.deviceId)).size }); }
+  catch (e) { return bad(422, (e as Error).message); }
+}
+
+/** Run a saved routine: its steps in order on their own devices, with today's rules (offline, permissions). */
+async function runSaved(id: string, scope: Scope, by: string): Promise<Out> {
+  const r = savedById(ownerKey(scope), id);
+  if (!r) return bad(404, 'No such saved routine');
+  const devs = devicesInScope(scope);
+  const names = agentNames(devs);
+  const per = new Map<string, { device_id: string; name: string; steps: string[]; ok: boolean; error?: string }>();
+  for (const s of r.steps) {
+    const d = resolveDevice(s.deviceId, scope);
+    const row = per.get(s.deviceId) ?? { device_id: s.deviceId, name: d ? names[d.id] ?? s.deviceId : s.deviceId, steps: [], ok: true };
+    per.set(s.deviceId, row);
+    if (!row.ok) continue;                                    // a device that failed gets no more steps
+    if (!d) { row.ok = false; row.error = 'not available any more'; continue; }
+    const res: any = scope.kind === 'guest' ? await guestCommand(scope.pass, d.id, s.command, s.args) : await dispatch(d.id, s.command, s.args, false, by);
+    const good = 'body' in res ? res.status === 200 : res.ok;
+    if (good) row.steps.push(s.command); else { row.ok = false; row.error = 'body' in res ? String(res.body.error ?? 'refused') : String(res.error ?? 'refused'); }
+  }
+  return ok({ routine: r.name, room: '', results: [...per.values()] });
 }

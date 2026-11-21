@@ -23,7 +23,7 @@ agent; the web app sends the role and limits what each may see and do). It runs 
 | `device_control` | all | power, brightness, colour temperature, shade, AC temperature/mode/fan, TV, fan, purifier, lock, vacuum; relative changes; many devices at once |
 | `device_status` | all | live state, read fresh from the twin |
 | `device_info`, `rooms`, `chitchat` | all | what exists, rooms, small talk |
-| `routines` | all | movie night, good night, morning, welcome, focus, away: many devices of a room at once (a guest: only the pass's room and controls) |
+| `routines` | all | built-in routines (movie night, good night, morning, welcome, focus, away) **and your own**: after a change of several things the assistant offers "save this as a routine?"; "yes, call it Cosy" stores it, "run Cosy" repeats it, "delete Cosy" removes it. Staff routines are shared by staff; a guest's belong to that pass |
 | `diagnostics` | admin, technician | find devices by type/room/health on the whole building, show them in 3D, explain a fault from the twin's evidence |
 | `maintenance` | admin, technician | list open alerts, acknowledge, investigate, resolve with cause and action, fix (clears the fault) |
 | `scene` | admin, technician | 3D view: highlight, focus, open parts, trace piping, layers, demo scenario, simulated time |

@@ -25,6 +25,13 @@ export type Role = 'admin' | 'technician' | 'guest';
 /** Who a chat turn is for: staff (admin, technician) see the whole building, a guest only the guest's room. */
 export type Scope = { kind: 'host'; role: 'admin' | 'technician'; room?: string } | { kind: 'guest'; pass: GuestPass };
 export const roleOf = (s: Scope): Role => (s.kind === 'guest' ? 'guest' : s.role);
+/** Who owns saved routines and the "last things done": all staff together, or one guest pass. */
+export const ownerKey = (s: Scope) => (s.kind === 'guest' ? `guest:${s.pass.token}` : 'staff');
+
+/** The device commands the assistant ran in the owner's latest turn (for "save this as a routine"), kept 10 minutes. */
+const gl = globalThis as unknown as { __lastActions?: Map<string, { at: number; actions: unknown[] }> };
+const lastActions = (gl.__lastActions ??= new Map());
+export const takeLastActions = (s: Scope) => { const l = lastActions.get(ownerKey(s)); return l && Date.now() - l.at < 600_000 ? l.actions : []; };
 type Session = { scope: Scope; until: number };
 const g = globalThis as unknown as { __stAgentSessions?: Map<string, Session> };
 const sessions: Map<string, Session> = (g.__stAgentSessions ??= new Map());
@@ -69,13 +76,13 @@ export function resolveDevice(id: string, scope: Scope) {
 
 /** The twin commands the agent may run on a device in this scope (no confirmation-only commands: an agent
  *  cannot unlock a door or stop a wash; those stay in the panel, or the guest page with the PIN). */
-function allowedCommands(d: any, scope: Scope): string[] {
+export function allowedCommands(d: any, scope: Scope): string[] {
   const all = Object.entries(COMMANDS[d.type] ?? {}).filter(([, c]) => !c.confirm).map(([name, c]) => ({ name, args: (c.args ?? {}) as Record<string, any> }));
   const list = scope.kind === 'guest' ? guestCommands(d.type, scope.pass, d.id, true).filter(c => !(c as any).confirm) : ST.supported(d.id, d.type, all);
   return list.map(c => c.name);
 }
 
-type StCmd = { component: string; capability: string; command: string; arguments: unknown[] };
+export type StCmd = { component: string; capability: string; command: string; arguments: unknown[] };
 const cmd = (capability: string, command: string, args: unknown[] = []): { commands: StCmd[] } => ({ commands: [{ component: 'main', capability, command, arguments: args }] });
 const range = (lo: number, hi: number) => `Enter a number in range ${lo} to ${hi}`;
 const AC_FAN = ['auto', 'low', 'medium', 'high'];
@@ -312,7 +319,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
           up = await fetch(`${ASSISTANT_URL()}/control/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${session}` },
-            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope) } }),
+            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope), last_actions: takeLastActions(scope) } }),
             signal: AbortSignal.timeout(120_000),
           });
         } catch {
@@ -340,6 +347,10 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
               if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model is not reachable. Check OLLAMA_BASE_URL in assistant/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
               else if (text) out(data?.status === 'error' ? 'error' : 'text', data?.status === 'error' ? { message: text } : { text });
               const results: any[] = d.results ?? [];
+              // what was just done, for "save this as a routine": kept for the owner's next turn (a saved routine clears it)
+              const done = results.filter(r => r.status === 'success' && r.command_generated?.commands?.length).map(r => ({ device_id: r.device_id, device_name: r.device_name, commands: r.command_generated.commands }));
+              if (done.length) lastActions.set(ownerKey(scope), { at: Date.now(), actions: done });
+              else if (d.routine_saved) lastActions.delete(ownerKey(scope));
               const states: any[] = d.states ?? [];
               const ids = [...new Set([...results, ...states].map(r => String(r.device_id ?? '')).map(id => resolveDevice(id, scope)?.id).filter(Boolean))] as string[];
               if (ids.length) {

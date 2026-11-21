@@ -111,7 +111,7 @@ ROUTINES = {"routines": [{"id": "movie", "name": "Movie night", "about": "Dim li
 async def test_routine_runs_in_a_room_and_reports_failures(settings):
     run = {"routine": "Movie night", "room": "Living room", "results": [{"device_id": "LT-01", "name": "Light 1", "steps": ["setLevel"], "ok": True}, {"device_id": "TV-01", "name": "TV", "steps": ["power"], "ok": False, "error": "offline"}]}
     twin = OpsTwin({"routines": ROUTINES, "routine_run": run})
-    agent, _ = build(settings, {"router": [{"skill": "routines", "request": "x"}], "routines": [{"action": "run", "routine": "movie", "room": "living"}]}, twin)
+    agent, _ = build(settings, {"router": [{"skill": "routines", "request": "x"}], "routines": [{"action": "run", "routine": "movie", "room": "living", "name": ""}]}, twin)
     r = await ask(agent, settings, "x")
     assert r.status == "success" and "Light 1" in r.message and "TV (offline)" in r.message
     assert [x["status"] for x in r.data["results"]] == ["success", "error"]
@@ -120,7 +120,7 @@ async def test_routine_runs_in_a_room_and_reports_failures(settings):
 async def test_staff_routine_asks_for_the_room_and_guest_does_not(settings):
     twin = OpsTwin({"routines": ROUTINES, "routine_run": {"routine": "Good night", "room": "Room", "results": [{"device_id": "LT-01", "name": "Light 1", "steps": ["power"], "ok": True}]}})
     agent, llm = build(settings, {"router": [{"skill": "routines", "request": "x"}, {"skill": "routines", "request": "y"}],
-                                  "routines": [{"action": "run", "routine": "sleep", "room": ""}, {"action": "run", "routine": "sleep"}]}, twin)
+                                  "routines": [{"action": "run", "routine": "sleep", "room": "", "name": ""}, {"action": "run", "routine": "sleep", "name": ""}]}, twin)
     assert (await ask(agent, settings, "x")).message == "Which room should I run Good night in?"
     guest_twin = OpsTwin({"routines": {"routines": ROUTINES["routines"]}, "routine_run": {"routine": "Good night", "room": "Room", "results": [{"device_id": "LT-01", "name": "Light 1", "steps": ["power"], "ok": True}]}})
     for s in agent.skills:
@@ -136,3 +136,59 @@ async def test_staff_skills_are_hidden_from_guests(settings):
     await ask(agent, settings, "hi", "guest")
     router = llm.calls[0]["system"]
     assert all(n not in router for n in ("- scene", "- building", "- checkin", "- maintenance", "- diagnostics")) and "- routines" in router
+
+
+# ---- routines people save ----
+
+async def ask_with(agent, settings, text, role="admin", **extras):
+    return await agent.handle(build_context(sample_request(text, extras={"role": role, **extras}), "tok", settings))
+
+
+MINE = {"routines": [{"id": "movie", "name": "Movie night", "about": "Dim lights"}, {"id": "c-cosy", "name": "Cosy", "about": "your routine: 3 step(s) on 2 device(s)", "custom": True}],
+        "rooms": [{"id": "living", "name": "Living room"}]}
+DONE = [{"device_id": "LT-01", "device_name": "Light 1", "commands": [{"component": "main", "capability": "switchLevel", "command": "setLevel", "arguments": [20]}]}]
+
+
+async def test_offer_to_save_after_a_multi_step_change(make_agent, settings):
+    agent, llm = make_agent({"router": [{"skill": "device_control", "request": "turn on the Desk Lamp and dim it to 40%"}],
+                             "device_plan": [{"result": "OK", "steps": [{"devices": ["Desk Lamp"], "request": "turn on and dim to 40%"}], "options": []}],
+                             "action_select": [{"actions": [{"action": "switch.on", "change": "set", "value": ""}, {"action": "switchLevel.setLevel", "change": "set", "value": "40"}]}]})
+    res = await agent.handle(build_context(sample_request("turn on the Desk Lamp and dim it to 40%", extras={"role": "admin"}), "tok", settings))
+    assert res.status == "success" and "save this as a routine" in res.message and res.data["save_offer"] is True
+
+
+async def test_no_offer_for_a_single_command_or_outside_the_twin(make_agent, settings):
+    agent, _ = make_agent({"router": [{"skill": "device_control", "request": "set the Desk Lamp brightness to 40%"}], "action_select": [{"actions": [{"action": "switchLevel.setLevel", "change": "set", "value": "40"}]}]})
+    res = await agent.handle(build_context(sample_request("set the Desk Lamp brightness to 40%", extras={"role": "admin"}), "tok", settings))
+    assert "routine" not in res.message
+
+
+async def test_save_uses_the_last_actions_and_the_given_name(settings):
+    twin = OpsTwin({"routines": MINE, "routine_save": {"ok": True, "id": "c-movie-mix", "name": "Movie mix", "steps": 1, "devices": 1}})
+    agent, _ = build(settings, {"router": [{"skill": "routines", "request": "save this as a routine called Movie mix"}],
+                                "routines": [{"action": "save", "routine": "", "room": "", "name": "Movie mix"}]}, twin)
+    r = await ask_with(agent, settings, "yes, call it Movie mix", last_actions=DONE)
+    assert r.status == "success" and 'Saved "Movie mix"' in r.message and r.data["routine_saved"] == "c-movie-mix"
+    name, payload, _tok = twin.calls[-1]
+    assert name == "routine_save" and payload == {"name": "Movie mix", "actions": DONE}
+
+
+async def test_save_asks_for_a_name_and_refuses_when_nothing_was_done_or_name_is_builtin(settings):
+    twin = OpsTwin({"routines": MINE})
+    agent, _ = build(settings, {"router": [{"skill": "routines", "request": "save"}] * 3,
+        "routines": [{"action": "save", "routine": "", "room": "", "name": ""}, {"action": "save", "routine": "", "room": "", "name": "Movie night"}, {"action": "save", "routine": "", "room": "", "name": "x"}]}, twin)
+    assert (await ask_with(agent, settings, "save", last_actions=DONE)).message == "What should I call this routine?"
+    assert "built-in" in (await ask_with(agent, settings, "save", last_actions=DONE)).message
+    assert "nothing to save" in (await ask_with(agent, settings, "save", last_actions=[])).message
+    assert not [c for c in twin.calls if c[0] == "routine_save"]
+
+
+async def test_run_a_saved_routine_needs_no_room_and_delete_only_touches_own(settings):
+    run = {"routine": "Cosy", "room": "", "results": [{"device_id": "LT-01", "name": "Light 1", "steps": ["setLevel"], "ok": True}]}
+    twin = OpsTwin({"routines": MINE, "routine_run": run, "routine_delete": {"ok": True}})
+    agent, _ = build(settings, {"router": [{"skill": "routines", "request": "a"}, {"skill": "routines", "request": "b"}, {"skill": "routines", "request": "c"}],
+        "routines": [{"action": "run", "routine": "c-cosy", "room": "", "name": ""}, {"action": "delete", "routine": "c-cosy", "room": "", "name": ""}, {"action": "delete", "routine": "movie", "room": "", "name": ""}]}, twin)
+    r = await ask_with(agent, settings, "a")
+    assert r.status == "success" and r.message.startswith("Done! Cosy: Light 1") and twin.calls[-1][1] == {"routine": "c-cosy", "room": ""}
+    assert (await ask_with(agent, settings, "b")).message == "Deleted your routine Cosy."
+    assert "Which of your routines" in (await ask_with(agent, settings, "c")).message            # a built-in can't be deleted

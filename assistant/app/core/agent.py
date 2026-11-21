@@ -12,6 +12,7 @@ from app.core.skill import Skill, SkillResult, load_skills
 log = logging.getLogger("agent")
 
 BUSY_MESSAGE = "Sorry, I'm having trouble understanding that right now. Could you please try again?"
+SAVE_OFFER = "\nWould you like to save this as a routine to run again later? Just tell me a name."
 DOWN_MESSAGE = "The AI model is not reachable right now, so I can't answer. Please try again in a moment."
 
 
@@ -51,6 +52,13 @@ class Agent:
         except LLMError as exc:
             log.error("skill %s failed: %s", skill.name, exc)
             result = SkillResult("error", BUSY_MESSAGE, {"error": str(exc)})
+
+        # after a change of several things at once, offer to keep it as a routine (the routines skill saves it next turn)
+        if skill.name == "device_control" and result.status == "success" and "routines" in by_name:
+            steps = sum(len((r.get("command_generated") or {}).get("commands", [])) for r in result.data.get("results", []) if r.get("status") == "success")
+            if steps >= 2:
+                result.message += SAVE_OFFER
+                result.data["save_offer"] = True
 
         result.data.setdefault("skill", skill.name)
         result.data.setdefault("request", route.request)

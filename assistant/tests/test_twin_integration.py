@@ -254,7 +254,7 @@ def test_staff_routine_sets_every_device_type_in_the_room(llm):
     ac = gym_device("ac")
     httpx.delete(f"{TWIN}/api/devices/{ac['id']}/fault", timeout=10)
     light, blinds = gym_device("light"), gym_device("blinds")
-    llm.script = {"router": [route("routines", "good night in the gym room")], "routines": [{"action": "run", "routine": "sleep", "room": "gym-room"}]}
+    llm.script = {"router": [route("routines", "good night in the gym room")], "routines": [{"action": "run", "routine": "sleep", "room": "gym-room", "name": ""}]}
     events = chat("/api/chat", "good night in the gym room")
     text = next(d["text"] for e, d in events if e == "text")
     assert text.lower().startswith("done! good night in gym room"), events
@@ -268,7 +268,7 @@ def test_guest_routine_only_touches_what_the_pass_allows(llm):
     p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False, "controls": ["light"]}, timeout=10).json()
     d = zone_device("Light 2")
     httpx.post(f"{TWIN}/api/devices/{d['id']}/commands", json={"command": "setLevel", "args": {"percent": 10}}, timeout=10)
-    llm.script = {"router": [route("routines", "make it bright")], "routines": [{"action": "run", "routine": "focus"}]}
+    llm.script = {"router": [route("routines", "make it bright")], "routines": [{"action": "run", "routine": "focus", "name": ""}]}
     events = chat(f"/api/guest/{p['token']}/chat", "make it bright")
     res = next(x for e, x in events if e == "result")["results"]
     assert res and all(r["ok"] for r in res), events
@@ -322,3 +322,38 @@ def test_assistant_ops_are_limited_by_role():
     sess = httpx.get(f"{TWIN}/api/st/v1/twin/floor", timeout=10)
     assert sess.status_code == 401
     assert httpx.post(f"{TWIN}/api/st/v1/twin/ops/layout", json={}, headers={"Authorization": "Bearer nope"}, timeout=10).status_code == 401
+
+
+def test_save_a_routine_then_run_it_later(llm):
+    """Change two devices -> the assistant offers to save -> 'yes, call it X' -> change things back -> 'run X'."""
+    light, tv = gym_device("light"), gym_device("tv")
+    name = f"Cinema {int(time.time()) % 10000}"
+    # 1. a multi-device change by the staff, with the offer
+    llm.script = {"router": [route("device_control", "dim the Smart light to 30% and turn on the TV")],
+                  "device_plan": [{"result": "OK", "steps": [{"devices": ["Smart light"], "request": "dim to 30%"}, {"devices": ["TV"], "request": "turn on"}], "options": []}],
+                  "action_select": [act("switchLevel.setLevel", "30"), act("switch.on", "")]}
+    events = chat("/api/chat", "dim the Smart light to 30% and turn on the TV")
+    text = next(d["text"] for e, d in events if e == "text")
+    assert "save this as a routine" in text, events
+    assert readings(light["id"])["lv"] == 30
+    # 2. the user says yes and gives a name: the twin sent the last commands back, the routine is stored
+    llm.script = {"router": [route("routines", f"save this as a routine called {name}")], "routines": [{"action": "save", "routine": "", "room": "", "name": name}]}
+    events = chat("/api/chat", f"yes, call it {name}")
+    assert f'Saved "{name}"' in next(d["text"] for e, d in events if e == "text"), events
+    # 3. things change, then the routine puts them back
+    httpx.post(f"{TWIN}/api/devices/{light['id']}/commands", json={"command": "setLevel", "args": {"percent": 90}}, timeout=10)
+    httpx.post(f"{TWIN}/api/devices/{tv['id']}/commands", json={"command": "power", "args": {"on": "false"}}, timeout=10)
+    llm.script = {"router": [route("routines", f"run {name}")],
+                  "routines": [lambda s, u: {"action": "run", "routine": next(l.split(":")[0].strip("- ") for l in s.splitlines() if "your routine" in l and name in l), "room": "", "name": ""}]}
+    events = chat("/api/chat", f"run {name}")
+    assert next(d["text"] for e, d in events if e == "text").startswith(f"Done! {name}"), events
+    assert readings(light["id"])["lv"] == 30 and readings(tv["id"])["on"] is True
+    # 4. it is the staff's, not a guest's; delete removes it
+    p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False}, timeout=10).json()
+    llm.script = {"router": [route("routines", "what routines are there?")], "routines": [{"action": "list", "routine": "", "room": "", "name": ""}]}
+    events = chat(f"/api/guest/{p['token']}/chat", "what routines are there?")
+    assert name not in next(d["text"] for e, d in events if e == "text")
+    llm.script = {"router": [route("routines", f"delete {name}")],
+                  "routines": [lambda s, u: {"action": "delete", "routine": next(l.split(":")[0].strip("- ") for l in s.splitlines() if "your routine" in l and name in l), "room": "", "name": ""}]}
+    events = chat("/api/chat", f"delete {name}")
+    assert f"Deleted your routine {name}" in next(d["text"] for e, d in events if e == "text"), events

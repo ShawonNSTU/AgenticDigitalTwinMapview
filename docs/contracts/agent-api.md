@@ -43,4 +43,6 @@ Commands that need confirmation (unlock, stop a wash) are never offered or accep
 `floor` -> `{time, scenario, rooms, devices: [{id, name, type, room, health, finding?}]}`; `insight/{id}` -> the
 device's parts with health and the finding (evidence, confidence, guided steps). Read by the agent's `diagnostics` skill.
 `POST ops/{op}`: `layout`, `alerts`, `alert_update`, `faults`, `clear_fault`, `simulate_fault`, `sim`, `passes`,
-`pass_create`, `pass_revoke`, `routines`, `routine_run` (lib/integrations/stops.ts; routines in lib/sim/routines.ts).
+`pass_create`, `pass_revoke`, `routines`, `routine_run`, `routine_save`, `routine_delete` (lib/integrations/stops.ts; routines in
+lib/sim/routines.ts). Saved routines are kept per owner (staff, or one guest pass) in `web/.data/routines.json`. The web app
+sends the owner's last executed commands back as `extras.last_actions` (10 minutes) so "save this" can store them.
