@@ -4,7 +4,7 @@ import { resolveDevice, sessionFor, twinFloor, twinInsight } from '@/lib/integra
 export const dynamic = 'force-dynamic';
 
 /**
- * The twin's read-only diagnostics API for the assistant (smartthings-agent, TWIN_API_BASE_URL), staff sessions only:
+ * The twin's read-only diagnostics API for the assistant (assistant, TWIN_API_BASE_URL), staff sessions only:
  *   GET floor            -> rooms and every device with its health (and the finding's title when not healthy)
  *   GET insight/{id}     -> one device's parts, health and the finding with evidence and guided steps
  * Same bearer session as /api/st/v1/devices. A guest session is refused: a guest's assistant has no diagnostics.

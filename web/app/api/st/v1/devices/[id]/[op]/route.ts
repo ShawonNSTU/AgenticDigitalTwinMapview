@@ -4,7 +4,7 @@ import { resolveDevice, runCommands, sessionFor, statusDoc } from '@/lib/integra
 export const dynamic = 'force-dynamic';
 
 /**
- * The twin's SmartThings-compatible device API, for the SmartThings agent (smartthings-agent/, IOT_API_BASE_URL =
+ * The twin's SmartThings-compatible device API, for the SmartThings agent (assistant/, IOT_API_BASE_URL =
  * http://<web>/api/st/v1/devices). Same paths and bodies as api.smartthings.com/v1/devices:
  *   GET  {id}/status    -> {components: {main: {capability: {attribute: {value, unit?, timestamp}}}}}
  *   GET  {id}/health    -> {deviceId, state: "ONLINE" | "OFFLINE"}

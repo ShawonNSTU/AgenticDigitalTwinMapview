@@ -1,7 +1,7 @@
 """End to end with the digital twin PoC: browser -> web /api/chat -> this agent -> the twin's SmartThings API.
 
 Runs only when the twin's web app is reachable (TWIN_URL, default http://localhost:3000) and port 8100 (the web
-app's ST_AGENT_URL) is free. The agent runs here with the scripted fake LLM; everything else is real: the web app
+app's ASSISTANT_URL) is free. The agent runs here with the scripted fake LLM; everything else is real: the web app
 builds the device list from the twin, the agent calls the twin's /api/st/v1/devices with the turn's session
 token, and the twin runs the commands (on the simulator, or the real device when linked).
 

@@ -1,4 +1,4 @@
-// The SmartThings agent (smartthings-agent/, an LLM agent that speaks SmartThings) integrated with the twin.
+// The SmartThings agent (assistant/, an LLM agent that speaks SmartThings) integrated with the twin.
 //
 // The agent is built to call the SmartThings REST API: POST {base}/{deviceId}/commands, GET {base}/{deviceId}/status
 // and /health. Its base URL points at the twin's SmartThings-compatible API instead (app/api/st/v1/devices), so
@@ -17,7 +17,7 @@ import { guestCommands, guestCommand, type GuestPass } from '@/lib/sim/guests';
 import { dispatch } from '@/lib/sim/dispatch';
 import * as ST from './smartthings';
 
-export const ST_AGENT_URL = () => (process.env.ST_AGENT_URL ?? 'http://localhost:8100').replace(/\/$/, '');
+export const ASSISTANT_URL = () => ((process.env.ASSISTANT_URL ?? process.env.ST_AGENT_URL ?? 'http://localhost:8100')).replace(/\/$/, '');
 
 /* ---------------- sessions ---------------- */
 
@@ -292,7 +292,7 @@ const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHigh
 const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 /**
- * Run one turn of the SmartThings agent (POST {ST_AGENT_URL}/control/stream) and answer with the PoC's chat
+ * Run one turn of the SmartThings agent (POST {ASSISTANT_URL}/control/stream) and answer with the PoC's chat
  * events (docs/contracts/agent-api.md): `tool` for each progress step, `text` for the reply, `ui_action` to show
  * the devices it changed or read in 3D, `result` (guest page) with each device's outcome, `error`, then `done`.
  */
@@ -309,14 +309,14 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
         const session = openSession(scope);
         let up: Response;
         try {
-          up = await fetch(`${ST_AGENT_URL()}/control/stream`, {
+          up = await fetch(`${ASSISTANT_URL()}/control/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${session}` },
             body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope) } }),
             signal: AbortSignal.timeout(120_000),
           });
         } catch {
-          out('error', { message: opts.guest ? 'The assistant is not available right now.' : `The assistant service is not reachable at ${ST_AGENT_URL()}. Start smartthings-agent (see its README).` });
+          out('error', { message: opts.guest ? 'The assistant is not available right now.' : `The assistant service is not reachable at ${ASSISTANT_URL()}. Start assistant (see its README).` });
           return;
         }
         if (!up.ok || !up.body) { out('error', { message: `The SmartThings agent answered HTTP ${up.status}.` }); return; }
@@ -337,7 +337,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
             else if (ev === 'final') {
               const d = data?.data ?? {};
               const text = String(d.question ?? data?.message ?? '');
-              if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model is not reachable. Check OLLAMA_BASE_URL in smartthings-agent/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
+              if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model is not reachable. Check OLLAMA_BASE_URL in assistant/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
               else if (text) out(data?.status === 'error' ? 'error' : 'text', data?.status === 'error' ? { message: text } : { text });
               const results: any[] = d.results ?? [];
               const states: any[] = d.states ?? [];
@@ -378,13 +378,13 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
 /** Whether the assistant is up and can answer: the agent service, and (deep) the Ollama model behind it. */
 export async function agentHealth() {
   try {
-    const r = await fetch(`${ST_AGENT_URL()}/health?deep=true`, { signal: AbortSignal.timeout(6000) });
+    const r = await fetch(`${ASSISTANT_URL()}/health?deep=true`, { signal: AbortSignal.timeout(6000) });
     const d = await r.json();
     const llm = d?.llm ?? {};
     const problem = !r.ok ? `The assistant answered HTTP ${r.status}.`
-      : llm.reachable === false ? `Ollama is not reachable at ${llm.url}. Set OLLAMA_BASE_URL in smartthings-agent/.env.`
+      : llm.reachable === false ? `Ollama is not reachable at ${llm.url}. Set OLLAMA_BASE_URL in assistant/.env.`
       : llm.model_present === false ? `Ollama has no model "${d.model}". Run: ollama pull ${d.model}`
       : d?.device_api?.reachable === false ? `The device API is not reachable at ${d.device_api.url}.` : null;
-    return { ok: r.ok, ready: !problem, problem, url: ST_AGENT_URL(), model: d?.model ?? null, skills: d?.skills ?? [], llm };
-  } catch { return { ok: false, ready: false, problem: `The assistant service is not running at ${ST_AGENT_URL()}. Start smartthings-agent.`, url: ST_AGENT_URL(), model: null, skills: [], llm: null }; }
+    return { ok: r.ok, ready: !problem, problem, url: ASSISTANT_URL(), model: d?.model ?? null, skills: d?.skills ?? [], llm };
+  } catch { return { ok: false, ready: false, problem: `The assistant service is not running at ${ASSISTANT_URL()}. Start assistant.`, url: ASSISTANT_URL(), model: null, skills: [], llm: null }; }
 }

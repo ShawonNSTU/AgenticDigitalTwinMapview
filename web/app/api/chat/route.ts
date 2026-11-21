@@ -4,7 +4,7 @@ import { agentHealth, agentTurn } from '@/lib/integrations/stagent';
 export const dynamic = 'force-dynamic';
 
 /**
- * The assistant for staff: ONE agent (smartthings-agent) for the administrator and the technician. It controls and
+ * The assistant for staff: ONE agent (assistant) for the administrator and the technician. It controls and
  * reads devices through the twin (real SmartThings devices of the zone and every simulated device) and, for staff,
  * finds devices and explains faults.
  *

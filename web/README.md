@@ -8,7 +8,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-`ST_AGENT_URL` points the `/api/chat` routes at the assistant (smartthings-agent, Ollama); `AGENT_URL` at the floor-plan service (agent-backend).
+`ASSISTANT_URL` points the `/api/chat` routes at the assistant (assistant, Ollama); `AGENT_URL` at the floor-plan service (agent-backend).
 
 | Path | Purpose |
 |---|---|

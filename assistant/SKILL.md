@@ -1,5 +1,5 @@
 ---
-name: smartthings-agent
+name: assistant
 description: How to understand, modify and extend the SmartThings Agent (FastAPI + Ollama OSS model, skill-based agentic architecture). Read fully before editing any file in this repo.
 ---
 

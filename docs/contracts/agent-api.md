@@ -35,12 +35,12 @@ All coordinates are fractions of the image (x right, y down).
 `ANTHROPIC_API_KEY` (empty = demo mode), `AGENT_MODEL` (default `claude-sonnet-5-5`), `PLATFORM_URL` (default `http://localhost:3000`), `CORS_ORIGINS`, `MAX_TOOL_ROUNDS` (8).
 
 
-# SmartThings agent (smartthings-agent)
+# SmartThings agent (assistant)
 
 The web app runs the SmartThings agent's turns and gives it a SmartThings-compatible API onto the twin.
 
 ## POST /api/chat (staff) and POST /api/guest/{pass}/chat (guest)
-One assistant (smartthings-agent) for the administrator, the technician and the guest. Body
+One assistant (assistant) for the administrator, the technician and the guest. Body
 `{ messages: [{role, content}], room? }` (staff `room`: limit to one room, default the whole building; a guest always
 gets their pass's room). The role comes from the sign-in cookie (`tech:` = technician, else administrator).
 Events: `tool` (staff only: progress), `text` (the reply), `ui_action` (`highlight` devices it changed, read or

@@ -1,4 +1,4 @@
-# SmartThings Agent: the one assistant
+# Assistant: the twin's one chat agent
 
 The twin's only chat assistant, for the **administrator, the technician and the guest** (different pages, same
 agent; the web app sends the role and limits what each may see and do). It runs on an Ollama model
@@ -36,10 +36,10 @@ agent; the web app sends the role and limits what each may see and do). It runs 
 
 ## Run it
 ```bash
-cd smartthings-agent
+cd assistant
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 cp .env.example .env          # set OLLAMA_BASE_URL (your Ollama server) and OLLAMA_MODEL; .env is gitignored
-.venv/bin/python main.py      # :8100 (the web app's ST_AGENT_URL); or: docker build -t st-agent . 
+.venv/bin/python main.py      # :8100 (the web app's ASSISTANT_URL); or: docker build -t st-agent . 
 .venv/bin/python -m pytest -q                         # unit tests, no model needed
 TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   # + end to end through the running twin
 ```

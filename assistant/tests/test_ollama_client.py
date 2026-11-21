@@ -63,7 +63,7 @@ def cfg(url, **kw):
 
 async def test_request_carries_model_schema_keep_alive_and_key(fake):
     f = fake(['{"reply": "hi"}'])
-    llm = OllamaLLM(cfg(f.url, ollama_api_key="secret", ollama_keep_alive="1h"))
+    llm = OllamaLLM(cfg(f.url, ollama_api_key="secret", ollama_keep_alive="1h", ollama_think="low"))
     out = await llm.complete_json(system="s", user="u", schema=SCHEMA, label="t")
     assert out == {"reply": "hi"}
     _, path, headers, body = f.requests[-1]

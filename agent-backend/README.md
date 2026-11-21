@@ -5,7 +5,7 @@ printed names with OpenCV (and Tesseract, if installed), merged with Claude visi
 It also has the deterministic device search (`GET /search?q=`).
 
 The chat assistant is **not** here any more: one assistant (the SmartThings agent, Ollama) answers for the
-administrator, the technician and the guest. See [../smartthings-agent](../smartthings-agent/README.md).
+administrator, the technician and the guest. See [../assistant](../assistant/README.md).
 
 ```bash
 pip install -e ".[dev]"

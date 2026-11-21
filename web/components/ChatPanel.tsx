@@ -14,7 +14,7 @@ type Msg = { role: 'user' | 'assistant' | 'tool'; text: string };
  */
 const GREETING = 'Ask me about any device in the building, for example "turn on Light 3 and dim it to 40%", "close the roller shade halfway", "which lights are on?", "show all air conditioners with a problem" or "what\'s wrong with AC-04?". Every change shows in the 3D view.';
 
-/** The assistant: one agent (smartthings-agent) for the administrator and the technician. It controls and reads
+/** The assistant: one agent (assistant) for the administrator and the technician. It controls and reads
  *  the zone's real SmartThings devices and every other (simulated) device, and finds and explains faults. */
 export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void }) {
   const [health, setHealth] = useState<{ ready: boolean; problem: string | null; model: string | null } | null>(null);
