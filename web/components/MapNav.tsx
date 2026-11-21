@@ -7,7 +7,8 @@ const I = ({ d }: { d: string }) => <svg width="16" height="16" viewBox="0 0 24 
 type CamAction = 'zoomIn' | 'zoomOut' | 'fit' | 'top' | 'perspective' | 'rotateLeft' | 'rotateRight' | 'tiltUp' | 'tiltDown' | 'north';
 const cam = (action: CamAction) => send({ type: 'camera', action });
 
-/** Map navigation: zoom, fit the whole floor, plan (2D) or 3D view, rotate, and the keyboard shortcuts. */
+/** Map navigation: north, zoom, fit the whole floor, plan (2D) or 3D view, walk, full screen, help. Turning and tilting
+ *  are done by dragging (Q/E, R/V on the keyboard). */
 export default function MapNav() {
   const [top, setTop] = useState(false);
   const [keys, setKeys] = useState(false);
@@ -30,37 +31,21 @@ export default function MapNav() {
         <button className={top ? 'on' : ''} title={top ? 'Back to the 3D view (T)' : 'Plan view from above (T)'} aria-label="Toggle plan view" onClick={() => cam(top ? 'perspective' : 'top')}><b>{top ? '3D' : '2D'}</b></button>
       </div>
       <div className="nav-group glass">
-        <button title="Rotate left (Q)" aria-label="Rotate left" onClick={() => cam('rotateLeft')}><I d='<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>' /></button>
-        <button title="Rotate right (E)" aria-label="Rotate right" onClick={() => cam('rotateRight')}><I d='<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>' /></button>
-        <button title="Tilt: look more from above (R)" aria-label="Tilt up" onClick={() => cam('tiltDown')}><I d='<path d="M6 15l6-6 6 6"/>' /></button>
-        <button title="Tilt: look more from the side (V)" aria-label="Tilt down" onClick={() => cam('tiltUp')}><I d='<path d="M6 9l6 6 6-6"/>' /></button>
-      </div>
-      <div className="nav-group glass">
         <button className="walk-btn" title="Walk through the floor at eye height (enter rooms through their doors)" aria-label="Walk through" onClick={() => send({ type: 'walk', action: 'start' })}>
           <I d='<circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 3v3M7 12l3-4 4 1 3 3M11 15l1-6"/>' />
         </button>
-      </div>
-      <div className="nav-group glass">
         <FullscreenButton className="" />
-      </div>
-      <div className="nav-group glass">
         <button className={keys ? 'on' : ''} title="Mouse and keyboard controls" aria-label="Controls" onClick={() => setKeys(!keys)}><b>?</b></button>
       </div>
       {keys && (
         <div className="nav-help glass">
           <b>Navigate the map</b>
           <dl>
-            <dt>Orbit</dt><dd>Left-drag in any direction (sideways turns, up/down tilts)</dd>
-            <dt>Turn / tilt</dt><dd>Q / E, R / V, or the buttons; trackpad: swipe sideways, Shift + scroll</dd>
-            <dt>Pan</dt><dd>Right-drag, Shift + drag, or arrow keys / WASD</dd>
-            <dt>Zoom</dt><dd>Wheel or trackpad scroll (toward the cursor), pinch, or + / −</dd>
-            <dt>Touch</dt><dd>One finger orbits; two fingers pinch, pan and twist; double tap zooms in</dd>
-            <dt>Zoom to a spot</dt><dd>Double-click the floor</dd>
-            <dt>Whole floor</dt><dd>F</dd>
-            <dt>Plan view</dt><dd>T</dd>
-            <dt>Walk through</dt><dd>The walking-person button: walk the floor at eye height</dd>
+            <dt>Turn and tilt</dt><dd>Drag (one finger on touch)</dd>
+            <dt>Move</dt><dd>Right-drag or two fingers</dd>
+            <dt>Zoom</dt><dd>Scroll or pinch</dd>
+            <dt>Keys</dt><dd>Q / E turn · R / V tilt · F whole floor · T plan view</dd>
           </dl>
-          <span className="muted">Click the map first so it receives keys.</span>
         </div>
       )}
     </div>

@@ -193,7 +193,7 @@ export default function GuestPage() {
         {walk.phase === 'arrived' && tour == null && hintShown && !holo && (
           <div className="guest-walk glass arrived">
             <span className="walk-dot" />
-            <span><b>You’re in {view?.room.name}</b><small>Drag to look around · tap the floor to move · tap any device to control it right there</small></span>
+            <span><b>You’re in {view?.room.name}</b><small>Tap a device to control it</small></span>
             {stops.length > 0 && <button className="pri" onClick={() => setTour(0)}>Take the tour</button>}
             <button className="hint-x" aria-label="Close" title="Close" onClick={() => setHintShown(false)}>✕</button>
           </div>

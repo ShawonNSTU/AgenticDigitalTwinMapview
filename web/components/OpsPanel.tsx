@@ -73,7 +73,7 @@ export default function OpsPanel({ toast }: { toast: (t: string, k?: 'ok' | 'bad
     <div className="panel ops">
       {/* energy */}
       <div className="ops-card">
-        <div className="ops-head"><b>Energy</b><button className="ghost small" onClick={() => send({ type: 'setLayer', layer: 'energy', on: true })}>Show in 3D</button></div>
+        <div className="ops-head"><b title={energy ? `${energy.metered} metered, ${energy.modelled} estimated from live state · ${T?.perKWh} ${T?.currency}/kWh · ${T?.co2PerKWh} kg CO₂/kWh` : ''}>Energy</b><button className="ghost small" onClick={() => send({ type: 'setLayer', layer: 'energy', on: true })}>Show in 3D</button></div>
         {energy ? <>
           <div className="kpis">
             <div><small>Now</small><b>{fmtW(energy.w)}</b></div>
@@ -81,21 +81,19 @@ export default function OpsPanel({ toast }: { toast: (t: string, k?: 'ok' | 'bad
             <div><small>Cost</small><b>{energy.cost.toFixed(2)} {T?.currency}</b></div>
             <div><small>CO₂</small><b>{energy.co2Kg.toFixed(2)} kg</b></div>
           </div>
-          <div className="saved"><span>Saved by presence-aware automation</span><b>{energy.avoided.kwh.toFixed(3)} kWh · {energy.avoided.cost.toFixed(2)} {T?.currency} · {energy.avoided.co2Kg.toFixed(2)} kg CO₂</b></div>
+          <div className="saved"><span>Saved by eco mode today</span><b>{energy.avoided.kwh.toFixed(3)} kWh · {energy.avoided.cost.toFixed(2)} {T?.currency} · {energy.avoided.co2Kg.toFixed(2)} kg CO₂</b></div>
           <Spark pts={energy.trend ?? []} />
           {energy.eco.length > 0 && <div className="small">{energy.eco.map(x => <div key={x.room} className="eco-row"><span className="eco-tag">ECO</span>{x.name} · {x.reason} · {x.kwh.toFixed(3)} kWh avoided</div>)}</div>}
           <div className="ops-rows">{energy.top.slice(0, 5).map(t => (
             <div key={t.id} className="ops-row" onMouseEnter={() => send({ type: 'highlight', ids: [t.id] })} onMouseLeave={() => send({ type: 'clearHighlight' })} onClick={() => send({ type: 'focusDevice', id: t.id })}>
               <span className="grow">{t.name} <em className="muted">{t.id}</em></span><b>{fmtW(t.w)}</b>{t.src === 'meter' && <em className="meter">metered</em>}
             </div>))}</div>
-          <div className="muted tiny">{energy.metered} metered · {energy.modelled} modelled from live state · {T?.perKWh} {T?.currency}/kWh · {T?.co2PerKWh} kg CO₂/kWh</div>
         </> : <div className="muted">Loading…</div>}
       </div>
 
       {/* arrivals */}
       <div className="ops-card">
-        <div className="ops-head"><b>Guest arrivals</b><span className="muted small">{journeys.filter(j => j.state !== 'departed').length} staying</span></div>
-        {journeys.length === 0 && <div className="muted small">No guests yet. Check a guest in from a room’s “Guest QR code”.</div>}
+        <div className="ops-head"><b>Guests</b><span className="muted small">{journeys.filter(j => j.state !== 'departed').length || 'none'}</span></div>
         {journeys.map(j => {
           const [label, tone] = STATE[j.state] ?? [j.state, 'muted'];
           const eta = j.eta ? Math.max(0, Math.round((j.eta - Date.now()) / 60000)) : null;
@@ -121,11 +119,10 @@ export default function OpsPanel({ toast }: { toast: (t: string, k?: 'ok' | 'bad
       {/* comfort */}
       <div className="ops-card">
         <div className="ops-head"><b>Comfort</b><button className="ghost small" onClick={() => send({ type: 'setLayer', layer: 'comfort', on: true })}>Show in 3D</button></div>
-        {comfort.length === 0 && <div className="muted small">No room has devices that tell about comfort yet.</div>}
         {comfort.slice(0, 6).map(c => (
           <div key={c.room} className="comfort-row" onClick={() => send({ type: 'selectRoom', room: c.room })}>
             <ScoreRing score={c.score} size={38} />
-            <span className="grow"><b>{c.name}</b><small className="muted">{c.temp} °C (target {c.target}) · {c.hum} % · PM2.5 {c.pm}{c.etaToTargetMin ? ` · target in ${c.etaToTargetMin} min` : ''}</small>{c.advice[0] && <small>{c.advice[0].text}</small>}</span>
+            <span className="grow"><b>{c.name}</b><small className="muted">{c.temp} °C · {c.hum} % humidity</small></span>
             {c.advice.length > 0 && <button className="small" disabled={busy === c.room} onClick={e => { e.stopPropagation(); act(c.room, () => post('/api/comfort', { room: c.room }), `${c.name}: comfort settings applied`); }}>Fix</button>}
           </div>))}
       </div>
@@ -133,14 +130,13 @@ export default function OpsPanel({ toast }: { toast: (t: string, k?: 'ok' | 'bad
       {/* predictions */}
       <div className="ops-card">
         <div className="ops-head"><b>Predicted failures</b><span className="muted small">{preds.length || 'none'}</span></div>
-        {preds.length === 0 && <div className="muted small">Nothing predicted. Try a “Degrading” fault on a device to see a failure forecast.</div>}
         {preds.slice(0, 5).map(p => {
           const d = disp.find(x => x.deviceId === p.deviceId && x.status !== 'done');
           return (
             <div key={p.key} className="pred-row" onMouseEnter={() => send({ type: 'highlight', ids: [p.deviceId] })} onMouseLeave={() => send({ type: 'clearHighlight' })}>
               <div className="row between"><b>{p.name} <em className="muted">{p.deviceId}</em></b><span className="eta-chip">{p.etaMin != null ? `in ${p.etaText}` : p.etaText}</span></div>
               <div className="small">{p.title}</div>
-              <div className="muted tiny">{p.roomName} · {Math.round(p.confidence * 100)} % · {p.basis.replace('-', ' ')} · {p.evidence[1] ?? p.evidence[0]}</div>
+              <div className="muted tiny">{p.roomName} · {Math.round(p.confidence * 100)} % sure</div>
               <div className="row">
                 {d ? <span className="muted small">{d.tech?.name ?? 'Technician'} {d.status === 'on_site' ? 'on site' : `on the way from ${d.fromName}`}</span>
                   : <button className="small pri" disabled={busy === p.key} onClick={() => act(p.key, async () => { const r = await post('/api/predictions', { deviceId: p.deviceId, reason: p.title }); if (r.ok) send({ type: 'dispatchRoute', id: p.deviceId }); return r; }, 'Technician dispatched · route on the map')}>Send a technician</button>}

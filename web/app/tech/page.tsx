@@ -192,7 +192,7 @@ export default function TechPage() {
                 {d && d.status !== 'done' && <button onClick={() => fetch('/api/predictions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: p0.deviceId, status: 'on_site' }) }).then(loadPreds)}>I’m on site</button>}
               </div>); })()}
           </div>
-        ) : !a ? <div className="panel"><div className="muted">Pick an alert to investigate. New alerts appear here and as notifications. Predicted failures are listed below the alerts.</div></div> : (
+        ) : !a ? <div className="panel"><div className="muted">Pick an alert or a predicted failure.</div></div> : (
           <div className="panel">
             <div className="dev-head">
               <span className="dev-ico big"><DeviceIcon type={a.type} size={26} /></span>
@@ -216,12 +216,12 @@ export default function TechPage() {
             <ol className="steps">{a.steps.map((s, i) => <li key={i} onClick={() => send({ type: 'focusPart', id: a.deviceId, part: s.p })}>{s.t}</li>)}</ol>
             <div className="sec-title">AI summary</div>
             <button onClick={summarise} disabled={summing}>{summing ? 'Reading the evidence…' : 'Summarise the evidence and suggest checks'}</button>
-            {summary && <div className="ai-sum">{summary}<div className="muted">Suggestions only: the technician confirms the cause and decides the repair.</div></div>}
-            <div className="sec-title">Service notes</div>
+            {summary && <div className="ai-sum">{summary}</div>}
+            <details className="fold"><summary>Service notes</summary>
             <div className="docs"><b>{a.docs.title}</b>{a.docs.fault && <p><b>{a.docs.fault.name}:</b> {a.docs.fault.what}</p>}
-              <p className="muted">Parts: {a.docs.parts.map(p => `${p.name}${p.measured ? '' : ' (not measured)'}`).join(', ')}</p></div>
-            <div className="sec-title">Recent events</div>
-            <div className="recs">{a.events.length ? a.events.slice().reverse().map((e, i) => <div key={i} className="rec">{e.at ? `${ago(e.at)} · ` : ''}{e.text}</div>) : <div className="muted">No events.</div>}</div>
+              <p className="muted">Parts: {a.docs.parts.map(p => `${p.name}${p.measured ? '' : ' (not measured)'}`).join(', ')}</p></div></details>
+            {a.events.length > 0 && <details className="fold"><summary>Recent events <i>{a.events.length}</i></summary>
+            <div className="recs">{a.events.slice().reverse().map((e, i) => <div key={i} className="rec">{e.at ? `${ago(e.at)} · ` : ''}{e.text}</div>)}</div></details>}
             <div className="sec-title">Record the investigation</div>
             <div className="rec-form">
               <div className="seg">{STATUS.filter(s => s !== 'new').map(s => <button key={s} className={form.status === s ? 'on' : ''} onClick={() => setForm(f => ({ ...f, status: s }))}>{s}</button>)}</div>
@@ -230,8 +230,8 @@ export default function TechPage() {
               <textarea placeholder="Notes" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               <div className="row"><input className="grow" placeholder="Your name" value={form.by} onChange={e => setForm(f => ({ ...f, by: e.target.value }))} /><button className="pri" onClick={record}>Save record</button></div>
             </div>
-            <div className="sec-title">Maintenance history</div>
-            <div className="recs">{recs.length ? recs.map(r => <div key={r.id} className="rec"><b>{r.status}</b> · {new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {r.by}{r.cause && <div>Cause: {r.cause}</div>}{r.action && <div>Action: {r.action}</div>}{r.notes && <div className="muted">{r.notes}</div>}</div>) : <div className="muted">Nothing recorded yet.</div>}</div>
+            <details className="fold"><summary>Maintenance history <i>{recs.length}</i></summary>
+            <div className="recs">{recs.length ? recs.map(r => <div key={r.id} className="rec"><b>{r.status}</b> · {new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {r.by}{r.cause && <div>Cause: {r.cause}</div>}{r.action && <div>Action: {r.action}</div>}{r.notes && <div className="muted">{r.notes}</div>}</div>) : <div className="muted">Nothing recorded yet.</div>}</div></details>
           </div>
         )}
       </aside>

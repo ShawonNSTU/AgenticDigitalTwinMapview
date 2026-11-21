@@ -18,6 +18,19 @@ type J = {
 type C = { score: number; grade: string; temp: number; target: number; hum: number; pm: number; lux: number; db: number; parts: Record<string, { score: number; label: string; measured: boolean }>; advice: { text: string }[] };
 type E = { w: number; kwh: number; avoided: { kwh: number }; tariff: { currency: string }; cost: number; empty?: boolean };
 
+/** One line per device: "Light 1 · 60 %, 2700 K" (its worst status). */
+function group(steps: Step[]) {
+  const out: { name: string; values: string; status: string; detail?: string }[] = [];
+  const rank: Record<string, number> = { done: 0, skipped: 0, pending: 1, running: 2, failed: 3 };
+  for (const s of steps) {
+    const [name, ...rest] = s.label.split(': ');
+    const g = out.find(x => x.name === name) ?? (out.push({ name, values: '', status: 'done' }), out[out.length - 1]);
+    g.values = [g.values, rest.join(': ')].filter(Boolean).join(', ');
+    if ((rank[s.status] ?? 0) > (rank[g.status] ?? 0)) { g.status = s.status; g.detail = s.detail; }
+  }
+  return out;
+}
+
 const FLOW = [['booked', 'Checked in'], ['en_route', 'On the way'], ['preparing', 'Preparing'], ['ready', 'Ready'], ['arrived', 'Welcome']] as const;
 const SCENES: [J['prefs']['scene'], string][] = [['warm', 'Warm'], ['bright', 'Bright'], ['calm', 'Calm'], ['off', 'Lights off']];
 
@@ -51,13 +64,13 @@ export default function GuestJourney({ token, onMsg }: { token: string; onMsg: (
   const done = j.steps.filter(s => s.status === 'done').length;
   const gap = j.comfort ? Math.abs(j.comfort.temp - j.prefs.temp) : 0;
   const head = {
-    booked: 'Tell us when you’re on your way and your room will be ready when you arrive.',
-    en_route: eta != null ? `See you in about ${eta} min. We start preparing your room ${j.leadMin ?? 5} min before you arrive.` : 'On your way.',
+    booked: 'Tell us when you’re on your way.',
+    en_route: eta != null ? `See you in about ${eta} min.` : 'On your way.',
     preparing: `Preparing your room: ${done} of ${j.steps.length} done${j.comfort ? ` · ${j.comfort.temp} °C → ${j.prefs.temp} °C` : ''}${j.comfort?.etaToTargetMin ? `, about ${j.comfort.etaToTargetMin} min` : ''}.`,
     ready: `Your room is ready${j.comfort ? ` at ${j.comfort.temp} °C` : ''}.`,
     arrived: 'Welcome. Your room is set the way you like it.',
-    away: 'Enjoy your time out. Your room is in eco and will be ready again when you’re on your way back.',
-    departed: 'You have checked out. Thank you for staying with us.',
+    away: 'Enjoy your time out. Your room is saving energy.',
+    departed: 'Thank you for staying with us.',
   }[j.state] ?? '';
 
   return (
@@ -68,7 +81,7 @@ export default function GuestJourney({ token, onMsg }: { token: string; onMsg: (
       {j.state !== 'departed' && (
         <div className="row wrap">
           {['booked', 'away'].includes(j.state) && <>
-            <span className="muted small">I’ll be there in</span>
+            <span className="muted small">On my way in</span>
             {[5, 15, 30].map(m => <button key={m} className="small" disabled={busy} onClick={() => act({ action: 'on_my_way', minutes: m }, `Thanks, your room will be ready in ${m} min`)}>{m} min</button>)}
           </>}
           {['booked', 'en_route', 'away'].includes(j.state) && <button className="small pri" disabled={busy} onClick={() => act({ action: 'prepare' }, 'Preparing your room now')}>Prepare now</button>}
@@ -78,42 +91,37 @@ export default function GuestJourney({ token, onMsg }: { token: string; onMsg: (
       )}
 
       {j.comfort && j.state !== 'departed' && (
-        <div className="journey-comfort" onClick={() => send({ type: 'setLayer', layer: 'comfort', on: true })} title="Show the comfort field in 3D">
+        <div className="journey-comfort" onClick={() => send({ type: 'setLayer', layer: 'comfort', on: true })} title="Show comfort in 3D">
           <ScoreRing score={j.comfort.score} size={52} />
           <div className="grow">
-            <b>{j.comfort.temp} °C</b> <span className="muted">· you like {j.prefs.temp} °C · {j.comfort.hum} % humidity</span>
+            <b>{j.comfort.temp} °C</b> <span className="muted">· you like {j.prefs.temp} °C</span>
             <div className="temp-bar"><span style={{ width: `${Math.max(4, 100 - Math.min(100, gap * 30))}%` }} /></div>
-            {c && <div className="muted tiny">Air {c.parts.air.label.toLowerCase()} · light {c.parts.light.label.toLowerCase()} · {c.parts.sound.label.toLowerCase()}</div>}
           </div>
         </div>
       )}
 
       {j.steps.length > 0 && (
-        <details className="welcome-steps" open={j.state === 'preparing'}>
-          <summary>Welcome scene · {done}/{j.steps.length}{j.steps.some(s => s.real) ? ` · ${j.steps.filter(s => s.real).length} on real SmartThings devices` : ''}</summary>
-          <ul>{j.steps.map((s, i) => <li key={i} className={s.status}><i />{s.label}{s.real && <em className="st-tag">SmartThings</em>}{s.status === 'failed' && <small className="bad-text"> {s.detail}</small>}</li>)}</ul>
+        <details className="welcome-steps fold" open={j.state === 'preparing'}>
+          <summary>Room set-up · {done}/{j.steps.length}</summary>
+          <ul>{group(j.steps).map(g => <li key={g.name} className={g.status}><i />{g.name}<small className="muted"> {g.values}</small>{g.status === 'failed' && <small className="bad-text" title={g.detail}> · didn’t respond</small>}</li>)}</ul>
         </details>
       )}
 
       {j.state !== 'departed' && (
-        <div className="prefs">
-          <div className="sec-title">Your preferences</div>
+        <details className="fold prefs-fold" open={j.state === 'booked'}>
+          <summary>Your preferences <i>{j.prefs.temp} °C · {SCENES.find(x => x[0] === j.prefs.scene)?.[1].toLowerCase()} light</i></summary>
+          <div className="prefs">
           <label className="pref"><span>Temperature</span><input type="range" min={18} max={28} step={0.5} value={j.prefs.temp} onChange={ev => setJ({ ...j, prefs: { ...j.prefs, temp: Number(ev.target.value) } })} onPointerUp={ev => act({ action: 'prefs', prefs: { temp: Number((ev.target as HTMLInputElement).value) } })} /><b>{j.prefs.temp} °C</b></label>
           <div className="pref"><span>Light</span><div className="seg">{SCENES.map(([k, l]) => <button key={k} className={j.prefs.scene === k ? 'on' : ''} onClick={() => act({ action: 'prefs', prefs: { scene: k } })}>{l}</button>)}</div></div>
           <label className="pref"><span>Curtain</span><input type="range" min={0} max={100} step={10} value={j.prefs.curtain} onChange={ev => setJ({ ...j, prefs: { ...j.prefs, curtain: Number(ev.target.value) } })} onPointerUp={ev => act({ action: 'prefs', prefs: { curtain: Number((ev.target as HTMLInputElement).value) } })} /><b>{j.prefs.curtain === 0 ? 'closed' : `${j.prefs.curtain} %`}</b></label>
-          <div className="muted tiny">Used the next time your room is prepared{['preparing', 'ready', 'arrived'].includes(j.state) ? ' (or tap Prepare now)' : ''}.</div>
-        </div>
+          </div>
+        </details>
       )}
 
-      {e && !e.empty && (
+      {e && !e.empty && j.state !== 'departed' && (
         <div className="guest-energy" onClick={() => send({ type: 'setLayer', layer: 'energy', on: true })} title="Show energy in 3D">
-          <span>Your room uses <b>{e.w >= 1000 ? `${(e.w / 1000).toFixed(2)} kW` : `${Math.round(e.w)} W`}</b> now · {e.kwh.toFixed(2)} kWh today</span>
-          {e.avoided.kwh > 0 && <span className="eco-tag">{e.avoided.kwh.toFixed(3)} kWh saved by eco in this room today</span>}
+          <span>Room energy <b>{e.w >= 1000 ? `${(e.w / 1000).toFixed(2)} kW` : `${Math.round(e.w)} W`}</b> now · {e.kwh.toFixed(2)} kWh today</span>
         </div>
-      )}
-
-      {j.timeline.length > 0 && (
-        <ol className="timeline">{j.timeline.slice().reverse().slice(0, 6).map((t, i) => <li key={i}><small>{new Date(t.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>{t.text}</li>)}</ol>
       )}
     </div>
   );

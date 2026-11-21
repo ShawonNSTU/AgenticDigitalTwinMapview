@@ -212,26 +212,21 @@ export default function Home() {
         {!walk.on && ready && devices.length === 0 && !hintClosed && (
           <div className="empty-hint glass">
             <button className="hint-close" aria-label="Close" title="Close" onClick={closeHint}>✕</button>
-            <b>This floor has no SmartThings devices yet</b>
-            <span>Drag devices from the palette onto any room. Wall units snap to the nearest wall, locks go beside a door, lights on the ceiling.</span>
+            <b>No devices yet</b>
+            <span>Drag one from the palette onto a room</span>
           </div>
         )}
         {roomSel && !walk.on && (
           <div className="room-card glass">
             <button className="hint-close" aria-label="Close" onClick={() => { setRoomSel(null); send({ type: 'selectRoom', room: '' }); }}>✕</button>
-            <span className="muted">Room</span>
             <b>{roomSel.roomName}</b>
-            <span className="muted">{devices.filter(d => d.room === roomSel.room).length} SmartThings devices</span>
-            {fitted(roomSel.room)
-              ? <span className="ready-chip">SmartThings devices installed · ready for guests</span>
-              : guestReady(roomSel.room)
-                ? <span className="ready-chip">Hotel setup done · ready for guests</span>
-                : <span className="muted small">Guest access needs this room's devices first: use “Set up as guest room”.</span>}
+            <span className="muted">{devices.filter(d => d.room === roomSel.room).length} devices{guestReady(roomSel.room) ? ' · ready for guests' : ''}</span>
             <div className="row">
               <button onClick={() => { send({ type: 'walk', action: 'start', room: roomSel.room }); }}>Walk in</button>
-              {!fitted(roomSel.room) && <button className={guestReady(roomSel.room) ? '' : 'pri'} onClick={() => setupRoom(roomSel.room)}>Set up as guest room</button>}
+              {guestReady(roomSel.room)
+                ? <button className="pri" onClick={() => setQrFor(roomSel)}>Check in a guest</button>
+                : <button className="pri" onClick={() => setupRoom(roomSel.room)}>Set up as guest room</button>}
               <button className={furnish ? 'on' : ''} onClick={() => setFurnish(!furnish)}>Furniture</button>
-              <button className="pri" disabled={!guestReady(roomSel.room)} title={guestReady(roomSel.room) ? '' : 'Run Hotel setup for this room first'} onClick={() => setQrFor(roomSel)}>Guest QR code</button>
             </div>
             {furnish && <RoomFurniture room={roomSel.room} />}
           </div>

@@ -46,13 +46,11 @@ export default function WalkHud({ room, note, rooms, onQr }: { room: string; not
       {note && <div className="walk-note glass">{note}</div>}
       {help && (
         <div className="walk-help glass">
-          <b>Walk through the floor</b>
+          <b>Walking</b>
           <dl>
-            <dt>Look around</dt><dd>Drag (mouse or one finger)</dd>
-            <dt>Go somewhere</dt><dd>Click or tap the floor; through a doorway to enter that room</dd>
-            <dt>Walk</dt><dd>W A S D or arrow keys (Shift runs), mouse wheel, or the stick</dd>
-            <dt>Touch</dt><dd>Spread two fingers to step forward, pinch to step back</dd>
-            <dt>Leave</dt><dd>Esc or “Back to map”</dd>
+            <dt>Look</dt><dd>Drag</dd>
+            <dt>Go</dt><dd>Tap the floor or a doorway</dd>
+            <dt>Walk</dt><dd>Stick, W A S D or arrows</dd>
           </dl>
         </div>
       )}

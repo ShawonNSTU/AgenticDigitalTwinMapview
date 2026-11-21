@@ -63,26 +63,31 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
     <div className="modal-back" onClick={onClose}>
       <div className="modal glass" role="dialog" aria-label={`Guest QR for ${roomName}`} onClick={e => e.stopPropagation()}>
         <button className="hint-close" aria-label="Close" onClick={onClose}>✕</button>
-        <h3>Guest check-in · {roomName}</h3>
-        <p className="muted">A guest who scans this code walks from the entrance to this room in 3D, and can see and control only this room&apos;s devices. Doors to other rooms stay shut. Unlocking doors is never allowed.</p>
+        <h3>Check in a guest</h3>
+        <p className="muted">{roomName} · the guest controls only this room</p>
         {!made ? (
           <div className="qr-form">
-            <label>Guest name<input value={label} maxLength={60} placeholder="e.g. Ms. Rahman" onChange={e => setLabel(e.target.value)} /></label>
-            <label>Checkout (access ends)<input type="datetime-local" value={checkout} onChange={e => setCheckout(e.target.value)} /></label>
+            <label>Guest name<input value={label} maxLength={60} placeholder="Ms. Rahman" onChange={e => setLabel(e.target.value)} /></label>
+            <label>Check-out<input type="datetime-local" value={checkout} onChange={e => setCheckout(e.target.value)} /></label>
+            <label className="chk"><input type="checkbox" checked={verify} onChange={e => setVerify(e.target.checked)} /> Ask for a check-in PIN</label>
+            <details className="fold">
+            <summary>More options</summary>
+            <div className="qr-more">
             <label>Walk starts at<select value={entrance} onChange={e => setEntrance(e.target.value)}>
               <option value="">{defEntrance ? `${entrances.find(x => x.key === defEntrance)?.name ?? defEntrance} (default)` : 'Nearest entrance (automatic)'}</option>
               {entrances.filter(x => x.key !== defEntrance).map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
             </select></label>
-            <label>Location badge (optional: the tag id of the badge or key card the hotel's positioning system tracks)<input value={tag} maxLength={64} placeholder="e.g. BADGE-0042" onChange={e => setTag(e.target.value.trim())} /></label>
+            <label>Location badge (optional)<input value={tag} maxLength={64} placeholder="e.g. BADGE-0042" onChange={e => setTag(e.target.value.trim())} /></label>
             {types.length > 0 && (
               <div className="perm">
-                <span className="muted">Room controls the guest may use (others are shown but view-only)</span>
+                <span className="muted">Guest may control</span>
                 <div className="perm-list">{types.map(t => <label key={t.type} className="chk"><input type="checkbox" checked={!!allowed[t.type]} onChange={e => setAllowed(a => ({ ...a, [t.type]: e.target.checked }))} /> {t.label}</label>)}</div>
-                {types.some(t => t.type === 'ac') && <label className="row-lbl">AC temperature allowed <input type="number" min={16} max={30} value={acMin} onChange={e => setAcMin(+e.target.value)} /> to <input type="number" min={16} max={30} value={acMax} onChange={e => setAcMax(+e.target.value)} /> °C</label>}
+                {types.some(t => t.type === 'ac') && <label className="row-lbl">AC range <input type="number" min={16} max={30} value={acMin} onChange={e => setAcMin(+e.target.value)} /> to <input type="number" min={16} max={30} value={acMax} onChange={e => setAcMax(+e.target.value)} /> °C</label>}
               </div>
             )}
-            <label className="chk"><input type="checkbox" checked={verify} onChange={e => setVerify(e.target.checked)} /> Verify identity with a check-in PIN (handed over at the desk)</label>
-            <label className={`chk ${verify ? '' : 'dim'}`}><input type="checkbox" disabled={!verify} checked={verify && unlock} onChange={e => setUnlock(e.target.checked)} /> Let the guest unlock this room&apos;s door (hotel policy; uses the SmartThings lock when linked on Integrations)</label>
+            <label className={`chk ${verify ? '' : 'dim'}`}><input type="checkbox" disabled={!verify} checked={verify && unlock} onChange={e => setUnlock(e.target.checked)} /> Guest may unlock the door (needs the PIN)</label>
+            </div>
+            </details>
             {err && <div className="bad-text">{err}</div>}
             <button className="pri" onClick={create}>Create QR code</button>
           </div>
@@ -92,11 +97,11 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
             <div className="qr-side">
               <b>{made.roomName}</b>
               <span className="muted">Valid until {when(made.expiresAt)}{made.entranceName ? ` · starts at ${made.entranceName}` : ''}</span>
-              {made.pin && <div className="pin-out"><small>Check-in PIN (give it to the guest, not printed on the QR)</small><b>{made.pin}</b></div>}
-              {made.allowUnlock && <span className="muted">Door unlock allowed for this guest.</span>}
-              <label>Link address<input value={base} onChange={e => setBase(e.target.value)} /></label>
-              {local && <span className="warn-text">Phones can&apos;t open “localhost”. Put this computer&apos;s network address here (for example http://192.168.1.20:3000) before printing.</span>}
-              <code className="qr-url">{url(made)}</code>
+              {made.pin && <div className="pin-out"><small>Check-in PIN</small><b>{made.pin}</b></div>}
+              {local ? <>
+                <span className="warn-text">Phones can’t open “localhost”: use this computer’s network address.</span>
+                <label>Link address<input value={base} onChange={e => setBase(e.target.value)} /></label>
+              </> : null}
               <div className="row">
                 <button onClick={() => { navigator.clipboard?.writeText(url(made)); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>{copied ? 'Copied' : 'Copy link'}</button>
                 {qr && <a href={qr} download={`guest-qr-${made.room}.png`}><button>Download PNG</button></a>}
@@ -108,7 +113,7 @@ export default function GuestQr({ room, roomName, onClose }: { room: string; roo
         )}
         {passes.length > 0 && (
           <div className="qr-list">
-            <b>Active passes for this room</b>
+            <b>Guests in this room</b>
             {passes.map(p => (
               <div key={p.token} className="qr-row">
                 <span>{p.label || 'Guest'} · until {when(p.expiresAt)}{p.pin ? ` · PIN ${p.pin}` : ''}{p.allowUnlock ? ' · may unlock' : ''}</span>

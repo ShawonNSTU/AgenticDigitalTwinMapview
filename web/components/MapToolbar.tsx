@@ -4,7 +4,7 @@ import { onRenderer, send } from '@/lib/bridge';
 
 const LAYERS = [
   { key: 'piping', label: 'Piping' },
-  { key: 'furniture', label: 'Interior' },
+  { key: 'furniture', label: 'Furniture' },
   { key: 'names', label: 'Device IDs' },
   { key: 'temperature', label: 'Health' },
   { key: 'comfort', label: 'Comfort' },
@@ -23,17 +23,18 @@ export default function MapToolbar() {
   const toggle = (k: (typeof LAYERS)[number]['key']) => send({ type: 'setLayer', layer: k, on: !on[k] });
   return (
     <div className="map-toolbar glass">
-      <span className="layers-inline">{LAYERS.map(l => <button key={l.key} className={on[l.key] ? 'on' : ''} onClick={() => toggle(l.key)}>{l.label}</button>)}</span>
-      {/* a narrow map (tablet, small laptop): the layers in a menu so the toolbar never runs into the palette */}
       <details className="layers-menu">
-        <summary>Layers{LAYERS.some(l => on[l.key]) ? <i>{LAYERS.filter(l => on[l.key]).length}</i> : null}</summary>
-        <div className="layers-pop glass">{LAYERS.map(l => (
-          <label key={l.key}><input type="checkbox" checked={!!on[l.key]} onChange={() => toggle(l.key)} />{l.label}</label>))}</div>
+        <summary>Layers{LAYERS.some(l => on[l.key] && !['piping', 'furniture'].includes(l.key)) ? <i>{LAYERS.filter(l => on[l.key] && !['piping', 'furniture'].includes(l.key)).length}</i> : null}</summary>
+        <div className="layers-pop glass">
+          {LAYERS.map(l => <label key={l.key}><input type="checkbox" checked={!!on[l.key]} onChange={() => toggle(l.key)} />{l.label}</label>)}
+          <div className="layers-q">
+            <span>Quality</span>
+            <select aria-label="Rendering quality" title={q ? `${q.fps} fps` : ''} value={q?.auto ? 'auto' : q?.tier ?? 'auto'} onChange={e => send({ type: 'setQuality', tier: e.target.value as 'auto' })}>
+              {TIERS.map(([k, l]) => <option key={k} value={k}>{k === 'auto' && q?.auto ? `Auto (${q.tier})` : l}</option>)}
+            </select>
+          </div>
+        </div>
       </details>
-      <span className="sep" />
-      <select className="quality" aria-label="Rendering quality" title={q ? `${q.auto ? 'Adapts to this device' : 'Fixed'} · ${q.fps} fps` : 'Rendering quality'} value={q?.auto ? 'auto' : q?.tier ?? 'auto'} onChange={e => send({ type: 'setQuality', tier: e.target.value as 'auto' })}>
-        {TIERS.map(([k, l]) => <option key={k} value={k}>{k === 'auto' && q?.auto ? `Auto · ${q.tier}` : l}</option>)}
-      </select>
       <button onClick={() => send({ type: 'resetView' })} title="Back to the whole floor">Whole floor</button>
     </div>
   );

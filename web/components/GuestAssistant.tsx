@@ -4,7 +4,7 @@ import { AgentPanel, type UiAction } from './agent/Agent';
 
 type Lang = 'en-US' | 'bn-BD';
 const TASKS: Record<Lang, string[]> = {
-  'en-US': ['Is my room ready?', 'Make my room comfortable', 'Make the room cosy for a movie', 'I’m heading out for a while', 'What can I control here?'],
+  'en-US': ['Is my room ready?', 'Make my room comfortable', 'Movie night', 'I’m heading out for a while'],
   'bn-BD': ['লাইট কম করো', 'এসি ২৪ ডিগ্রি করো', 'টিভি বন্ধ করো', 'ঘুমানোর জন্য রুম ঠিক করো'],
 };
 
@@ -48,7 +48,7 @@ export default function GuestAssistant({ token, onUi }: { token: string; onUi: (
   const home = (ask: (q: string) => void) => (
     <div className="ag-home">
       <h3>{lang === 'bn-BD' ? 'কী করব?' : 'How can I help with your room?'}</h3>
-      <p className="muted">{lang === 'bn-BD' ? 'নিজের ভাষায় বলুন বা লিখুন।' : 'Tell me in your own words, by typing or with the microphone. I change your room\'s devices, run routines like movie night, and answer questions about your room and the floor.'}</p>
+      <p className="muted">{lang === 'bn-BD' ? 'নিজের ভাষায় বলুন বা লিখুন।' : 'Type or speak, in your own words.'}</p>
       <div className="ag-tasks">{TASKS[lang].map(t => <button type="button" key={t} onClick={() => ask(t)}><i>›</i>{t}</button>)}</div>
     </div>
   );
