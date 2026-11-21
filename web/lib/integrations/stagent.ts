@@ -288,7 +288,7 @@ export function twinInsight(d: any, scope: Scope) {
 /* ---------------- one chat turn: the PoC's chat events from the agent's stream ---------------- */
 
 export type Turn = { messages: { role: string; content: string }[] };
-const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHighlight']);
+const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHighlight', 'resetView', 'setLayer', 'trace']);
 const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 /**
@@ -350,7 +350,9 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
               // the diagnostics skill (staff): highlight / focus / open a device and its part, with ids checked against the scope
               if (scope.kind === 'host') for (const u of Array.isArray(d.ui) ? d.ui : []) {
                 if (!u || !ALLOWED_UI.has(u.type)) continue;
-                if (u.type === 'clearHighlight') { out('ui_action', { type: 'clearHighlight' }); continue; }
+                if (u.type === 'clearHighlight' || u.type === 'resetView') { out('ui_action', { type: u.type }); continue; }
+                if (u.type === 'setLayer') { if (typeof u.layer === 'string') out('ui_action', { type: 'setLayer', layer: u.layer, on: u.on !== false }); continue; }
+                if (u.type === 'trace') { const t = resolveDevice(String(u.from), scope)?.id; if (t) out('ui_action', { type: 'trace', from: t }); continue; }
                 const ok = (Array.isArray(u.ids) ? u.ids : [u.id]).map((i: unknown) => resolveDevice(String(i), scope)?.id).filter(Boolean) as string[];
                 if (!ok.length) continue;
                 if (u.type === 'highlight') out('ui_action', { type: 'highlight', ids: ok, reason: 'found by the assistant' });

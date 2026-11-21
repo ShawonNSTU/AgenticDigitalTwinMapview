@@ -23,7 +23,13 @@ agent; the web app sends the role and limits what each may see and do). It runs 
 | `device_control` | all | power, brightness, colour temperature, shade, AC temperature/mode/fan, TV, fan, purifier, lock, vacuum; relative changes; many devices at once |
 | `device_status` | all | live state, read fresh from the twin |
 | `device_info`, `rooms`, `chitchat` | all | what exists, rooms, small talk |
+| `routines` | all | movie night, good night, morning, welcome, focus, away: many devices of a room at once (a guest: only the pass's room and controls) |
 | `diagnostics` | admin, technician | find devices by type/room/health on the whole building, show them in 3D, explain a fault from the twin's evidence |
+| `maintenance` | admin, technician | list open alerts, acknowledge, investigate, resolve with cause and action, fix (clears the fault) |
+| `scene` | admin, technician | 3D view: highlight, focus, open parts, trace piping, layers, demo scenario, simulated time |
+| `checkin` | admin, technician | guest check-in (link + PIN for a room), who is checked in, check out |
+| `building` | admin, technician | rooms, devices per room, floor plan status; it follows a new floor plan at once |
+| floor-plan reading | web app | `POST /floorplan/parse`: rooms, doors, scale and names from a plan image (OpenCV, optional Claude vision) |
 
 - **Roles**: staff see the whole building; a guest only the guest's room, with the pass's controls and
   temperature range. Commands that need confirmation (unlock, stop a wash) are never offered to the agent.

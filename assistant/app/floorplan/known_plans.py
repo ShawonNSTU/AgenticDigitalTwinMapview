@@ -20,7 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 PRESET_DIR = Path(os.getenv("KNOWN_PLANS_DIR", ROOT / "web" / "public" / "presets"))
 PUBLIC_DIR = Path(os.getenv("KNOWN_PLANS_PUBLIC_DIR", ROOT / "web" / "lib" / "presets"))
 

@@ -156,8 +156,7 @@ All device data is simulated.
 
 | Folder | What | Stack |
 |---|---|---|
-| [`agent-backend/`](agent-backend) | AI agent: device search, insights, control (with confirmation), map actions | Python, FastAPI, Claude tool use |
-| [`assistant/`](assistant) | SmartThings agent: controls and reads the zone's devices in plain words, through the twin | Python, FastAPI, Ollama (`gpt-oss:20b`) |
+| [`assistant/`](assistant) | The one AI assistant for admin, technician and guest: device control (real + simulated), routines, 3D view, guest check-in, faults and alerts, floor-plan reading | Python, FastAPI, Ollama |
 | [`godot-renderer/`](godot-renderer) | 3D renderer: floor, devices, piping, opened-device internals | Godot 4.7, GDScript |
 | [`web/`](web) | Product UI (3D view, device palette, side panel, chat) + simulated device platform API | Next.js, TypeScript |
 | [`docs/`](docs) | Build brief ([PROMPT.md](docs/PROMPT.md)) and contracts between the parts | |
@@ -173,7 +172,7 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
              ──▶ /api/st/v1/devices (SmartThings-compatible) and /api/st/v1/twin (staff) ─▶ platform
                   │  └─ real device when linked (api.smartthings.com)
                   └─ ui_action events ─▶ page ─▶ Godot
-   agent-backend: floor-plan reading only
+   the same service reads floor-plan images (POST /floorplan/parse)
 ```
 
 ## Story mode: one guest, one night
@@ -223,13 +222,13 @@ Requirements: Node 20+, Python 3.11+, Godot 4.7.x.
 # 1. Web app + simulated platform  → http://localhost:3000
 cd web && npm install && npm run dev
 
-# 2. Agent  → http://localhost:8000
-cd agent-backend
+# 2. Assistant  → http://localhost:8100   (needs an Ollama server with the model pulled)
+cd assistant
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"     # includes OpenCV for the floor plan reader
+pip install -r requirements-dev.txt     # includes OpenCV for the floor plan reader
 # optional, for reading room names printed on plans: apt install tesseract-ocr  (or brew install tesseract)
-cp .env.example .env        # add ANTHROPIC_API_KEY, or leave empty for demo mode
-uvicorn app.main:app --reload --port 8000
+cp .env.example .env        # set OLLAMA_BASE_URL and OLLAMA_MODEL
+python main.py
 
 # 2b. SmartThings agent (optional) → http://localhost:8100, needs Ollama with the model pulled
 cd assistant
@@ -252,7 +251,7 @@ started, so restart it after exporting.
 The app starts by asking for a floor plan (http://localhost:3000 sends you to /setup until one is built). Upload the
 image and it is read straight away; check the names, the building and floor, and the scale, then render. The floor
 last built is kept in `web/.data/floor.json` and comes back after a restart (devices placed later are not kept).
-"Upload floor plan" in the header replaces it. What the reader does (agent-backend/app/plan_cv.py, OpenCV + Tesseract):
+"Upload floor plan" in the header replaces it. What the reader does (assistant/app/floorplan/plan_cv.py, OpenCV + Tesseract):
 
 - a photo of a sheet taken at an angle is recognised from the paper outline and straightened on its corners
   automatically, then read again (the handles stay in "Straighten photo" for fine-tuning);
@@ -274,7 +273,7 @@ rename or delete rooms, add or remove doors, set the real plan width, switch the
 Devices are added afterwards by dragging them onto the 3D map.
 
 The 4th floor: an upload of the Samsung R&D 4th-floor plan looks like any other upload, but it is recognised
-(agent-backend/app/known_plans.py) and built from the hand-checked model in `web/lib/presets/samsung-rnd-4f.json`,
+(assistant/app/floorplan/known_plans.py) and built from the hand-checked model in `web/lib/presets/samsung-rnd-4f.json`,
 with the SmartThings Experience Zone, the lift lobby and its devices. Recognition matches the drawing itself (ORB
 features and a homography against the reference images, so scans, crops, rotations and phone photos all match) when the
 private drawing is installed in `web/public/presets/` ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), and
@@ -291,8 +290,7 @@ Try in the chat: "which air conditioners have a problem?", "what's wrong with OD
 ## Tests
 
 ```bash
-cd agent-backend && pytest                              # search, tools, demo mode, eval cases, guest assistant
-cd assistant && TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   # skills + end to end via the twin
+cd assistant && TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   # skills, floor plans, end to end via the twin
 cd web && npm run typecheck && npm run build
 # after every pull: cd web && npm install && npm run export:renderer && npm run build && npm start
 cd web && npm run test:faults                           # every fault × severity: readings, parts, diagnosis

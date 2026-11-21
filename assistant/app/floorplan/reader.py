@@ -16,9 +16,12 @@ import re
 import cv2
 import numpy as np
 
-from . import known_plans, plan_cv
+from app.floorplan import known_plans, plan_cv
 
-from .config import ANTHROPIC_API_KEY, AGENT_MODEL
+from app.config import settings
+
+ANTHROPIC_API_KEY = settings.anthropic_api_key
+AGENT_MODEL = settings.vision_model
 
 PROMPT = """This is an architectural floor plan. Trace every room as a polygon following the inside face of its walls.
 Rooms are often not rectangles: L-shapes, angled walls, bay windows and notches must be traced corner by corner.

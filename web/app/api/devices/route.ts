@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/devices?type=ac&room=bedroom&health=fault
- * Plain filtering. Natural-language search lives in the agent backend.
+ * Plain filtering. Natural-language search is the assistant (/api/chat).
  */
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;

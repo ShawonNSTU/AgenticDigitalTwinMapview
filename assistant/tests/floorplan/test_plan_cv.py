@@ -7,8 +7,8 @@ import shutil
 import cv2
 import pytest
 
-from app import floorplan, plan_cv
-from plan_synth import draw, iou_rect
+from app.floorplan import reader as floorplan, plan_cv
+from tests.floorplan.plan_synth import draw, iou_rect
 
 STYLES = [("thick", 40), ("thick", 80), ("hatched", 80), ("thin", 40), ("thin", 80), ("grey", 40), ("grey", 80)]
 

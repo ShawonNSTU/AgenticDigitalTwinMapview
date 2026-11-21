@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 import pytest
 
-from app import floorplan, known_plans, plan_cv
-from plan_synth import draw, iou_rect
+from app.floorplan import reader as floorplan, known_plans, plan_cv
+from tests.floorplan.plan_synth import draw, iou_rect
 
 
 @pytest.mark.parametrize("style", ["thick", "hatched", "thin", "grey"])

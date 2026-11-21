@@ -246,3 +246,79 @@ def test_diagnostics_api_is_staff_only():
     assert p["token"]
     assert httpx.get(f"{TWIN}/api/st/v1/twin/floor", timeout=10).status_code == 401
     assert httpx.get(f"{TWIN}/api/st/v1/twin/floor", headers={"Authorization": "Bearer nope"}, timeout=10).status_code == 401
+
+
+# ---- routines, check-in, 3D view, alerts: the staff and guest skills against the live twin ----
+
+def test_staff_routine_sets_every_device_type_in_the_room(llm):
+    ac = gym_device("ac")
+    httpx.delete(f"{TWIN}/api/devices/{ac['id']}/fault", timeout=10)
+    light, blinds = gym_device("light"), gym_device("blinds")
+    llm.script = {"router": [route("routines", "good night in the gym room")], "routines": [{"action": "run", "routine": "sleep", "room": "gym-room"}]}
+    events = chat("/api/chat", "good night in the gym room")
+    text = next(d["text"] for e, d in events if e == "text")
+    assert text.lower().startswith("done! good night in gym room"), events
+    assert readings(light["id"])["lv"] == 0 and readings(blinds["id"])["pos"] == 0
+    assert readings(ac["id"])["set"] == 24
+    hi = next(d for e, d in events if e == "ui_action" and d["type"] == "highlight")
+    assert {light["id"], blinds["id"], ac["id"]} <= set(hi["ids"])
+
+
+def test_guest_routine_only_touches_what_the_pass_allows(llm):
+    p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False, "controls": ["light"]}, timeout=10).json()
+    d = zone_device("Light 2")
+    httpx.post(f"{TWIN}/api/devices/{d['id']}/commands", json={"command": "setLevel", "args": {"percent": 10}}, timeout=10)
+    llm.script = {"router": [route("routines", "make it bright")], "routines": [{"action": "run", "routine": "focus"}]}
+    events = chat(f"/api/guest/{p['token']}/chat", "make it bright")
+    res = next(x for e, x in events if e == "result")["results"]
+    assert res and all(r["ok"] for r in res), events
+    assert readings(d["id"])["lv"] == 100                                           # the pass allows lights
+    shade = zone_device("Aqara Roller Shade Controller")
+    assert shade["name"] not in [r["label"] for r in res]                           # shades are not in this pass
+
+
+def test_checkin_check_out_through_the_assistant(llm):
+    llm.script = {"router": [route("checkin", "check Rahim into the zone")],
+                  "checkin": [{"action": "create", "room": "smartthings-experience-zone", "hours": 24, "label": "Rahim", "verify": True, "pass": ""}]}
+    events = chat("/api/chat", "check Rahim into the zone")
+    text = next(d["text"] for e, d in events if e == "text")
+    assert "/guest/" in text and "PIN:" in text and "Rahim" in text, events
+    token = text.split("/guest/")[1].split()[0].rstrip(".")
+    assert httpx.get(f"{TWIN}/api/guest/{token}", timeout=10).status_code in (200, 401)   # the link is live (PIN not yet entered)
+    llm.script = {"router": [route("checkin", "check out Rahim")],
+                  "checkin": [lambda s, u: {"action": "revoke", "room": "", "hours": 24, "label": "", "verify": True,
+                                            "pass": next(l.split(":")[0] for l in s.splitlines() if "Rahim" in l and l[0].isdigit())}]}
+    events = chat("/api/chat", "check out Rahim")
+    assert "Checked out Rahim" in next(d["text"] for e, d in events if e == "text"), events
+    assert httpx.get(f"{TWIN}/api/guest/{token}", timeout=10).status_code == 410   # withdrawn
+
+
+def test_fault_is_listed_and_fixed_by_the_assistant(llm):
+    ac = gym_device("ac")
+    httpx.post(f"{TWIN}/api/devices/{ac['id']}/fault", json={"key": "offline"}, timeout=10)
+    time.sleep(7)                                                                    # a fault develops over about 6 s
+    llm.script = {"router": [route("maintenance", "what alerts are open?")], "maintenance": [{"action": "list", "device_id": "", "cause": "", "action_taken": ""}]}
+    events = chat("/api/chat", "what alerts are open?")
+    assert "offline" in next(d["text"] for e, d in events if e == "text").lower(), events
+    llm.script = {"router": [route("maintenance", f"fix {ac['id']}")], "maintenance": [{"action": "fix", "device_id": ac["id"], "cause": "", "action_taken": ""}]}
+    events = chat("/api/chat", f"fix {ac['id']}")
+    assert next(d["text"] for e, d in events if e == "text").startswith("Fixed"), events
+    time.sleep(1)
+    assert not [a for a in httpx.get(f"{TWIN}/api/alerts", timeout=10).json()["alerts"] if a["deviceId"] == ac["id"]]
+    rec = httpx.get(f"{TWIN}/api/maintenance?device={ac['id']}", timeout=10).json()["records"]
+    assert rec and rec[-1]["status"] == "resolved" and "assistant" in rec[-1]["by"]
+
+
+def test_scene_and_building_through_the_assistant(llm):
+    llm.script = {"router": [route("scene", "hide the piping")], "scene": [{"action": "layer", "device_ids": [], "part": "", "layer": "piping", "on": False, "scenario": "", "time": 0}]}
+    events = chat("/api/chat", "hide the piping")
+    assert ("ui_action", {"type": "setLayer", "layer": "piping", "on": False}) in events, events
+    llm.script = {"router": [route("building", "how many rooms?")], "building": [lambda s, u: {"reply": s.split("\n")[2]}]}
+    events = chat("/api/chat", "how many rooms?")
+    assert "rooms" in next(d["text"] for e, d in events if e == "text") and "gym room" in llm.calls[-1]["system"].lower()
+
+
+def test_assistant_ops_are_limited_by_role():
+    sess = httpx.get(f"{TWIN}/api/st/v1/twin/floor", timeout=10)
+    assert sess.status_code == 401
+    assert httpx.post(f"{TWIN}/api/st/v1/twin/ops/layout", json={}, headers={"Authorization": "Bearer nope"}, timeout=10).status_code == 401

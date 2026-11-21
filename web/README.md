@@ -8,7 +8,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-`ASSISTANT_URL` points the `/api/chat` routes at the assistant (assistant, Ollama); `AGENT_URL` at the floor-plan service (agent-backend).
+`ASSISTANT_URL` points the `/api/chat` routes at the assistant (assistant/, Ollama). The same service reads floor-plan images.
 
 | Path | Purpose |
 |---|---|

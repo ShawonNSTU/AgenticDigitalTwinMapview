@@ -1,7 +1,7 @@
 import asyncio
 import pytest
-from app import floorplan
-from app.floorplan import ParseError, parse_json
+from app.floorplan import reader as floorplan
+from app.floorplan.reader import ParseError, parse_json
 
 
 def test_parse_json_polygons_and_rectangles():

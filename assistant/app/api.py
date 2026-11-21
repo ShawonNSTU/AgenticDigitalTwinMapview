@@ -11,7 +11,7 @@ import httpx
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.config import Settings, settings as default_settings
 from app.core.agent import Agent
@@ -156,6 +156,23 @@ def create_app(settings: Settings = default_settings, llm: LLM | None = None) ->
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.post("/floorplan/parse")
+    async def floorplan_parse(body: dict[str, Any]):
+        """Read an uploaded floor plan image ({image: dataURL}): rooms as polygons, doors, furniture, scale, printed
+        names (0..1 image fractions). Image processing needs no LLM; a Claude key adds vision. Imported lazily so the
+        assistant also runs where OpenCV is not installed."""
+        image = body.get("image")
+        if not isinstance(image, str) or not image or len(image) > 12_000_000:
+            return JSONResponse({"error": "send {image: <data URL>} up to 12 MB"}, status_code=422)
+        try:
+            from app.floorplan.reader import ParseError, analyze_plan
+        except ImportError as exc:
+            return JSONResponse({"error": f"floor-plan reading needs numpy and opencv-contrib-python-headless ({exc})"}, status_code=503)
+        try:
+            return await analyze_plan(image)
+        except ParseError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
 
     @app.post("/chatbot/action", response_model=ApiResponse)
     async def chatbot_action(request: ChatbotActionRequest, authorization: Optional[str] = Header(None)):

@@ -30,6 +30,26 @@ class TwinClient:
     def __init__(self, settings: Settings):
         self.s = settings
 
+    async def op(self, name: str, payload: dict[str, Any] | None, token: str | None) -> TwinResult:
+        """POST {twin_base}/ops/{name}: an action beyond device commands (guest passes, routines, alerts, 3D simulation...)."""
+        url = f"{self.s.twin_base}/ops/{name}"
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        try:
+            async with httpx.AsyncClient(timeout=self.s.st_timeout_s * 4) as client:   # a routine runs many commands
+                resp = await client.post(url, json=payload or {}, headers=headers)
+        except httpx.HTTPError as exc:
+            log.error("twin op %s failed: %s", name, exc)
+            return TwinResult(False, error=str(exc) or type(exc).__name__)
+        try:
+            data: Any = resp.json()
+        except ValueError:
+            data = None
+        if not 200 <= resp.status_code < 300 or not isinstance(data, dict):
+            msg = (data or {}).get("error") if isinstance(data, dict) else None
+            msg = msg.get("message") if isinstance(msg, dict) else msg
+            return TwinResult(False, data, str(msg or f"HTTP {resp.status_code}"))
+        return TwinResult(True, data)
+
     async def _get(self, path: str, token: str | None) -> TwinResult:
         url = f"{self.s.twin_base}/{path}"
         headers = {"Authorization": f"Bearer {token}"} if token else {}

@@ -74,6 +74,9 @@ class Settings:
     # Diagnostics skill (find devices by health, explain a fault from the twin's evidence). Needs the twin API.
     diagnostics_enabled: bool = field(default_factory=lambda: _env_bool("DIAGNOSTICS_ENABLED", True))
 
+    # The web app's address as a guest or staff member opens it (for check-in links the assistant hands out).
+    web_public_url: str = field(default_factory=lambda: _env("WEB_PUBLIC_URL", "http://localhost:3000").rstrip("/"))
+
     # --- Conversation / prompt budget ---
     history_max_messages: int = field(default_factory=lambda: _env_int("HISTORY_MAX_MESSAGES", 6))
     history_max_chars: int = field(default_factory=lambda: _env_int("HISTORY_MAX_CHARS", 300))
@@ -97,6 +100,11 @@ class Settings:
         default_factory=lambda: PROJECT_ROOT / _env("ROOMS_DATA_PATH", "data/rooms.json")
     )
 
+    # --- Floor-plan reading (POST /floorplan/parse) ---
+    # Image processing needs no LLM. A Claude key adds names and interior items from vision; empty = image processing only.
+    anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
+    vision_model: str = field(default_factory=lambda: _env("VISION_MODEL", "claude-sonnet-5-5"))
+
     # --- Robustness ---
     # Turns running at once. A local Ollama serves one model call at a time, so extra turns wait their turn.
     max_concurrent_turns: int = field(default_factory=lambda: _env_int("MAX_CONCURRENT_TURNS", 4))
@@ -105,7 +113,7 @@ class Settings:
 
     # --- Server ---
     host: str = field(default_factory=lambda: _env("HOST", "0.0.0.0"))
-    port: int = field(default_factory=lambda: _env_int("PORT", 8100))   # 8000 is the twin's agent-backend
+    port: int = field(default_factory=lambda: _env_int("PORT", 8100))
     log_level: str = field(default_factory=lambda: _env("LOG_LEVEL", "INFO").upper())
 
 
