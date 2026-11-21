@@ -327,7 +327,7 @@ const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.str
  * events (docs/contracts/agent-api.md): `tool` for each progress step, `text` for the reply, `ui_action` to show
  * the devices it changed or read in 3D, `result` (guest page) with each device's outcome, `error`, then `done`.
  */
-export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = {}): Response {
+export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean; publicUrl?: string } = {}): Response {
   const msgs = (turn.messages ?? []).filter(m => m && typeof m.content === 'string' && m.content.trim());
   const last = [...msgs].reverse().find(m => m.role === 'user');
   const enc = new TextEncoder();
@@ -343,7 +343,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
           up = await fetch(`${ASSISTANT_URL()}/control/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${session}` },
-            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope), last_actions: takeLastActions(scope), room_guide: roomGuide(scope) } }),
+            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope), last_actions: takeLastActions(scope), room_guide: roomGuide(scope), ...(opts.publicUrl ? { public_url: opts.publicUrl } : {}) } }),
             signal: AbortSignal.timeout(120_000),
           });
         } catch {
