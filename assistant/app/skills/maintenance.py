@@ -65,15 +65,15 @@ class MaintenanceSkill(Skill):
         title = dev["title"]
         status = {"acknowledge": "acknowledged", "investigate": "investigating", "resolve": "resolved", "fix": "resolved"}[a]
         cause, took = (out.get("cause") or "").strip(), (out.get("action_taken") or "").strip()
-        if a == "fix" and dev.get("simulated_fault"):
-            r = await need_op(self.twin, ctx, "clear_fault", {"device_id": dev["device_id"], "cause": cause or title, "action": took or "Fixed from the assistant"})
-        else:
-            r = await need_op(self.twin, ctx, "alert_update", {"device_id": dev["device_id"], "status": status, "cause": cause, "action": took, "alert": title})
+        # resolving = fixing: the twin returns the device to normal everywhere (fault cleared, scenario repaired, battery)
+        r = await need_op(self.twin, ctx, "alert_update", {"device_id": dev["device_id"], "status": status, "cause": cause or (title if a == "fix" else ""),
+                                                            "action": took or ("Fixed from the assistant" if a == "fix" else ""), "alert": title})
         if not r.ok:
             return SkillResult("error", f"I couldn't update the alert on {dev['name']}: {r.error}", {"error": r.error})
-        msg = {"acknowledge": f"Acknowledged: {dev['name']} in {dev['room']} ({title}).", "investigate": f"Marked as investigating: {dev['name']} ({title}).",
-               "resolve": f"Recorded as resolved: {dev['name']} ({title})" + (f", cause: {cause}" if cause else "") + (f", action: {took}" if took else "") + "."}.get(a, "")
-        if a == "fix":
-            msg = f"Fixed {dev['name']}: the fault is cleared and the device is returning to normal." if dev.get("simulated_fault") else \
-                  f"Recorded the fix on {dev['name']}. There is no simulated fault to clear, so the alert goes away once the device itself reports healthy."
+        fixed = ((r.data or {}).get("record") or {}).get("fixed") or []
+        msg = {"acknowledge": f"Acknowledged: {dev['name']} in {dev['room']} ({title}).", "investigate": f"Marked as investigating: {dev['name']} ({title})."}.get(a, "")
+        if a in {"resolve", "fix"}:
+            msg = f"Resolved **{dev['name']}** ({title})" + (f", cause: {cause}" if cause else "") + (f", action: {took}" if took else "") + "."
+            msg += (f" {', '.join(fixed).capitalize()}: it is back to normal everywhere." if fixed else
+                    " Recorded; the alert clears as soon as the device itself reports healthy.")
         return SkillResult("success", msg, {"device_ids": [dev["device_id"]], "ui": [{"type": "focusDevice", "id": dev["device_id"]}]})

@@ -1,6 +1,6 @@
 import { floor, simState, tick } from '@/lib/sim/runtime';
 import { LAYOUT } from '@/lib/sim/engine';
-import { alerts } from '@/lib/sim/maintenance';
+import { alerts, history } from '@/lib/sim/maintenance';
 import * as ST from '@/lib/integrations/smartthings';
 import { ensureLive } from '@/lib/integrations/stlive';
 
@@ -35,7 +35,14 @@ export async function GET() {
           last = h; send('health', f.devices.map(d => ({ id: d.id, health: d.health, fault: (d as { fault?: string }).fault ?? null })));
           const now = alerts();
           for (const a of now) if (!known.has(a.key)) send('alert', { key: a.key, deviceId: a.deviceId, label: a.label, roomName: a.roomName, level: a.level, title: a.title, assignee: a.assignee });
-          known = new Set(now.map(a => a.key));
+          // an alert that went away: the device is back to normal (a technician resolved it, or it recovered)
+          const open = new Set(now.map(a => a.key));
+          for (const k of known) if (!open.has(k)) {
+            const [deviceId, title] = k.split('|');
+            const rec = history(deviceId).find(r => r.status === 'resolved' && Date.now() - r.at < 60_000);
+            send('cleared', { deviceId, title, by: rec?.by ?? null, cause: rec?.cause ?? null });
+          }
+          known = open;
         }
       };
       push();

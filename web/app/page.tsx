@@ -82,12 +82,14 @@ export default function Home() {
     const es = new EventSource('/api/events');
     es.addEventListener('clock', e => { const s = JSON.parse((e as MessageEvent).data); setSim(s); send({ type: 'setTime', t: s.t }); });
     es.addEventListener('health', () => loadDevices());
+    // a technician fixed something: say so (the list, the 3D view and the device panel update from `health`)
+    es.addEventListener('cleared', e => { const c = JSON.parse((e as MessageEvent).data); toast(`${c.deviceId} is back to normal${c.by ? ` · resolved by ${c.by}` : ''}${c.cause ? `: ${c.cause}` : ''}`); send({ type: 'clearHighlight' }); });
     es.addEventListener('live', () => loadDevices());   // a real SmartThings device changed
     es.addEventListener('devices', () => { loadDevices(); send({ type: 'refreshDevices' }); });
     es.addEventListener('layout', () => { setSel(null); loadDevices(); loadRooms(); });
     loadDevices(); loadRooms();
     return () => es.close();
-  }, [loadDevices, loadRooms]);
+  }, [loadDevices, loadRooms, toast]);
   useEffect(() => { if (sim) send({ type: 'setScenario', key: sim.scenario }); }, [sim?.scenario]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const select = useCallback((id: string) => { setSel(id); send({ type: 'focusDevice', id }); }, []);

@@ -2,8 +2,8 @@
 // investigate. An alert carries where the device is, what it reports, its recent events, the troubleshooting
 // guidance from the diagnosis and the open/acknowledged/investigating/resolved status from the records.
 import { randomBytes } from 'node:crypto';
-import { DEV, ROOMS, TYPES, activeFault, FAULT_DOCS } from './engine';
-import { device, rt, tick } from './runtime';
+import { DEV, ROOMS, TYPES, activeFault, FAULT_DOCS, clearFault, R, state as engineState } from './engine';
+import { device, rt, tick, setSim } from './runtime';
 import { log as journal } from '@/lib/kg/journal';
 
 export type Status = 'new' | 'acknowledged' | 'investigating' | 'resolved';
@@ -64,11 +64,34 @@ export function alerts() {
   return out.sort((a, b) => (rank[a.level] - rank[b.level]) || (b.since - a.since));
 }
 
+/**
+ * A technician resolved the problem: make the device actually healthy, so every view (admin list and 3D view, the
+ * technician console, the guest page, the assistant) shows it fixed within a second, with no manual clearing.
+ *   - a simulated fault on the device (technician console, story, assistant) is cleared;
+ *   - a scenario problem it belongs to (clogged filter, refrigerant, washer drain and the leak beside it) gets the
+ *     scenario's "fixed" point, so its readings recover;
+ *   - a low battery counts as replaced.
+ * A real SmartThings device's own state (e.g. offline) is what the device reports: that clears when it reports again.
+ * Returns what was done.
+ */
+export function fixDevice(id: string): string[] {
+  const done: string[] = [];
+  if (activeFault((DEV as any[]).find(d => d.id === id))) { clearFault(id); done.push('fault cleared'); }
+  const inScenario = (engineState.scen === 'filter' && R.filterAc === id) || (engineState.scen === 'refrig' && (R.odu === id || R.far.includes(id)))
+    || (engineState.scen === 'washer' && (R.washer === id || R.leak === id));
+  if (inScenario && engineState.fixT == null) { setSim({ fix: true }); done.push('scenario repaired'); }
+  if (R.lowBatt === id) { R.lowBatt = null; done.push('battery replaced'); }
+  return done;
+}
+
 export function addRecord(p: { deviceId: string; status: Exclude<Status, 'new'>; cause?: string; action?: string; notes?: string; by?: string; alert?: string }) {
   if (!DEV.some((d: any) => d.id === p.deviceId)) throw new Error(`Unknown device ${p.deviceId}`);
   const r: Record_ = { id: randomBytes(6).toString('hex'), deviceId: p.deviceId, at: Date.now(), by: (p.by ?? 'Technician').slice(0, 40), status: p.status,
     cause: (p.cause ?? '').slice(0, 300), action: (p.action ?? '').slice(0, 300), notes: (p.notes ?? '').slice(0, 1000), alert: (p.alert ?? '').slice(0, 160) };
   records.push(r);
+  // resolved = fixed: the device goes back to normal everywhere (see fixDevice)
+  const fixed = p.status === 'resolved' ? fixDevice(p.deviceId) : [];
+  if (fixed.length) (r as any).fixed = fixed;
   journal({ kind: 'maintenance', by: r.by, devices: [p.deviceId], text: `Maintenance on ${p.deviceId}: ${r.status}${r.cause ? `, cause: ${r.cause}` : ''}${r.action ? `, action: ${r.action}` : ''}${r.notes ? `, notes: ${r.notes}` : ''}` });
   note(p.deviceId, `${r.by}: ${r.status}${r.cause ? ` · cause: ${r.cause}` : ''}`);
   return r;

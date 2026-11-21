@@ -58,6 +58,12 @@ export default function TechPage() {
       load();
     });
     es.addEventListener('health', () => load());
+    // a resolved alert means the device is fixed: it leaves the list everywhere at once
+    es.addEventListener('cleared', e => {
+      const c = JSON.parse((e as MessageEvent).data);
+      setToast(`${c.deviceId} is back to normal${c.by ? ` · resolved by ${c.by}` : ''}`); setTimeout(() => setToast(''), 6000);
+      load();
+    });
     const h = setInterval(load, 5000);
     return () => { es.close(); clearInterval(h); };
   }, [load]);
@@ -80,6 +86,7 @@ export default function TechPage() {
   const record = async () => {
     if (!a) return;
     const r = await fetch('/api/maintenance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: a.deviceId, alert: a.title, ...form }) });
+    if (r.ok && form.status === 'resolved') { const x = await r.clone().json().catch(() => ({})); setToast(`${a.deviceId} resolved${x.fixed?.length ? `: ${x.fixed.join(', ')}; back to normal everywhere` : ''}`); setTimeout(() => setToast(''), 6000); }
     if (r.ok) { setForm(f => ({ ...f, cause: '', action: '', notes: '' })); fetch(`/api/maintenance?device=${a.deviceId}`).then(x => x.json()).then(x => setRecs(x.records)); load(); }
   };
   const summarise = async () => {

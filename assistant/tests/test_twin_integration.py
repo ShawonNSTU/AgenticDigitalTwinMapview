@@ -303,7 +303,7 @@ def test_fault_is_listed_and_fixed_by_the_assistant(llm):
     assert "offline" in next(d["text"] for e, d in events if e == "text").lower(), events
     llm.script = {"router": [route("maintenance", f"fix {ac['id']}")], "maintenance": [{"action": "fix", "device_id": ac["id"], "cause": "", "action_taken": ""}]}
     events = chat("/api/chat", f"fix {ac['id']}")
-    assert next(d["text"] for e, d in events if e == "text").startswith("Fixed"), events
+    assert next(d["text"] for e, d in events if e == "text").startswith("Resolved") and "back to normal" in next(d["text"] for e, d in events if e == "text"), events
     time.sleep(1)
     assert not [a for a in httpx.get(f"{TWIN}/api/alerts", timeout=10).json()["alerts"] if a["deviceId"] == ac["id"]]
     rec = httpx.get(f"{TWIN}/api/maintenance?device={ac['id']}", timeout=10).json()["records"]
@@ -462,3 +462,44 @@ def test_multi_task_message_plans_and_works_through_it(llm):
     routines = httpx.get(f"{TWIN}/api/kg?graph=1", timeout=10).json()["docs"]
     saved = next(d for d in routines if d["kind"] == "routine" and name in d["title"])
     assert "Light 2" in saved["text"] and "20" in saved["text"] and "Light 3" in saved["text"]
+
+
+def _health(dev_id):
+    return httpx.get(f"{TWIN}/api/devices/{dev_id}", timeout=10).json()["health"]
+
+
+def test_technician_resolving_fixes_the_device_everywhere():
+    """A technician marks an alert resolved (technician console: POST /api/maintenance): the device is healthy again
+    for the admin, the alert list and the guest, with no manual 'clear fault'. Also for a scenario problem."""
+    ac = zone_device("Ceiling AC")
+    httpx.post(f"{TWIN}/api/devices/{ac['id']}/fault", json={"key": "offline", "level": "severe"}, timeout=10)
+    time.sleep(7)
+    assert _health(ac["id"]) != "ok" and any(a["deviceId"] == ac["id"] for a in httpx.get(f"{TWIN}/api/alerts", timeout=10).json()["alerts"])
+    p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False}, timeout=10).json()
+    r = httpx.post(f"{TWIN}/api/maintenance", json={"deviceId": ac["id"], "status": "resolved", "cause": "power cable loose", "action": "reseated it", "by": "HVAC technician"}, timeout=10).json()
+    assert r["fixed"] == ["fault cleared"]
+    time.sleep(1)
+    assert _health(ac["id"]) == "ok"                                                                          # admin view
+    assert not [a for a in httpx.get(f"{TWIN}/api/alerts", timeout=10).json()["alerts"] if a["deviceId"] == ac["id"]]   # technicians
+    gv = httpx.get(f"{TWIN}/api/guest/{p['token']}", timeout=10).json()
+    assert next(d for d in gv["devices"] if d["id"] == ac["id"])["health"] == "ok"                         # guest
+    floor = httpx.get(f"{TWIN}/api/floor", timeout=10).json()
+    assert next(d for d in floor["devices"] if d["id"] == ac["id"])["health"] == "ok"                      # 3D view
+
+
+def test_resolving_a_scenario_problem_repairs_it():
+    ac = gym_device("ac")
+    httpx.post(f"{TWIN}/api/sim", json={"scenario": "filter", "t": 17}, timeout=10)
+    try:
+        bad = [a for a in httpx.get(f"{TWIN}/api/alerts", timeout=10).json()["alerts"] if "filter" in a["title"].lower()]
+        if not bad:
+            pytest.skip("this floor has no AC for the clogged-filter scenario")
+        dev = bad[0]["deviceId"]
+        r = httpx.post(f"{TWIN}/api/maintenance", json={"deviceId": dev, "status": "resolved", "cause": "clogged filter", "action": "washed it"}, timeout=10).json()
+        assert r["fixed"] == ["scenario repaired"]
+        httpx.post(f"{TWIN}/api/sim", json={"t": 18}, timeout=10)   # the repair takes effect as time moves on
+        time.sleep(1)
+        assert not [a for a in httpx.get(f"{TWIN}/api/alerts", timeout=10).json()["alerts"] if a["deviceId"] == dev]
+        assert ac
+    finally:
+        httpx.post(f"{TWIN}/api/sim", json={"scenario": "normal"}, timeout=10)

@@ -80,12 +80,12 @@ ALERTS = {"alerts": [{"device_id": "AC-04", "name": "Bedroom Air conditioner", "
 
 
 async def test_maintenance_fix_clears_the_fault_and_resolve_records_it(settings):
-    twin = OpsTwin({"alerts": ALERTS, "clear_fault": {"ok": True}, "alert_update": {"ok": True}})
+    twin = OpsTwin({"alerts": ALERTS, "alert_update": {"ok": True, "record": {"fixed": ["fault cleared"]}}})
     agent, _ = build(settings, {"router": [{"skill": "maintenance", "request": "x"}, {"skill": "maintenance", "request": "y"}],
         "maintenance": [{"action": "fix", "device_id": "AC-04", "cause": "", "action_taken": ""},
                         {"action": "resolve", "device_id": "AC-04", "cause": "clogged filter", "action_taken": "washed the filter"}]}, twin)
     r = await ask(agent, settings, "x", "technician")
-    assert r.status == "success" and twin.calls[-1][0] == "clear_fault" and r.data["ui"] == [{"type": "focusDevice", "id": "AC-04"}]
+    assert r.status == "success" and twin.calls[-1][0] == "alert_update" and twin.calls[-1][1]["status"] == "resolved" and "back to normal" in r.message and r.data["ui"] == [{"type": "focusDevice", "id": "AC-04"}]
     r = await ask(agent, settings, "y", "technician")
     name, payload, _ = twin.calls[-1]
     assert name == "alert_update" and payload["status"] == "resolved" and payload["cause"] == "clogged filter" and "washed the filter" in r.message
