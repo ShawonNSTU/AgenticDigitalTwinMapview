@@ -4,6 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import { DEV, ROOMS, TYPES, activeFault, FAULT_DOCS } from './engine';
 import { device, rt, tick } from './runtime';
+import { log as journal } from '@/lib/kg/journal';
 
 export type Status = 'new' | 'acknowledged' | 'investigating' | 'resolved';
 export type Record_ = { id: string; deviceId: string; at: number; by: string; status: Exclude<Status, 'new'>; cause: string; action: string; notes: string; alert: string };
@@ -42,7 +43,7 @@ export function alerts() {
     const title = f?.title ?? `${TYPES[d.type].label} needs attention`;
     const key = `${d.id}|${title}`;
     live.add(key);
-    if (!seen[key]) { seen[key] = { since: Date.now(), title, level: s.health }; note(d.id, `Alert raised: ${title}`); }
+    if (!seen[key]) { seen[key] = { since: Date.now(), title, level: s.health }; note(d.id, `Alert raised: ${title}`); journal({ kind: 'alert', devices: [d.id], room: d.room, text: `Alert raised on ${String(d.name).split(' · ')[0]} (${d.id}): ${title} (${s.health})` }); }
     const recs = records.filter(r => r.deviceId === d.id && r.at >= seen[key].since).sort((a, b) => b.at - a.at);
     const fault = activeFault(d);
     out.push({
@@ -58,7 +59,7 @@ export function alerts() {
       events: [...(events[d.id] ?? []), ...rt.log.filter(l => l.deviceId === d.id).slice(-5).map(l => ({ at: 0, text: `Command ${l.command} by ${l.by} at ${String(Math.floor(l.at)).padStart(2, '0')}:${String(Math.round((l.at % 1) * 60)).padStart(2, '0')}` }))].slice(-8),
     });
   }
-  for (const k of Object.keys(seen)) if (!live.has(k)) { note(k.split('|')[0], `Back to normal: ${seen[k].title}`); delete seen[k]; }
+  for (const k of Object.keys(seen)) if (!live.has(k)) { note(k.split('|')[0], `Back to normal: ${seen[k].title}`); journal({ kind: 'alert', devices: [k.split('|')[0]], text: `Back to normal: ${k.split('|')[0]} (${seen[k].title})` }); delete seen[k]; }
   const rank = { fault: 0, watch: 1 } as Record<string, number>;
   return out.sort((a, b) => (rank[a.level] - rank[b.level]) || (b.since - a.since));
 }
@@ -68,6 +69,7 @@ export function addRecord(p: { deviceId: string; status: Exclude<Status, 'new'>;
   const r: Record_ = { id: randomBytes(6).toString('hex'), deviceId: p.deviceId, at: Date.now(), by: (p.by ?? 'Technician').slice(0, 40), status: p.status,
     cause: (p.cause ?? '').slice(0, 300), action: (p.action ?? '').slice(0, 300), notes: (p.notes ?? '').slice(0, 1000), alert: (p.alert ?? '').slice(0, 160) };
   records.push(r);
+  journal({ kind: 'maintenance', by: r.by, devices: [p.deviceId], text: `Maintenance on ${p.deviceId}: ${r.status}${r.cause ? `, cause: ${r.cause}` : ''}${r.action ? `, action: ${r.action}` : ''}${r.notes ? `, notes: ${r.notes}` : ''}` });
   note(p.deviceId, `${r.by}: ${r.status}${r.cause ? ` · cause: ${r.cause}` : ''}`);
   return r;
 }

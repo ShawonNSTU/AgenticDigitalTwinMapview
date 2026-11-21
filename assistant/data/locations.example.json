@@ -1,0 +1,31 @@
+{
+  "_comment": "EXAMPLE ONLY - placeholder content. Copy to data/locations.json and replace with the real venue's information.",
+  "venue": "the Demo Experience Zone",
+  "summary": "A SmartThings demo area where visitors can try connected home devices.",
+  "places": [
+    {
+      "name": "Reception",
+      "floor": "Ground floor",
+      "description": "Check-in desk and help point.",
+      "directions": "Straight ahead from the main entrance.",
+      "keywords": ["entrance", "help", "check in", "staff"]
+    },
+    {
+      "name": "Living Room Zone",
+      "floor": "Ground floor",
+      "description": "TV, lamp and air purifier demo.",
+      "directions": "From reception, turn left and walk to the end of the corridor.",
+      "keywords": ["tv", "lamp", "purifier", "living room"]
+    },
+    {
+      "name": "Restroom",
+      "floor": "Ground floor",
+      "description": "Restrooms.",
+      "directions": "From reception, turn right; it is the second door on the left.",
+      "keywords": ["toilet", "washroom", "bathroom", "wc"]
+    }
+  ],
+  "faq": [
+    {"q": "What are the opening hours?", "a": "Replace with the real opening hours."}
+  ]
+}

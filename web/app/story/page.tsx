@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TwinView from '@/components/TwinView';
 import { send, type FromRenderer } from '@/lib/bridge';
-import { CHAPTERS, resetStory, type Ctx, type Dev, type Phone } from '@/lib/story';
+import { CHAPTERS, resetStory, type ChatLine, type Ctx, type Dev, type Phone } from '@/lib/story';
 
 class Stop extends Error {}
 
@@ -167,20 +167,14 @@ export default function Story() {
               <b>Room 401</b>
               <img src={phone.qr} alt="Guest pass QR code" />
               <span>{phone.room}</span>
+              {phone.pin && <span className="ph-pin">PIN <b>{phone.pin}</b></span>}
               <em>Scan to open your room's 3D view, your key and your remote</em>
             </div>
           )}
           {phone.kind === 'guest' && (
             <div className="ph-guest">
-              <div className="ph-top"><b>Room 401</b><small>{phone.status ?? ''}</small></div>
-              <div className="ph-chat">
-                {phone.lines.map((l, i) => (
-                  <div key={i} className={`ph-msg ph-${l.who}`}>
-                    <span>{l.text}</span>
-                    {l.plan && <ul>{l.plan.map((p, j) => <li key={j}><b>{p.label}</b> {p.summary}</li>)}</ul>}
-                  </div>
-                ))}
-              </div>
+              <div className="ph-top"><b>{phone.title ?? 'Room 401'}</b><small>{phone.status ?? ''}</small></div>
+              <PhoneChat lines={phone.lines} />
             </div>
           )}
           {phone.kind === 'tech' && (
@@ -193,6 +187,7 @@ export default function Story() {
                 {phone.alert.parts && <p className="parts">{phone.alert.parts}</p>}
                 <div className="row"><span className="btn">Accept</span><span className="btn ghost">Route to unit</span></div>
               </div>
+              {phone.lines && <PhoneChat lines={phone.lines} />}
             </div>
           )}
         </aside>
@@ -211,6 +206,25 @@ export default function Story() {
           <><span className="live-dot" /> <small>Playing by itself · loops</small><a href="/story">Presenter mode</a></>
         )}
       </footer>
+    </div>
+  );
+}
+
+/** The phone's conversation: the person, the assistant's reasoning (live while it thinks), what it changed, its answer. */
+function PhoneChat({ lines }: { lines: ChatLine[] }) {
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [lines]);
+  return (
+    <div className="ph-chat">
+      {lines.map((l, i) => (
+        <div key={i} className={`ph-msg ph-${l.who} ${l.thinking ? 'thinking' : ''}`}>
+          {l.thinking && <em className="ph-think">✦ {l.thinking}</em>}
+          {l.reasoning && <em className="ph-reason">✦ {l.reasoning}</em>}
+          {l.plan && <ul>{l.plan.map((p, j) => <li key={j} className={p.ok === false ? 'bad' : ''}><i>{p.ok === false ? '✕' : '✓'}</i> <b>{p.label}</b> {p.summary}</li>)}</ul>}
+          {l.text && <span>{l.text}</span>}
+        </div>
+      ))}
+      <div ref={end} />
     </div>
   );
 }

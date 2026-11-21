@@ -1,12 +1,14 @@
 import { floor, simState, tick } from '@/lib/sim/runtime';
 import { LAYOUT } from '@/lib/sim/engine';
 import { alerts } from '@/lib/sim/maintenance';
+import * as ST from '@/lib/integrations/smartthings';
+import { ensureLive } from '@/lib/integrations/stlive';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/events: Server-Sent Events stream of the simulated device platform.
- * Emits `clock` every 500 ms, `alert` when a device raises a new alert (technicians are notified), `health` whenever any device's health changes, `layout` after a floor plan upload and `devices` when devices are placed, moved or removed.
+ * Emits `clock` every 500 ms, `live` when a real SmartThings device reports a new state or goes on/offline, `alert` when a device raises a new alert (technicians are notified), `health` whenever any device's health changes, `layout` after a floor plan upload and `devices` when devices are placed, moved or removed.
  * The Godot renderer (desktop build) and the web UI both subscribe to this.
  */
 export async function GET() {
@@ -18,10 +20,13 @@ export async function GET() {
       let version = LAYOUT.version;
       let devVersion = LAYOUT.devVersion;
       let known = new Set(alerts().map(a => a.key)); // alerts already open when the page connected
+      let stVersion = ST.version();
+      ensureLive();
       const send = (event: string, data: unknown) => controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       const push = () => {
         tick();
         send('clock', simState());
+        if (ST.version() !== stVersion) { stVersion = ST.version(); send('live', { version: stVersion }); }
         if (LAYOUT.version !== version) { version = LAYOUT.version; devVersion = LAYOUT.devVersion; last = ''; send('layout', { version }); }
         else if (LAYOUT.devVersion !== devVersion) { devVersion = LAYOUT.devVersion; last = ''; send('devices', { version: devVersion }); }
         const f = floor();

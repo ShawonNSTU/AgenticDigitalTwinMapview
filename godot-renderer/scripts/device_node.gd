@@ -21,6 +21,10 @@ var _variant := ""
 ## Fitted rooms use a few real variants of a type, known by the device's name: a ceiling cassette AC, a smart
 ## bulb in a floor lamp, a roller projector screen (a blinds motor), a TV standing on a unit.
 static func variant(d: Dictionary) -> String:
+	# the platform says how a device is fitted (web/lib/sim/stzone.ts); older layouts fall back to the name
+	var fixture := str(d.get("fixture", ""))
+	if fixture != "":
+		return {"roller": "curtain"}.get(fixture, fixture)
 	var n := str(d.get("name", "")).get_slice(" · ", 0).to_lower()
 	match str(d.get("type", "")):
 		"ac":
@@ -30,7 +34,7 @@ static func variant(d: Dictionary) -> String:
 				return "lamp"
 			if n.begins_with("desk lamp"):
 				return "desk"
-			if n.ends_with("window"):
+			if n.ends_with("window") or n.ends_with("window light"):
 				return "window"
 			if n == "tv lamp" or n.begins_with("main ceiling"):
 				return "panel"
@@ -53,11 +57,15 @@ static func body_size(d: Dictionary) -> Vector3:
 		"desk": return Vector3(0.1, 0.1, 0.1)
 		"panel": return Vector3(0.16, 0.04, 0.16)
 		"window": return Vector3(0.62, 0.04, 0.03)
+		"spot": return Vector3(0.09, 0.2, 0.09)
+		"bespoke": return Vector3(0.36, 0.62, 0.36)
+		"wall": return Vector3(0.08, 0.12, 0.08)
 		"stand": return Vector3(1.45, 0.84, 0.05)
 	return BODY.get(str(d.get("type", "")), Vector3(0.2, 0.2, 0.2))
 var fx: DeviceFx  # what the device is doing, shown in the room (light, airflow, screen, blinds...)
 var body: MeshInstance3D
 var body_mat := StandardMaterial3D.new()
+var base_color := Color("eef0f3")   # the body's own colour (DeviceFx greys it while offline)
 var ring_mat := StandardMaterial3D.new()
 var ring: MeshInstance3D
 var label: Label3D
@@ -82,7 +90,8 @@ func setup(d: Dictionary) -> DeviceNode:
 	var bm := BoxMesh.new()
 	bm.size = size
 	body.mesh = bm
-	body_mat.albedo_color = Color("eef0f3") if d.type != "tv" else Color("22262c")
+	base_color = Color("eef0f3") if d.type != "tv" else Color("22262c")
+	body_mat.albedo_color = base_color
 	body_mat.roughness = 0.45
 	body.material_override = body_mat
 	add_child(body)
@@ -226,6 +235,32 @@ func _details(type: String, s: Vector3) -> void:
 		return
 	if _variant in ["lamp", "desk", "panel", "window"]:
 		body.visible = _variant == "panel"
+		return
+	if _variant == "bespoke":
+		# Samsung Bespoke air purifier: a coral cube with a grey top grille and a light-grey base
+		base_color = Color("e0675a")
+		body_mat.albedo_color = base_color
+		_add_box(Vector3(s.x * 0.86, 0.012, s.z * 0.86), Vector3(0, s.y * 0.5 + 0.006, 0), _m(Color("8d9196"), 0.4, 0.5))
+		for i in 7:
+			_add_box(Vector3(s.x * 0.78, 0.004, 0.01), Vector3(0, s.y * 0.5 + 0.014, -s.z * 0.35 + i * s.z * 0.117), _m(Color("3a3d42")))
+		_add_box(Vector3(s.x * 1.02, 0.05, s.z * 1.02), Vector3(0, -s.y * 0.5 + 0.025, 0), _m(Color("d9dcdf")))
+		return
+	if _variant == "spot":
+		# a black spot bulb holder hanging from the ceiling band: canopy, stem, head (the lit face is DeviceFx's)
+		body.mesh = _cyl(0.045, 0.02)
+		body.material_override = dark
+		body.position.y = s.y * 0.5 - 0.01
+		_add_cyl(0.011, 0.09, Vector3(0, -0.055, 0), dark)
+		_add_cyl(0.036, 0.085, Vector3(0, -0.14, 0), _m(Color("f2f2f0"), 0.0, 0.35))
+		return
+	if _variant == "wall":
+		# a bulb in a socket plugged into the wall (behind the main TV); the bulb is DeviceFx's
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.07, 0.07, 0.03)
+		body.mesh = bm
+		body.position = Vector3(0, -0.02, -0.03)
+		body.material_override = _m(Color("f4f4f2"))
+		_add_cyl(0.022, 0.05, Vector3(0, 0.0, 0.035), _m(Color("e8e6e0")), true)
 		return
 	if _variant == "stand":
 		_add_box(Vector3(s.x * 0.94, s.y * 0.88, 0.005), Vector3(0, 0, s.z * 0.5 + 0.003), _glow(Color("2b4f8f")))

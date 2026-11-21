@@ -1,6 +1,6 @@
 // The SmartThings Experience Zone on the 4th floor is a real, already fitted room: wood-panelled walls, a
-// drop ceiling with light panels and AC diffusers, spot bulbs on the ceiling, four floor lamps, a grey tufted
-// sofa facing a TV on a low unit, a coffee table, a roller projector screen, a white bookcase beside the
+// drop ceiling with light panels and AC diffusers, spot bulbs on a lowered band, three floor lamps, a grey tufted
+// sofa facing a TV on a low unit, a coffee table, a back-lit window under a roller shade, a white bookcase beside the
 // panelled column, an L-desk with a monitor and two office chairs under a wall TV, a Bespoke air purifier and
 // a glass door. Its SmartThings devices are installed, so a guest pass can be made for it straight away;
 // every other room needs Hotel setup first (see guestReady).
@@ -35,7 +35,7 @@ const polyOf = (r: any): V[] => r.poly?.length >= 3 ? r.poly : [[r.x[0], r.z[0]]
  */
 type Api = {
   rt: { furniture: any[] };
-  addDevice: (p: { type: string; x: number; z: number; rotationY?: number; room?: string; name?: string }) => unknown;
+  addDevice: (p: { type: string; x: number; z: number; rotationY?: number; room?: string; name?: string; fixture?: string }) => unknown;
   removeDevice: (id: string) => unknown;
 };
 
@@ -58,13 +58,11 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   const door = rt.furniture.find(f => f.kind === 'door' && Math.abs(f.x - x1) < 0.3 && f.z > z0 && f.z < z1)
     ?? rt.furniture.find(f => f.kind === 'door' && (Math.abs(f.x - x0) < 0.3 || Math.abs(f.x - x1) < 0.3 || Math.abs(f.z - z0) < 0.3 || Math.abs(f.z - z1) < 0.3) && f.x > x0 - 0.3 && f.x < x1 + 0.3 && f.z > z0 - 0.3 && f.z < z1 + 0.3);
 
-  // Local frame from the door: the door's wall, starting at the corner nearest the door (s = 0) and running away
-  // from it (u); n points into the room (q). In the real room (photos, plan: glass door at the south end of the
-  // corridor wall, wood-clad pillar in the opposite corner):
-  //   door wall (q = 0)      TV unit beside the door, the sofa faces it
-  //   start wall (s = 0)     from the door corner: standing lamp, air purifier, desk under the wall TV
-  //   far wall (q = D)       desk return with the desk lamp, framed print above
-  //   end wall (s = L)       white roller curtain between two standing lamps, white shelf beside the pillar
+  // The glass door. In the real room (entry photo) it opens at the end of its wall next to the wall with the
+  // main TV, and the open glass leaf rests against that wall: walking in, that wall is on your RIGHT and the
+  // window wall is straight ahead. The traced plan puts the door at the other end of the same corridor wall,
+  // which mirrors the whole room, so the door is moved to the right-hand end of its wall (same wall, same
+  // corridor; idempotent).
   let o: V = [x1, z1], u: V = [0, -1], n: V = [-1, 0], L = z1 - z0, D = x1 - x0;
   if (door) {
     const walls: { a: V; b: V; n: V }[] = [
@@ -73,80 +71,131 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
     ];
     const off = (w: typeof walls[0]) => Math.abs((door.x - w.a[0]) * w.n[0] + (door.z - w.a[1]) * w.n[1]);
     const w = walls.sort((p, q) => off(p) - off(q))[0];
-    const da = Math.hypot(door.x - w.a[0], door.z - w.a[1]), db = Math.hypot(door.x - w.b[0], door.z - w.b[1]);
-    const [c0, c1] = da <= db ? [w.a, w.b] : [w.b, w.a];
+    n = w.n;
+    // right of someone walking in along n (x east, z south, y up): (-n.z, n.x)
+    const right: V = [-n[1], n[0]];
+    const side = (c: V) => (c[0] - door.x) * right[0] + (c[1] - door.z) * right[1];
+    const [c0, c1] = side(w.a) > side(w.b) ? [w.a, w.b] : [w.b, w.a];
     L = Math.hypot(c1[0] - c0[0], c1[1] - c0[1]);
-    o = c0; u = [(c1[0] - c0[0]) / L, (c1[1] - c0[1]) / L]; n = w.n;
+    o = c0; u = [(c1[0] - c0[0]) / L, (c1[1] - c0[1]) / L];
     D = Math.abs((w.n[0] ? x1 - x0 : z1 - z0));
+    const dwid = Number(door.w) || 0.95;
+    const at0 = 0.08 + dwid / 2;   // the leaf's hinge side is right at the corner, as in the photo
+    door.x = +(o[0] + u[0] * at0).toFixed(3); door.z = +(o[1] + u[1] * at0).toFixed(3);
   }
-  // a point s metres along the door wall and q metres into the room
+  // a point s metres along the door wall (from the door's corner) and q metres into the room
   const at = (s: number, q: number): [number, number] => [+(o[0] + u[0] * s + n[0] * q).toFixed(3), +(o[1] + u[1] * s + n[1] * q).toFixed(3)];
   // rot that faces direction (dx, dz): rot 0 faces +z, facing = (sin rot, cos rot)
   const face = (d: V) => +Math.atan2(d[0], d[1]).toFixed(4);
-  // IN faces into the room from the door wall, OUT towards the door wall; ALONG faces the end wall, BACK the start wall
+  // IN faces into the room from the door wall, OUT towards the door wall; ALONG faces away from the TV wall (towards
+  // the far side wall), BACK towards the TV wall
   const IN = face(n), OUT = face([-n[0], -n[1]]), ALONG = face(u), BACK = face([-u[0], -u[1]]);
   const g = 0.07; // inner face of the wall
-  const dt = door ? Math.abs((door.x - o[0]) * u[0] + (door.z - o[1]) * u[1]) : 0.6; // door centre along its wall
   const dw = door ? Number(door.w) || 0.95 : 0.95;
+  const dt = door ? Math.abs((door.x - o[0]) * u[0] + (door.z - o[1]) * u[1]) : 0.6; // door centre along its wall
+
+  // Walls, as the photos show them (walking in through the glass door):
+  //   door wall (q = 0)          from the door: floor lamp, Bespoke air purifier, desk under the wall TV into the
+  //                              far corner (dome camera above it)
+  //   TV wall (s = 0, right)     the main TV on its walnut unit, Light 1 on the wall behind it, Light 5 (by the
+  //                              door) and Light 2 (above the TV) on the lowered band, a floor lamp in the far corner
+  //   window wall (q = D)        straight ahead: the back-lit window (Left / Right Window Light) under the Aqara
+  //                              roller shade, Light 4 above its left end, the side lamp, the white bookcase in
+  //                              the left corner against the panelled column with Light 3 above it; cameras in
+  //                              both corners; the Blinds Switch by the shade's right end
+  //   left wall (s = L)          the desk return with the desk lamp and flowers, the framed print
+  //   middle                     grey tufted sofa facing the TV, coffee table between
+  // A lowered white band (bulkhead) runs along the TV wall and the window wall; the spot bulbs hang from it.
 
   // 1. furniture: replace the traced interior (doors and the panelled column stay)
   rt.furniture = rt.furniture.filter(f => f.kind === 'door' || f.kind === 'column' || !inside(f.x, f.z));
   if (door) (door as Item).glass = true;
   const items: Item[] = [];
   const put = (kind: string, s: number, q: number, w: number, d: number, rot: number) => { const [x, z] = at(s, q); items.push({ kind, x, z, w, d, rot, room: r.key }); };
-  // door wall: TV unit beyond the door's swing, coffee table and the sofa facing the TV
-  const tvS = Math.min(L - 0.95, (dt + dw / 2 + 0.25 + L - 0.35) / 2);   // centred on the wall beyond the door
-  put('tv_unit', tvS, g + 0.23, 1.6, 0.45, IN);
-  put('coffee_table', tvS, D * 0.27, 0.9, 0.6, IN);
-  put('tufted_sofa', Math.min(L - 1.45, tvS + 0.35), D * 0.5, 1.9, 0.85, OUT);  // a clear way in from the door beside it
-  // end wall: white shelf beside the pillar, then the standing lamp, the curtain and another lamp by the TV corner
-  const shelfQ = Math.min(D - 1.6, 2.95);
-  const curtQ = Math.max(1.0, shelfQ - 1.75);
-  put('bookcase_white', L - g - 0.21, shelfQ, 0.9, 0.42, BACK);
-  put('floor_lamp', L - g - 0.25, shelfQ - 0.7, 0.42, 0.42, 0);   // the big standing lamp (side lamp)
-  put('floor_lamp', L - g - 0.3, g + 0.22, 0.42, 0.42, 0);        // corner by the TV
-  // start wall, from the door corner: standing lamp, (purifier), desk under the wall TV
-  const deskQ = D - g - 0.75;
-  put('floor_lamp', g + 0.25, dw + 0.85, 0.42, 0.42, 0);
-  put('desk', g + 0.31, deskQ, 1.5, 0.62, BACK);
-  put('task_chair', g + 0.88, deskQ - 0.42, 0.6, 0.6, BACK);
-  // far wall: desk return, desk lamp, framed print above
-  put('desk', g + 0.62 + 0.45, D - g - 0.29, 0.9, 0.58, IN);
-  put('desk_lamp', g + 1.25, D - g - 0.25, 0.25, 0.25, OUT);
-  put('task_chair', g + 1.3, D - g - 0.9, 0.6, 0.6, IN);
-  put('poster', 2.0, D - g - 0.02, 0.7, 0.03, OUT);
+  const band = 0.55;                                       // bulkhead depth from the wall
+  const qTv = Math.min(D - 1.75, Math.max(dw + 1.55, D * 0.47)); // TV clear of the open door leaf
+  const sSofa = Math.min(L - 1.05, 2.75), sTable = (0.53 + sSofa - 0.45) / 2 + 0.05;
+  // TV wall
+  put('tv_unit', g + 0.23, qTv, 1.6, 0.45, ALONG);
+  put('floor_lamp', g + 0.28, D - g - 0.3, 0.42, 0.42, 0);            // far corner by the TV
+  // middle: coffee table and the sofa facing the TV
+  put('coffee_table', sTable, qTv, 0.9, 0.6, ALONG);
+  put('tufted_sofa', sSofa, qTv + 0.1, 1.9, 0.85, BACK);
+  // window wall: the window itself is the two window lights' panes (devices below)
+  const sWin = Math.min(L - 1.95, Math.max(1.35, L * 0.47));
+  put('bookcase_white', L - g - 0.47, D - g - 0.21, 0.9, 0.42, OUT);
+  put('floor_lamp', L - g - 1.2, D - g - 0.28, 0.42, 0.42, 0);        // the side lamp's stand
+  // door wall: floor lamp beside the door, (purifier), desk under the wall TV running into the corner
+  const deskLen = Math.min(1.9, L - (dt + dw / 2) - 1.1);
+  const sDesk = L - g - deskLen / 2;
+  put('floor_lamp', dt + dw / 2 + 0.33, g + 0.27, 0.42, 0.42, 0);
+  put('desk_one', sDesk, g + 0.31, deskLen, 0.62, IN);
+  put('mesh_chair', sDesk - 0.3, g + 0.95, 0.6, 0.6, OUT);
+  // left wall: desk return (desk lamp, flowers), print
+  put('desk_plain', L - g - 0.29, g + 0.62 + 0.75, 1.5, 0.58, BACK);
+  put('mesh_chair', L - g - 0.95, g + 0.62 + 0.8, 0.6, 0.6, ALONG);
+  put('desk_lamp', L - g - 0.25, g + 0.62 + 0.18, 0.25, 0.25, BACK);
+  put('desk_flowers', L - g - 0.3, g + 0.62 + 1.1, 0.45, 0.3, BACK);
+  put('poster', L - g - 0.02, Math.min(D - 1.3, g + 0.62 + 1.5 + 0.75), 0.7, 0.03, BACK);
   rt.furniture = [...rt.furniture, ...items];
 
-  // 2. SmartThings devices: named exactly as in the zone's SmartThings app (room 401), so real devices link by
-  // name on /integrations, and placed where the room's device list says
+  // the drop ceiling, for the 3D view: bulkhead along the TV wall and the window wall, LED panels, AC diffusers
+  const rect = (s0: number, q0: number, s1: number, q1: number) => {
+    const [ax, az] = at(s0, q0), [bx, bz] = at(s1, q1);
+    return { x: +((ax + bx) / 2).toFixed(3), z: +((az + bz) / 2).toFixed(3), w: +Math.abs(bx - ax).toFixed(3), d: +Math.abs(bz - az).toFixed(3) };
+  };
+  r.ceiling = {
+    band: [rect(0, 0, band, D), rect(band, D - band, L, D)],
+    drop: 0.28,
+    panels: [rect(L * 0.42 - 0.3, D * 0.42 - 0.6, L * 0.42 + 0.3, D * 0.42 + 0.6), rect(L * 0.66 - 0.3, D * 0.7 - 0.6, L * 0.66 + 0.3, D * 0.7 + 0.6),
+      rect(L * 0.3 - 0.3, D - band - 1.0, L * 0.3 + 0.3, D - band - 0.4), rect(L * 0.75 - 0.3, D - band - 1.0, L * 0.75 + 0.3, D - band - 0.4)],
+    diffusers: [rect(1.0, 1.0, 1.6, 1.6), rect(L * 0.52 - 0.3, D * 0.62 - 0.3, L * 0.52 + 0.3, D * 0.62 + 0.3)],
+    returns: [rect(L * 0.52 - 0.3, D - band - 1.0, L * 0.52 + 0.3, D - band - 0.4)],
+  };
+
+  // where to stand to take the room in on walking in (3D walk-through): inside the door, clear of the TV unit and
+  // the floor lamp, looking across to the window wall as the entry photo does
+  const [vx, vz] = at(1.05, 0.95), [lx, lz] = at(L * 0.58, D);
+  r.view = { at: [vx, vz], look: [lx, 1.15, lz] };
+
+  // 2. SmartThings devices: named exactly as the zone's real SmartThings devices (lib/integrations/zone-devices.ts),
+  // which they are linked to by deviceId, placed where they are in the room, and with their fixture for the 3D view
   for (const d of DEV.filter((d: any) => d.room === r.key)) removeDevice(d.id);
   const ids: Record<string, string> = {};
-  const dev = (type: string, s: number, q: number, rot: number, name: string) => { const [x, z] = at(s, q); const res: any = addDevice({ type, x, z, rotationY: rot, room: r.key, name }); if (res?.device) ids[name] = res.device.id; };
-  dev('light', tvS, 0.3, 0, 'Light 1');                       // back of the main TV
-  dev('light', tvS + 0.5, 0.8, 0, 'Light 2');                 // top of the TV
-  dev('light', L - 0.45, shelfQ + 0.1, 0, 'Light 3');         // left side, above the shelf
-  dev('light', L - 0.45, shelfQ - 0.7, 0, 'Light 4');         // between the curtain and the shelf
-  dev('light', dt, 0.6, 0, 'Light 5');                        // door entrance
-  dev('light', g + 1.25, D - g - 0.25, 0, 'Desk lamp');
-  dev('light', L * 0.5, D * 0.5, 0, 'TV lamp');               // the main ceiling lights
-  dev('blinds', L - g - 0.085, curtQ, BACK, 'aqara roller shade control');
-  dev('light', L - g - 0.035, curtQ + 0.33, BACK, 'Left window');   // left pane, as seen from the room
-  dev('light', L - g - 0.035, curtQ - 0.33, BACK, 'Right window');
-  dev('plug', L - g - 0.02, curtQ - 1.0, BACK, 'blinds switch');
-  dev('light', L - g - 0.25, shelfQ - 0.7, 0, 'side lamp (dining room)');
-  // the rest of the room's Samsung kit
-  dev('tv', tvS, g + 0.23, IN, 'TV 65"');
-  dev('tv', g + 0.04, deskQ, ALONG, 'Wall TV');
-  dev('ac', L * 0.45, D * 0.3, 0, 'Ceiling AC');
-  dev('purifier', g + 0.26, dw + 1.5, ALONG, 'Air purifier');
-  dev('lock', dt + dw / 2 + 0.2, 0.06, IN, 'Door lock');
-  dev('temphum', dt + dw / 2 + 0.5, 0.04, IN, 'Temp & humidity');
-  dev('camera', L - 0.15, 0.15, face([n[0] - u[0], n[1] - u[1]]), 'Indoor camera 1');
-  dev('camera', 0.15, D - 0.15, face([u[0] - n[0], u[1] - n[1]]), 'Indoor camera 2');
+  const dev = (type: string, s: number, q: number, rot: number, name: string, fixture?: string) => {
+    const [x, z] = at(s, q);
+    const res: any = addDevice({ type, x, z, rotationY: rot, room: r.key, name, ...(fixture ? { fixture } : {}) });
+    if (res?.device) ids[name] = res.device.id;
+  };
+  const spot = band / 2;   // spot bulbs hang from the middle of the band
+  dev('light', g + 0.05, qTv + 0.35, ALONG, 'Light 1', 'wall');            // on the wall behind the main TV
+  // spots face away from the wall behind them (the 3D view washes that wall with their light)
+  dev('light', spot, qTv + 0.95, ALONG, 'Light 2', 'spot');                // on the band above the TV
+  dev('light', L - g - 0.47, D - spot, OUT, 'Light 3', 'spot');            // above the bookcase
+  dev('light', sWin + 0.95, D - spot, OUT, 'Light 4', 'spot');             // between the curtain and the shelf
+  dev('light', spot, dw + 0.45, ALONG, 'Light 5', 'spot');                 // by the door entrance
+  dev('light', L - g - 0.25, g + 0.62 + 0.18, 0, 'Desk Lamp', 'desk');
+  dev('light', L * 0.42, D * 0.42, 0, 'TV Lamp', 'panel');                 // the main ceiling lights (LED panels)
+  dev('blinds', sWin, D - g - 0.085, OUT, 'Aqara Roller Shade Controller', 'roller');
+  dev('light', sWin + 0.33, D - g - 0.035, OUT, 'Left Window Light', 'window');   // left pane, seen from the room
+  dev('light', sWin - 0.33, D - g - 0.035, OUT, 'Right Window Light', 'window');
+  dev('plug', sWin - 0.95, D - g - 0.02, OUT, 'Blinds Switch');
+  dev('light', L - g - 1.2, D - g - 0.28, 0, 'side lamp', 'lamp');         // in the standing lamp by the bookcase
+  // the rest of the room's Samsung kit (simulated)
+  dev('tv', g + 0.23, qTv, ALONG, 'TV 65"');
+  dev('tv', sDesk + 0.05, g + 0.04, IN, 'Wall TV');
+  dev('ac', L * 0.52, D * 0.62, 0, 'Ceiling AC');
+  dev('purifier', dt + dw / 2 + 0.85, g + 0.24, IN, 'Air purifier', 'bespoke');   // coral Bespoke cube
+  dev('lock', dt + dw / 2 + 0.14, 0.06, IN, 'Door lock');
+  dev('temphum', dt + dw / 2 + 0.55, 0.04, IN, 'Temp & humidity');
+  dev('camera', L - 0.15, 0.15, face([n[0] - u[0], n[1] - u[1]]), 'Indoor camera 1');       // over the desk corner
+  dev('camera', L - 0.15, D - 0.15, face([-n[0] - u[0], -n[1] - u[1]]), 'Indoor camera 2'); // above the bookcase
+  dev('camera', 0.15, D - 0.15, face([u[0] - n[0], u[1] - n[1]]), 'Indoor camera 3');       // window / TV corner
   for (const k of Object.keys(ST_PROFILE)) delete ST_PROFILE[k];
   for (const [name, id] of Object.entries(ids)) if (PROFILES[name]) ST_PROFILE[id] = PROFILES[name];
   // the curtain motor only moves while its switch is on
-  if (ids['aqara roller shade control'] && ids['blinds switch']) REQUIRES[ids['aqara roller shade control']] = ids['blinds switch'];
+  for (const k of Object.keys(REQUIRES)) delete REQUIRES[k];
+  if (ids['Aqara Roller Shade Controller'] && ids['Blinds Switch']) REQUIRES[ids['Aqara Roller Shade Controller']] = ids['Blinds Switch'];
   return true;
 }
 
@@ -310,19 +359,43 @@ export const REQUIRES: Record<string, string> = ((globalThis as any).__twinRequi
 export type StProfile = { kind: 'color' | 'switch' | 'shade'; group: string; where: string };
 export const ST_PROFILE: Record<string, StProfile> = ((globalThis as any).__twinStProfile ??= {});
 const PROFILES: Record<string, Omit<StProfile, 'where'> & { where: string }> = {
-  'aqara roller shade control': { kind: 'shade', group: 'Dining room', where: 'White roller curtain, beside the shelf' },
-  'blinds switch': { kind: 'switch', group: 'Living room', where: 'Powers the curtain motor' },
-  'Desk lamp': { kind: 'color', group: 'Living room', where: 'On the desk' },
-  'Left window': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, left' },
-  'Light 1': { kind: 'color', group: 'Living room', where: 'Behind the main TV' },
-  'Light 2': { kind: 'color', group: 'Living room', where: 'Above the TV' },
-  'Light 3': { kind: 'color', group: 'Living room', where: 'Left, above the shelf' },
-  'Light 4': { kind: 'color', group: 'Living room', where: 'Between the curtain and the shelf' },
-  'Right window': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, right' },
-  'TV lamp': { kind: 'switch', group: 'Living room', where: 'Main ceiling lights' },
-  'Light 5': { kind: 'color', group: 'Bedroom', where: 'Door entrance' },
-  'side lamp (dining room)': { kind: 'switch', group: 'Dining room', where: 'Big standing lamp' },
+  'Aqara Roller Shade Controller': { kind: 'shade', group: 'Dining room', where: 'Roller shade over the window' },
+  'Blinds Switch': { kind: 'switch', group: 'Living room', where: 'Powers the roller shade motor' },
+  'Desk Lamp': { kind: 'color', group: 'Living room', where: 'On the desk' },
+  'Left Window Light': { kind: 'switch', group: 'Living room', where: 'Back-lit window, left pane' },
+  'Light 1': { kind: 'color', group: 'Living room', where: 'On the wall behind the main TV' },
+  'Light 2': { kind: 'color', group: 'Living room', where: 'Spot above the TV' },
+  'Light 3': { kind: 'color', group: 'Living room', where: 'Spot above the bookcase' },
+  'Light 4': { kind: 'color', group: 'Living room', where: 'Spot between the shade and the bookcase' },
+  'Right Window Light': { kind: 'switch', group: 'Living room', where: 'Back-lit window, right pane' },
+  'TV Lamp': { kind: 'switch', group: 'Living room', where: 'Main ceiling lights (LED panels)' },
+  'Light 5': { kind: 'color', group: 'Bedroom', where: 'Spot by the door' },
+  'side lamp': { kind: 'switch', group: 'Dining room', where: 'Standing lamp by the bookcase' },
 };
+/** What each real zone device IS, in the words people use for it: the assistant reasons with these (a guest says
+ *  "the window" or "the curtain", not "Left Window Light"). */
+export const ST_MEANING: Record<string, string> = {
+  'Left Window Light': 'The LEFT WINDOW of the room: a back-lit window pane behind the roller shade. On = the window glows and shows the outside view; off = dark glass. Also called: window, left window, window view.',
+  'Right Window Light': 'The RIGHT WINDOW of the room: a back-lit window pane behind the roller shade. On = the window glows and shows the outside view; off = dark glass. Also called: window, right window, window view.',
+  'Aqara Roller Shade Controller': 'The CURTAIN / roller shade in front of both windows. Shade level 100 % = fully open (rolled up, windows visible); 0 % = fully closed (down, windows hidden). Also called: curtain, blind, shade, blackout.',
+  'Blinds Switch': 'Power switch for the roller shade motor. It is switched on automatically before the shade moves; rarely needs a request of its own.',
+  'TV Lamp': "The room's MAIN CEILING LIGHTS (LED panels). Also called: ceiling light, main light, room light.",
+  'Light 1': 'Colour light on the wall behind the main TV (TV backlight / ambient glow).',
+  'Light 2': 'Colour spot light above the TV.',
+  'Light 3': 'Colour spot light above the bookcase.',
+  'Light 4': 'Colour spot light between the shade and the bookcase.',
+  'Light 5': 'Colour spot light by the door (entrance light).',
+  'Desk Lamp': 'Colour lamp on the desk (reading / work light).',
+  'side lamp': 'Standing floor lamp by the bookcase.',
+};
+/** How the SmartThings Experience Zone works, for the assistant's reasoning. */
+export const ZONE_GUIDE = [
+  'To see the outside view: open the curtain fully (Aqara Roller Shade Controller to 100 %) AND turn on both window lights (Left Window Light, Right Window Light). The windows are back-lit panels, so they only show the view when on.',
+  'For privacy or a dark room: close the curtain (0 %) and turn the window lights off.',
+  'Main room light = TV Lamp (ceiling panels). Accent lights = Light 1-5. Reading = Desk Lamp. Cosy = side lamp plus dim warm accent lights.',
+  'Movie: TV on, ceiling lights (TV Lamp) off, accent lights 10-25 % warm, curtain closed.',
+];
+
 /** Commands each kind offers (the rest of a light's commands are hidden, as the app does). */
 export const ST_KIND_COMMANDS: Record<StProfile['kind'], string[]> = {
   color: ['power', 'setLevel', 'setColorTemperature', 'setColor'],

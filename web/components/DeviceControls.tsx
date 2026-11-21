@@ -9,7 +9,7 @@ export type Run = (command: string, args?: Record<string, unknown>, confirmed?: 
 const VALUE_KEY: Record<string, string> = { power: 'on', setTemperature: 'set', setFanSpeed: 'fan', setLevel: 'lv', setPosition: 'pos', setFan: 'fan', setMode: 'mode', setSwing: 'swing', setTimer: 'timer', setVolume: 'vol', setInput: 'input', setSpeed: 'speed', setOscillation: 'osc', setColorTemperature: 'ct' };
 export const CMD_LABEL: Record<string, string> = {
   power: 'Power', setTemperature: 'Temperature', setMode: 'Mode', setFanSpeed: 'Fan speed', setSwing: 'Louver', setTimer: 'Off timer',
-  setLevel: 'Brightness', setColorTemperature: 'Light colour', setPosition: 'Open', open: 'Open', close: 'Close', setFan: 'Fan level',
+  setLevel: 'Brightness', setColorTemperature: 'Light colour', setColor: 'Colour', setPosition: 'Open', open: 'Open', close: 'Close', setFan: 'Fan level',
   setVolume: 'Volume', setInput: 'Source', setSpeed: 'Speed', setOscillation: 'Oscillate', lock: 'Lock the door', unlock: 'Unlock the door',
   start: 'Start cleaning', dock: 'Send to dock', stop: 'Stop',
 };

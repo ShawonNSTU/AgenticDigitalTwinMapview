@@ -8,7 +8,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-`AGENT_URL` (see `.env.example`) points the `/api/chat` proxy at the agent backend.
+`ASSISTANT_URL` points the `/api/chat` routes at the assistant (assistant/, Ollama). The same service reads floor-plan images.
 
 | Path | Purpose |
 |---|---|

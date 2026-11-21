@@ -24,6 +24,11 @@ Proof of concept with three features:
    live evidence and a guided repair, each step flying the camera to its component.
 5. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what
    to do, and control devices (risky commands need confirmation).
+   **SmartThings agent** ([assistant/](assistant/README.md), Ollama): in the chat panel and the guest's
+   room assistant, choose "SmartThings agent" to control the zone's devices in plain words ("turn on Light 3 and dim
+   it to 40%", "close the shade halfway", "which lights are on?"). It works through the twin's SmartThings-compatible
+   API, so each change shows in 3D at once and reaches the real device when it is linked; guests stay limited to
+   their room and pass.
 
 **Hotel use case** (the 4th floor is treated as a hotel floor):
 
@@ -35,20 +40,26 @@ Proof of concept with three features:
    guest steps out, turns towards the way to go while the doors close behind, then sets off.
 0. **SmartThings Experience Zone, modelled as it is.** The zone is a real, already fitted room and the floor starts
    with it furnished (the plan draws it a little small to walk round in 3D, so it is enlarged by about a fifth each
-   way, taken from the Maternity and Medical rooms beside it) and its SmartThings devices installed: wood-panelled walls, cream floor tiles, a drop ceiling
-   with LED panels and AC diffusers and a lowered band for the spot bulbs, a grey tufted sofa facing a 65" TV on a
-   walnut unit, a coffee table, a roller projector screen, four brass floor lamps, a white bookcase beside the
-   panelled column, an L-desk with chairs under a wall TV, a Bespoke air purifier and a frosted glass door. Its
-   lights and curtain carry the names they have in the zone's SmartThings app (room 401): Light 1 (back of the main
-   TV), Light 2 (top of the TV), Light 3 (above the shelf), Light 4 (between the curtain and the shelf), Light 5
-   (door entrance), Desk lamp, TV lamp (the main ceiling lights; the LED ceiling panels follow it), aqara roller
-   shade control (the white roller curtain), blinds switch (powers the curtain motor; it is switched on by itself
-   when the curtain is moved), Left window and Right window (hidden lights behind the left and right panes of the window behind the curtain: a lit pane shows the outdoor view with drifting clouds, an unlit one is dark glass; raising the curtain reveals the window, and lit panes glow through the lowered curtain), side lamp (dining room)
-   (the big standing lamp). Also in the room: ceiling cassette AC, two TVs, purifier, door lock, temperature
-   sensor and two indoor cameras (never shown to guests). On `/integrations`, "Link by name" links them to the
-   real devices in one step. A guest QR can be made for it straight away; every other room needs Hotel setup
-   first (the room card says so and the
-   API refuses a pass for a room without its devices). Layout: `web/lib/sim/stzone.ts`.
+   way, taken from the Maternity and Medical rooms beside it) and its SmartThings devices installed, laid out from
+   photos of the room. Walking in through the frosted glass door (at the end of the corridor wall next to the TV
+   wall: the traced plan had it at the other end, which mirrored the room), the open glass leaf rests on the
+   **TV wall on your right**: the 65" TV on its walnut unit, Light 1 (a bulb on the wall behind the TV), Light 5 (by
+   the door) and Light 2 (above the TV) on the lowered band, a floor lamp in the far corner. **Straight ahead, the
+   window wall**: the back-lit window (Left / Right Window Light: a lit pane shows the outdoor view with drifting
+   clouds, an unlit one is dark glass) under the Aqara Roller Shade Controller (the Blinds Switch by its right end
+   powers its motor and is switched on by itself when the shade moves), Light 4 above the shade's left end, the
+   side lamp (in a standing lamp), the white bookcase in the left corner with Light 3 above it. **The door wall**:
+   a floor lamp, the coral Bespoke air purifier, the desk under the wall TV into the corner. **The left wall**: the
+   desk return with the Desk Lamp and flowers, the framed print. In the middle the grey tufted sofa faces the TV
+   across the coffee table. Drop ceiling with LED panels (they follow the TV Lamp, the main ceiling lights), AC
+   diffusers and the lowered band along the TV and window walls where the spot bulbs hang; cameras in three corners
+   (never shown to guests); door lock, temperature sensor, ceiling AC. Each device has its fixture (`spot`,
+   `wall`, `lamp`, `desk`, `panel`, `window`, `roller`, `bespoke`) so the 3D view draws it as it is fitted. With a
+   SmartThings token they are linked to the real devices by deviceId at once (see 12 below); the account's
+   "Aqara Roller Shade Controller of dining" is not in this room and is never placed or linked here. A guest QR can
+   be made for it straight away; every other room needs Hotel setup first (the room card says so and the API
+   refuses a pass for a room without its devices). Layout: `web/lib/sim/stzone.ts`; reference views of the 3D
+   room from the photos' viewpoints: `godot --path godot-renderer -- --zone-shots=/tmp/zone`.
 
 6. **Hotel set-up.** "Hotel setup" (or "Set up as guest room" on a clicked room) refurnishes suitable rooms as guest
    rooms (bed, nightstands, desk, armchair) and fits the usual devices on the right walls: AC, TV, ceiling and
@@ -115,6 +126,18 @@ Proof of concept with three features:
     device then goes to the SmartThings API, and its reported status and online state replace the simulated values. Unlocking follows the hotel's access policy: only the guest's own door, only
     if the pass allows it, after the check-in PIN, with the PIN asked again after a set time, a limit on unlocks,
     automatic relocking, and an audit log of every attempt.
+    **The zone's 12 real devices are known by deviceId** ([docs/smartthings-zone-devices.md](docs/smartthings-zone-devices.md),
+    `web/lib/integrations/zone-devices.ts`): with `SMARTTHINGS_TOKEN` in `web/.env` they are linked as soon as the app
+    starts, without Connect. Their status is read every 2 s in one batched request (`SMARTTHINGS_POLL_MS`), so a
+    change made in the SmartThings app or at a wall switch shows on the 3D twin within about 2-3 s; a command's
+    value is held on the twin until the device reports it, colour bulbs show the colour or white they were set to
+    last, and an offline device is greyed out (`web/lib/integrations/stlive.ts`). In the 3D view no text is drawn over devices (their state is in the side panel): the room
+    itself shows it. Spot bulbs show their beam, a pool of light on the floor and a scallop on the wall; lamp shades
+    are lit only while their bulb is on; panes, the shade and the ceiling panels follow their devices; when a real
+    device changes, a soft ring pulses out from it. Walking in, you stand just inside the door looking across the
+    room (the room's `view`), with a wide, phone-camera-like field of view; materials are made to match the photos
+    (varnished oak panels, cream porcelain tiles, speckled mineral ceiling tiles, maple desks, grey velvet sofa) and
+    the walk-through is graded like an interior photo (warm fill light, ACES tone mapping).
 11. **Technician alerts.** `/tech` lists alerts from devices that are not healthy (with browser notifications for
     new ones): room and device, what it reports, affected components (measured or not), recent events,
     troubleshooting steps, service notes, the 3D twin, an AI summary of the evidence, and a form to record the
@@ -133,7 +156,7 @@ All device data is simulated.
 
 | Folder | What | Stack |
 |---|---|---|
-| [`agent-backend/`](agent-backend) | AI agent: device search, insights, control (with confirmation), map actions | Python, FastAPI, Claude tool use |
+| [`assistant/`](assistant) | The one AI assistant for admin, technician and guest: device control (real + simulated), routines, 3D view, guest check-in, faults and alerts, floor-plan reading | Python, FastAPI, Ollama |
 | [`godot-renderer/`](godot-renderer) | 3D renderer: floor, devices, piping, opened-device internals | Godot 4.7, GDScript |
 | [`web/`](web) | Product UI (3D view, device palette, side panel, chat) + simulated device platform API | Next.js, TypeScript |
 | [`docs/`](docs) | Build brief ([PROMPT.md](docs/PROMPT.md)) and contracts between the parts | |
@@ -144,8 +167,12 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
    │      SSE /api/events                 │ polls /api/floor, /api/devices/:id
    │            │                         ▼
    │      Next.js Route Handlers = simulated device platform
-   └─/api/chat─▶ agent-backend /chat ──tools──▶ platform
-                   └─ ui_action events ─▶ page ─▶ Godot
+   └─/api/chat (admin, technician), /api/guest/{pass}/chat (guest)
+        ─▶ assistant /control/stream (Ollama: one assistant for every role)
+             ──▶ /api/st/v1/devices (SmartThings-compatible) and /api/st/v1/twin (staff) ─▶ platform
+                  │  └─ real device when linked (api.smartthings.com)
+                  └─ ui_action events ─▶ page ─▶ Godot
+   the same service reads floor-plan images (POST /floorplan/parse)
 ```
 
 ## Story mode: one guest, one night
@@ -195,13 +222,19 @@ Requirements: Node 20+, Python 3.11+, Godot 4.7.x.
 # 1. Web app + simulated platform  → http://localhost:3000
 cd web && npm install && npm run dev
 
-# 2. Agent  → http://localhost:8000
-cd agent-backend
+# 2. Assistant  → http://localhost:8100   (needs an Ollama server with the model pulled)
+cd assistant
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"     # includes OpenCV for the floor plan reader
+pip install -r requirements-dev.txt     # includes OpenCV for the floor plan reader
 # optional, for reading room names printed on plans: apt install tesseract-ocr  (or brew install tesseract)
-cp .env.example .env        # add ANTHROPIC_API_KEY, or leave empty for demo mode
-uvicorn app.main:app --reload --port 8000
+cp .env.example .env        # set OLLAMA_BASE_URL and OLLAMA_MODEL
+python main.py
+
+# 2b. SmartThings agent (optional) → http://localhost:8100, needs Ollama with the model pulled
+cd assistant
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+cp .env.example .env        # OLLAMA_BASE_URL, OLLAMA_MODEL (IOT_API_BASE_URL already points at the web app)
+.venv/bin/python main.py
 
 # 3. Renderer
 #    desktop showcase (Forward+), reads the same platform:
@@ -218,7 +251,7 @@ started, so restart it after exporting.
 The app starts by asking for a floor plan (http://localhost:3000 sends you to /setup until one is built). Upload the
 image and it is read straight away; check the names, the building and floor, and the scale, then render. The floor
 last built is kept in `web/.data/floor.json` and comes back after a restart (devices placed later are not kept).
-"Upload floor plan" in the header replaces it. What the reader does (agent-backend/app/plan_cv.py, OpenCV + Tesseract):
+"Upload floor plan" in the header replaces it. What the reader does (assistant/app/floorplan/plan_cv.py, OpenCV + Tesseract):
 
 - a photo of a sheet taken at an angle is recognised from the paper outline and straightened on its corners
   automatically, then read again (the handles stay in "Straighten photo" for fine-tuning);
@@ -240,7 +273,7 @@ rename or delete rooms, add or remove doors, set the real plan width, switch the
 Devices are added afterwards by dragging them onto the 3D map.
 
 The 4th floor: an upload of the Samsung R&D 4th-floor plan looks like any other upload, but it is recognised
-(agent-backend/app/known_plans.py) and built from the hand-checked model in `web/lib/presets/samsung-rnd-4f.json`,
+(assistant/app/floorplan/known_plans.py) and built from the hand-checked model in `web/lib/presets/samsung-rnd-4f.json`,
 with the SmartThings Experience Zone, the lift lobby and its devices. Recognition matches the drawing itself (ORB
 features and a homography against the reference images, so scans, crops, rotations and phone photos all match) when the
 private drawing is installed in `web/public/presets/` ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), and
@@ -257,7 +290,7 @@ Try in the chat: "which air conditioners have a problem?", "what's wrong with OD
 ## Tests
 
 ```bash
-cd agent-backend && pytest                              # search, tools, demo mode, eval cases, guest assistant
+cd assistant && TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   # skills, floor plans, end to end via the twin
 cd web && npm run typecheck && npm run build
 # after every pull: cd web && npm install && npm run export:renderer && npm run build && npm start
 cd web && npm run test:faults                           # every fault × severity: readings, parts, diagnosis

@@ -82,6 +82,7 @@ export default function Home() {
     const es = new EventSource('/api/events');
     es.addEventListener('clock', e => { const s = JSON.parse((e as MessageEvent).data); setSim(s); send({ type: 'setTime', t: s.t }); });
     es.addEventListener('health', () => loadDevices());
+    es.addEventListener('live', () => loadDevices());   // a real SmartThings device changed
     es.addEventListener('devices', () => { loadDevices(); send({ type: 'refreshDevices' }); });
     es.addEventListener('layout', () => { setSel(null); loadDevices(); loadRooms(); });
     loadDevices(); loadRooms();

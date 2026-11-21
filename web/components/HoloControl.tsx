@@ -262,10 +262,17 @@ function SpeedRing({ dev, val, cmd, run, preview }: P & { dev: HoloDev }) {
   const n = hi - lo + 1;
   return (
     <div className="holo-speed">
-      <svg viewBox="0 0 160 160" className={on ? 'spin' : ''} style={{ ['--dur' as string]: `${Math.max(0.4, 3.2 - lvl * 0.5)}s` }}>
-        {Array.from({ length: n }, (_, i) => { const a0 = -150 + i * (300 / n) + 3, a1 = -150 + (i + 1) * (300 / n) - 3; const lit = on && lo + i <= lvl; return (
-          <path key={i} d={arc(80, 80, 64, a0, a1)} stroke={lit ? '#5ec8ff' : 'rgba(255,255,255,0.14)'} strokeWidth="12" fill="none" strokeLinecap="round" className="seg"
-            onClick={() => { const v = lo + i; preview({ [key]: v, on: true }, `Speed ${v}`); c && run(c.name, { [argName(c, 'level')]: v }); }} />); })}
+      <svg viewBox="-8 -8 176 176" className={on ? 'spin' : ''} style={{ ['--dur' as string]: `${Math.max(0.4, 3.2 - lvl * 0.5)}s` }}>
+        {Array.from({ length: n }, (_, i) => {
+          // separate segments (a clear gap between levels, round caps kept inside it) with the level number outside
+          const gap = n > 4 ? 9 : 6, a0 = -150 + i * (300 / n) + gap, a1 = -150 + (i + 1) * (300 / n) - gap, mid = (a0 + a1) / 2;
+          const lit = on && lo + i <= lvl, pick = () => { const v = lo + i; preview({ [key]: v, on: true }, `Speed ${v}`); c && run(c.name, { [argName(c, 'level')]: v }); };
+          const tx = 80 + 78 * Math.sin((mid * Math.PI) / 180), ty = 80 - 78 * Math.cos((mid * Math.PI) / 180) + 4;
+          return (<g key={i}>
+            <path d={arc(80, 80, 62, a0, a1)} stroke={lit ? '#5ec8ff' : 'rgba(255,255,255,0.14)'} strokeWidth="12" fill="none" strokeLinecap="round" className="seg" onClick={pick} />
+            <path d={arc(80, 80, 62, a0 - gap + 1, a1 + gap - 1)} stroke="transparent" strokeWidth="26" fill="none" className="seg" onClick={pick} />
+            <text x={tx} y={ty} textAnchor="middle" className={`seg-n ${lit ? 'lit' : ''}`}>{lo + i}</text>
+          </g>); })}
         <g className="rotor"><circle cx="80" cy="80" r="26" fill="rgba(94,200,255,0.12)" />{[0, 120, 240].map(a => <path key={a} d="M80 80 q 6 -22 0 -24 q -8 6 0 24" fill="rgba(200,230,255,0.75)" transform={`rotate(${a} 80 80)`} />)}</g>
       </svg>
       <div className="holo-row"><PowerButton on={on} onClick={() => { preview({ on: !on }, on ? 'Off' : 'On'); run('power', { [argName(cmd('power'), 'on')]: on ? 'false' : 'true' }); }} /><small className="muted">{on ? `Speed ${lvl} of ${hi}` : 'Off'} · tap a segment</small></div>

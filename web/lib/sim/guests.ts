@@ -9,6 +9,7 @@ import { dispatch } from './dispatch';
 import { audit, markStepUp, stepUpFresh, unlocksRecently, policy } from './access';
 import { info as stInfo, supported } from '@/lib/integrations/smartthings';
 import { bindTag, fixOf } from './positioning';
+import { log as journal } from '@/lib/kg/journal';
 
 export type GuestPass = {
   token: string;
@@ -42,8 +43,9 @@ export function verifyPin(token: string, pin: string): { cookie: string } | { er
   const p = passes[token];
   if (!p || p.revoked) return { error: 'This guest link is not valid.', status: 404 };
   if (!p.pin) return { cookie: sign(token) };
-  if (pin.trim() === p.pin) { p.failed = 0; markStepUp(token); return { cookie: sign(token) }; }
+  if (pin.trim() === p.pin) { p.failed = 0; markStepUp(token); journal({ kind: 'access', room: p.room, guest: token, text: `Guest ${p.label || '(no name)'} entered the right PIN` }); return { cookie: sign(token) }; }
   p.failed += 1;
+  journal({ kind: 'access', room: p.room, guest: token, text: `Wrong PIN for guest ${p.label || '(no name)'} (${5 - p.failed} tries left)` });
   if (p.failed >= 5) { p.revoked = true; return { error: 'Too many wrong PINs. The link was locked; ask the front desk for a new one.', status: 410 }; }
   return { error: `That PIN is not right (${5 - p.failed} tries left).`, status: 401 };
 }
@@ -84,6 +86,7 @@ export function createPass(room: string, hours: number, entrance = '', label = '
   if (opts.allowUnlock && !pin) throw new Error('Unlocking needs identity verification (a check-in PIN)');
   const p: GuestPass = { token: randomBytes(18).toString('base64url'), room, entrance, label: label.slice(0, 60), layout: rt.planGen ?? 0, createdAt: now, expiresAt, revoked: false, pin, allowUnlock: !!opts.allowUnlock, failed: 0, controls: opts.controls ?? [], acRange: opts.acRange && opts.acRange[0] < opts.acRange[1] ? [Math.max(16, opts.acRange[0]), Math.min(30, opts.acRange[1])] : [16, 30] };
   passes[p.token] = p;
+  journal({ kind: 'guest', room, guest: p.token, text: `Guest ${p.label || '(no name)'} checked in to ${roomName(roomOf(room))} until ${new Date(expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC${pin ? ', with a PIN' : ''}` });
   if (opts.tag) bindTag(opts.tag.slice(0, 64), p.token); // the guest's location badge in the hotel's positioning system
   return describe(p);
 }
@@ -103,6 +106,7 @@ export function revoke(token: string) {
   const p = passes[token];
   if (!p) return false;
   p.revoked = true;
+  journal({ kind: 'guest', room: p.room, guest: p.token, text: `Guest ${p.label || '(no name)'} checked out of ${roomName(roomOf(p.room))} (pass withdrawn)` });
   return true;
 }
 
@@ -119,14 +123,15 @@ function describe(p: GuestPass) {
 }
 
 /** Commands a guest may run on a device: everything that needs no confirmation (no unlocking, no stopping a wash). */
-export function guestCommands(type: string, p?: GuestPass, id?: string) {
+export function guestCommands(type: string, p?: GuestPass, id?: string, withHidden = false) {
   // the host's choice of controls for this guest (others are view-only), then what the real device supports
   if (p?.controls?.length && !p.controls.includes(type)) return [];
   const list = Object.entries(COMMANDS[type] ?? {})
+    .filter(([, c]) => withHidden || !c.hidden)
     .filter(([name, c]) => !c.confirm || (type === 'lock' && name === 'unlock' && !!p?.allowUnlock && !!p?.pin))
     .map(([name, c]) => ({ name, args: (name === 'setTemperature' && p ? { celsius: p.acRange } : c.args ?? {}) as Record<string, any>, ...(c.confirm ? { confirm: true } : {}) }));
   const prof = id ? ST_PROFILE[id] : undefined;
-  const own = prof ? list.filter(c => ST_KIND_COMMANDS[prof.kind].includes(c.name)) : list;
+  const own = prof ? list.filter(c => ST_KIND_COMMANDS[prof.kind].includes(c.name) || (withHidden && prof.kind === 'color' && c.name === 'setHueSat')) : list;
   return id ? supported(id, type, own) : own;
 }
 
@@ -174,7 +179,7 @@ export function guestFloor(p: GuestPass) {
 export async function guestCommand(p: GuestPass, id: string, command: string, args: Record<string, unknown>, pin?: string) {
   const d = byId[id];
   if (!d || d.room !== p.room || GUEST_HIDDEN.includes(d.type)) return { status: 403, body: { ok: false, error: 'This device is not in your room.' } };
-  const allowed = guestCommands(d.type, p, id).find(c => c.name === command);
+  const allowed = guestCommands(d.type, p, id, true).find(c => c.name === command);
   const who = `guest ${p.label || p.token.slice(0, 6)}`;
   if (!allowed) {
     if (command === 'unlock') audit({ deviceId: id, room: d.room, action: 'unlock', by: who, ok: false, reason: 'not allowed by the pass', via: 'simulator' });
