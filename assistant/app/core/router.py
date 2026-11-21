@@ -29,11 +29,15 @@ Rules:
 3. If the latest message answers a question the assistant just asked, merge both into one full request (e.g. assistant asked "Which lamp?", user said "Light 1" -> "turn on the Light 1").
 4. Feelings, goals, a stated purpose ("because I want to see outside", "so I can read"), things named by what they are instead of a device name ("the window", "the curtain", "the ceiling light"), "except" and "if" requests about devices ("I'm cold", "too bright", "make it cosy") go to "smart_control" when listed; one explicit command ("turn on Light 1") goes to "device_control".
 5. Questions (how many, which, where, who, when, what happened, is there) go to "knowledge" when it is listed; requests to change devices go to the control skills.
-6. If no skill fits, choose "{fallback}".
+{extra}6. If no skill fits, choose "{fallback}".
 7. SEVERAL TASKS: if the message asks for different kinds of work (e.g. "check the guest in, run movie night and tell me how many rooms there are"), also return "tasks": one item per task, in the order to do them, each with its skill and a standalone request; "skill"/"request" = the first task. Several device changes of the same kind ("turn on Light 1 and dim Light 2") are ONE device_control task, not several. Set "parallel": true only if no task needs the result or the change of another (e.g. two questions); otherwise false. At most 6 tasks.
 
 Reply with JSON only: {{"skill": "<skill name>", "request": "<standalone request>", "tasks": [{{"skill": "...", "request": "..."}}], "parallel": false}}
 ("tasks" may be left out or empty when there is one task.)"""
+
+
+EXPERIENCE_RULE = ('5b. "experience": room comfort, energy / cost / savings, a guest\'s arrival ("on my way", "is my room ready", '
+                   '"heading out", check-out), predicted failures, sending a technician.\n')
 
 
 @dataclass
@@ -70,7 +74,9 @@ class Router:
 
         # with the twin's knowledge graph, an unclear question is best answered from what the assistant knows
         fallback = "knowledge" if "knowledge" in names else FALLBACK_SKILL if FALLBACK_SKILL in names else names[0]
-        system = SYSTEM.format(bot=self.bot_name, skills=_skill_lines(skills), fallback=fallback)
+        # rules for skills that are only sometimes offered go in only when they are (the prompt stays small)
+        extra = EXPERIENCE_RULE if "experience" in names else ""
+        system = SYSTEM.format(bot=self.bot_name, skills=_skill_lines(skills), fallback=fallback, extra=extra)
         convo = ctx.history_text() or "(no previous messages)"
         user = f"Conversation so far:\n{convo}\n\nLatest user message: {ctx.message}"
         schema = {

@@ -14,6 +14,8 @@ const TASKS = [
   { icon: '↻', label: 'Run movie night in the SmartThings Experience Zone' },
   { icon: '☺', label: 'Check a guest into the SmartThings Experience Zone for 2 nights' },
   { icon: '↺', label: 'What happened in the last hour?' },
+  { icon: '⚡', label: 'How much energy did we use today, and what did eco save?' },
+  { icon: '⚠', label: 'Which devices will fail next?' },
 ];
 
 /** The staff assistant (administrator, technician): one agent for the whole twin. */

@@ -15,6 +15,16 @@ var steps := [
 	{"type": "clearHighlight"},
 	{"type": "setScenario", "key": "refrig"},
 	{"type": "resetView"},
+	{"type": "setLayer", "layer": "comfort", "on": true, "metric": "air"},
+	{"type": "setLayer", "layer": "energy", "on": true},
+	{"type": "setLayer", "layer": "ops", "on": false},
+	{"type": "setQuality", "tier": "lite"},
+	{"type": "dispatchRoute", "id": "AC-04"},
+	{"type": "welcome", "room": "living", "guest": "Test Guest", "state": "ready"},
+	{"type": "setQuality", "tier": "auto"},
+	{"type": "setLayer", "layer": "ops", "on": true},
+	{"type": "setLayer", "layer": "comfort", "on": false},
+	{"type": "setLayer", "layer": "energy", "on": false},
 	{"type": "openDevice", "id": "AC-05"},
 ]
 

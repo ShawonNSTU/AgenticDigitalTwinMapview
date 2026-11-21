@@ -3,12 +3,15 @@ import { LAYOUT } from '@/lib/sim/engine';
 import { alerts, history } from '@/lib/sim/maintenance';
 import * as ST from '@/lib/integrations/smartthings';
 import { ensureLive } from '@/lib/integrations/stlive';
+import { ensureExperience, versions } from '@/lib/experience/loop';
+import { journeys } from '@/lib/experience/arrival';
+import { latest as predicted, dispatches } from '@/lib/experience/predict';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/events: Server-Sent Events stream of the simulated device platform.
- * Emits `clock` every 500 ms, `live` when a real SmartThings device reports a new state or goes on/offline, `alert` when a device raises a new alert (technicians are notified), `health` whenever any device's health changes, `layout` after a floor plan upload and `devices` when devices are placed, moved or removed.
+ * Emits `clock` every 500 ms, `journey` when a guest journey changes (on the way, preparing, ready, arrived, away, checked out), `predicted` when predicted failures or technician dispatches change, `live` when a real SmartThings device reports a new state or goes on/offline, `alert` when a device raises a new alert (technicians are notified), `health` whenever any device's health changes, `layout` after a floor plan upload and `devices` when devices are placed, moved or removed.
  * The Godot renderer (desktop build) and the web UI both subscribe to this.
  */
 export async function GET() {
@@ -22,6 +25,8 @@ export async function GET() {
       let known = new Set(alerts().map(a => a.key)); // alerts already open when the page connected
       let stVersion = ST.version();
       ensureLive();
+      ensureExperience();
+      let xv = { arrival: -1, predict: -1 };
       const send = (event: string, data: unknown) => controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       const push = () => {
         tick();
@@ -29,6 +34,10 @@ export async function GET() {
         if (ST.version() !== stVersion) { stVersion = ST.version(); send('live', { version: stVersion }); }
         if (LAYOUT.version !== version) { version = LAYOUT.version; devVersion = LAYOUT.devVersion; last = ''; send('layout', { version }); }
         else if (LAYOUT.devVersion !== devVersion) { devVersion = LAYOUT.devVersion; last = ''; send('devices', { version: devVersion }); }
+        const v = versions();
+        if (v.arrival !== xv.arrival) send('journey', journeys().map(j => ({ token: j.token, room: j.room, roomName: j.roomName, guest: j.guest, state: j.state, eta: j.eta, readyAt: j.readyAt, steps: j.steps.length, done: j.steps.filter(x => x.status === 'done').length })));
+        if (v.predict !== xv.predict) send('predicted', { predictions: predicted(), dispatches: dispatches() });
+        xv = v;
         const f = floor();
         const h = JSON.stringify(f.devices.map(d => [d.id, d.health, (d as { fault?: string }).fault ?? '']));
         if (h !== last) {

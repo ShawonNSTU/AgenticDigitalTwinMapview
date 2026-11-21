@@ -18,6 +18,8 @@ var show_ids := false       # the Device IDs layer
 var guest_token := ""      # set when the page was opened from a guest link (?guest=<token>)
 var guest: Dictionary = {}  # {room, entrance} from the platform for that link
 var guest_allowed: Dictionary = {}
+var comfort_metric := "thermal"  # comfort layer colours by: thermal | air | score
+var experience: Dictionary = {}  # comfort per room, live watts, eco rooms, journeys, predictions, dispatches (/api/floor)
 var me: Dictionary = {}  # the guest's live position fix {x, z, accuracy, source, at} (guest links only)  # rooms a guest may see and walk through (empty = no limit)  # first-person walk-through: full-height walls, ceilings, lights under the ceiling
 
 var t := 10.0
@@ -184,6 +186,9 @@ func _on_floor(result: int, code: int, _h: PackedStringArray, body: PackedByteAr
 			health[d.id] = d.health
 			Bus.health_changed.emit(d.id, d.health)
 	Bus.live_updated.emit()
+	if data.get("experience") is Dictionary:
+		experience = data.experience
+		Bus.experience_updated.emit()
 
 
 func _on_device(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:

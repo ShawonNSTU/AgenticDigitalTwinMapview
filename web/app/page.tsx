@@ -11,6 +11,7 @@ import WalkHud from '@/components/WalkHud';
 import GuestQr from '@/components/GuestQr';
 import RoomFurniture from '@/components/RoomFurniture';
 import FullscreenButton from '@/components/FullscreenButton';
+import OpsPanel from '@/components/OpsPanel';
 import { send, RENDERER_VERSION, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
@@ -28,7 +29,7 @@ export default function Home() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [floorTitle, setFloorTitle] = useState('');
   const [sel, setSel] = useState<string | null>(null);
-  const [tab, setTab] = useState<'devices' | 'agent'>('devices');
+  const [tab, setTab] = useState<'devices' | 'live' | 'agent'>('devices');
   const [hover, setHover] = useState<Hover>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
@@ -87,6 +88,18 @@ export default function Home() {
     es.addEventListener('live', () => loadDevices());   // a real SmartThings device changed
     es.addEventListener('devices', () => { loadDevices(); send({ type: 'refreshDevices' }); });
     es.addEventListener('layout', () => { setSel(null); loadDevices(); loadRooms(); });
+    // guest journeys: say when a room starts being prepared and when it is ready
+    const states: Record<string, string> = {};
+    es.addEventListener('journey', e => {
+      for (const j of JSON.parse((e as MessageEvent).data) as { token: string; guest: string; roomName: string; state: string }[]) {
+        const was = states[j.token]; states[j.token] = j.state;
+        if (was === undefined || was === j.state) continue;
+        if (j.state === 'preparing') toast(`Preparing ${j.roomName} for ${j.guest || 'a guest'}`);
+        if (j.state === 'ready') toast(`${j.roomName} is ready for ${j.guest || 'the guest'}`);
+        if (j.state === 'arrived') toast(`${j.guest || 'The guest'} arrived in ${j.roomName}`);
+        if (j.state === 'departed') toast(`${j.guest || 'Guest'} checked out of ${j.roomName} · eco and housekeeping`);
+      }
+    });
     loadDevices(); loadRooms();
     return () => es.close();
   }, [loadDevices, loadRooms, toast]);
@@ -225,8 +238,8 @@ export default function Home() {
       <aside className="side">
         {sel ? <DevicePanel id={sel} t={sim ? Math.round(sim.t * 10) / 10 : 10} onClose={() => setSel(null)} onSelect={select} onMove={move} onRemove={remove} /> : (
           <>
-            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>AI agent</button></div>
-            {tab === 'agent' ? <ChatPanel onSelect={select} /> : (
+            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live ops</button><button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>AI agent</button></div>
+            {tab === 'agent' ? <ChatPanel onSelect={select} /> : tab === 'live' ? <OpsPanel toast={toast} /> : (
               <div className="list">
                 {devices.length === 0 && <div className="muted pad">Nothing placed yet. Drag a device from the palette on the map.</div>}
                 {byRoom.map(([room, rows]) => (

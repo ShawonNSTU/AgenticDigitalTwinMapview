@@ -4,7 +4,7 @@ extends Node
 ## Renderer -> host: parent.postMessage({source: "twin-renderer", type, ...})
 ## Contract: docs/contracts/bridge-api.md
 
-const VERSION := "0.7.1"  # bump with every renderer change the page depends on (web/lib/bridge.ts RENDERER_VERSION)
+const VERSION := "0.8.0"  # bump with every renderer change the page depends on (web/lib/bridge.ts RENDERER_VERSION)
 var _cb: JavaScriptObject  # keep a reference or the callback is collected
 
 
@@ -60,7 +60,10 @@ func handle(msg: Dictionary) -> void:
 		"closeDevice": Bus.close_requested.emit()
 		"focusPart": Bus.part_focus_requested.emit(str(msg.get("id", "")), str(msg.get("part", "")))
 		"trace": Bus.trace_requested.emit(str(msg.get("from", "")))
-		"setLayer": Bus.layer_changed.emit(str(msg.get("layer", "")), bool(msg.get("on", true)))
+		"setLayer":
+			if msg.has("metric"):
+				Store.comfort_metric = str(msg.metric)
+			Bus.layer_changed.emit(str(msg.get("layer", "")), bool(msg.get("on", true)))
 		"setTime": Store.set_time(float(msg.get("t", Store.t)))
 		"setScenario": Store.set_scenario(str(msg.get("key", "normal")))
 		"resetView": Bus.reset_view_requested.emit()
@@ -76,4 +79,7 @@ func handle(msg: Dictionary) -> void:
 		"story": Bus.story_requested.emit(msg)
 		"preview": Bus.preview_requested.emit(str(msg.get("id", "")), msg.get("readings", {}) if msg.get("readings") is Dictionary else {}, str(msg.get("text", "")))
 		"track": Bus.track_requested.emit(str(msg.get("id", "")))
+		"setQuality": Bus.quality_requested.emit(str(msg.get("tier", "auto")))
+		"dispatchRoute": Bus.dispatch_requested.emit(str(msg.get("id", "")))
+		"welcome": Bus.welcome_requested.emit(msg)
 		_: push_warning("Bridge: unknown message %s" % msg)

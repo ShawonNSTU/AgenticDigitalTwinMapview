@@ -102,10 +102,19 @@ export function check(token: string, cookie?: string | null, needVerified = true
   return { pass: p };
 }
 
-export function revoke(token: string) {
+/** Told when a guest checks out (pass withdrawn): the arrival service runs eco and housekeeping. */
+const gr = globalThis as unknown as { __onCheckout?: ((p: GuestPass, by: string) => void)[] };
+const checkoutHooks = (gr.__onCheckout ??= []);
+export function onCheckout(fn: (p: GuestPass, by: string) => void) { if (!checkoutHooks.includes(fn)) checkoutHooks.push(fn); }
+/** The pass itself (for services that keep state per stay), or null. */
+export const passOf = (token: string): GuestPass | null => passes[token] ?? null;
+
+export function revoke(token: string, by = 'host') {
   const p = passes[token];
   if (!p) return false;
+  if (p.revoked) return true;
   p.revoked = true;
+  for (const fn of checkoutHooks) { try { fn(p, by); } catch { /* never block a checkout */ } }
   journal({ kind: 'guest', room: p.room, guest: p.token, text: `Guest ${p.label || '(no name)'} checked out of ${roomName(roomOf(p.room))} (pass withdrawn)` });
   return true;
 }

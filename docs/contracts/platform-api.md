@@ -27,7 +27,8 @@ be simulated on this device type.
 
 ## GET · POST · DELETE /api/devices/:id/fault
 Technician fault simulation. GET → `{ id, type, label, levels: [{key, name}], faults: [{ key, name, what, parts }], active }`.
-POST `{ key, level: early | developing | severe }` → starts the fault (the device snapshot is returned); it changes the
+POST `{ key, level: early | developing | severe | degrading }` → starts the fault (`degrading` worsens steadily over
+`DEGRADE_MINUTES`, default 6, so its failure can be predicted) (the device snapshot is returned); it changes the
 readings, the damaged components' health (watch, then fault), the device's health on the map, the flows in the twin
 and the finding (diagnosis + guided repair). Changing only the level keeps the fault developed. DELETE → back to
 normal. 400 for an unknown fault or level, 404 for an unknown device. Faults are removed with their device.
@@ -63,6 +64,8 @@ POST body (all optional): `{ scenario, t, playing, speed, fix }`. Changing scena
 - `event: clock` every 500 ms, data = sim state
 - `event: health` when any device's health changes, data = `[{id, health}]`
 - `event: layout` after a floor plan upload or reset, data = `{version}`
+- `event: journey` when a guest journey changes, data = `[{token, room, roomName, guest, state, eta, readyAt, steps, done}]`
+- `event: predicted` when predicted failures or dispatches change, data = `{predictions, dispatches}`
 
 ## GET /api/building
 `{ version, custom, wallHeight, outdoorPad: {x, z}, rooms: [...], devices: [{id, type, room, name, position, rotationY}], furniture: [...], plan: null | {url, x0, x1, z0, z1} }`
@@ -138,3 +141,17 @@ with `SMARTTHINGS_API`) as `{commands: [{component, capability, command, argumen
 `GET /devices/{id}/status` and `/health`. A guest unlock answers 428 `{stepUp: true}` when the policy wants the
 PIN again (send `pin` with the command), 429 when too many unlocks.
 The guest's `/floor` feed carries `me: {x, z, accuracy, source, at}` while a fresh fix (under 30 s) exists.
+
+## Hotel experience (lib/experience)
+
+A 2-second loop on the server samples energy, refreshes comfort, advances guest journeys and re-checks predictions.
+`GET /api/floor` carries the live part as `experience` (see bridge-api.md).
+
+| Method · path | What |
+|---|---|
+| `GET /api/energy?room=` · `PATCH {perKWh?, currency?, co2PerKWh?}` | watts now, kWh / cost / CO2 today, avoided by eco, per room, biggest loads (`src: meter` from a SmartThings powerMeter, else `model`), hourly kWh and the trend · the tariff (also `ENERGY_TARIFF_PER_KWH`, `ENERGY_CURRENCY`, `GRID_CO2_KG_PER_KWH`) |
+| `GET /api/comfort?room=` · `POST {room}` | comfort per room: score 0-100 and grade, thermal / air / light / sound parts (measured or estimated, and from what), temperature trend and minutes to the target, advice as device commands · apply a room's advice |
+| `GET /api/arrivals` · `POST {action: eta·prepare·checkout, token, minutes?}` · `POST {action: housekeeping, id, status}` | every stay's journey (`booked → en_route → preparing → ready → arrived ⇄ away → departed`) and housekeeping tasks · the front desk's actions |
+| `GET /api/guest/:token/journey` · `POST {action: on_my_way {minutes} · walking {metres} · arrived · away · prepare · prefs {temp, scene, curtain, tvWelcome} · comfort}` | the guest's journey, their room's comfort and energy · the guest's side (`comfort` applies the advice their pass allows) |
+| `GET /api/predictions` · `POST {deviceId, reason?}` · `PATCH {deviceId, status: en_route·on_site·done}` | predicted failures `{deviceId, part, title, etaMin, etaText, confidence, basis: degradation-model·scenario·trend·usage-model, evidence, action}` and dispatches · send the right technician · update the dispatch |
+

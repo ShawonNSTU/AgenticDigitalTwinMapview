@@ -7,6 +7,7 @@ import { CMD_LABEL, type Cmd } from '@/components/DeviceControls';
 import HoloControl from '@/components/HoloControl';
 import { stStatus, type StProfile } from '@/components/StZone';
 import GuestAssistant from '@/components/GuestAssistant';
+import GuestJourney from '@/components/GuestJourney';
 import Locator from '@/components/Locator';
 import FullscreenButton from '@/components/FullscreenButton';
 import { send, type FromRenderer } from '@/lib/bridge';
@@ -51,7 +52,7 @@ export default function GuestPage() {
   const [ready, setReady] = useState(false);
   const [built, setBuilt] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
-  const [tab, setTab] = useState<'room' | 'assistant'>('room');
+  const [tab, setTab] = useState<'stay' | 'room' | 'assistant'>('stay');
   const [tour, setTour] = useState<number | null>(null);
   const [overview, setOverview] = useState(false);
   const [hintShown, setHintShown] = useState(true);   // the "You're in …" card: closable, gone once the tour is over
@@ -89,18 +90,21 @@ export default function GuestPage() {
     load();
   };
 
+  const journey = useCallback((body: object) => { fetch(`/api/guest/${token}/journey`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {}); }, [token]);
+  const say = useCallback((text: string, bad = false) => { setMsg({ text, bad }); setTimeout(() => setMsg(null), 3200); }, []);
   const onEvent = useCallback((m: FromRenderer) => {
     if (m.type === 'ready') setReady(true);
     if (m.type === 'floorBuilt') setBuilt(true);
     if (m.type === 'guestDenied') setDenied('This guest link is no longer valid.');
     if (m.type === 'walk') {
-      if (m.guest === 'walking') { setWalk({ phase: 'walking', from: m.from, to: m.to, metres: m.metres }); if (m.route) setRoute(m.route); }
-      else if (m.guest === 'arrived') { setWalk(w => ({ ...w, phase: 'arrived', here: m.roomName })); setOverview(false); }
+      // the walk from the entrance tells the hotel the guest is on the way (and how far), and when they are in
+      if (m.guest === 'walking') { setWalk({ phase: 'walking', from: m.from, to: m.to, metres: m.metres }); if (m.route) setRoute(m.route); if (m.metres) journey({ action: 'walking', metres: m.metres }); }
+      else if (m.guest === 'arrived') { setWalk(w => ({ ...w, phase: 'arrived', here: m.roomName })); setOverview(false); journey({ action: 'arrived', via: 'walk' }); }
       else if (m.roomName) setWalk(w => ({ ...w, here: m.roomName }));
     }
     if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); openHolo(m.id); setTimeout(() => cards.current[m.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); }
     if (m.type === 'anchor') setAnchor(m);
-  }, [openHolo]);
+  }, [openHolo, journey]);
 
   const run = (id: string) => async (command: string, args: Record<string, unknown> = {}, _c?: boolean, pin?: string) => {
     const r = await fetch(`/api/guest/${token}/devices/${id}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, args, ...(pin ? { pin } : {}) }) });
@@ -214,8 +218,8 @@ export default function GuestPage() {
         )}
       </section>
       <aside className="guest-panel">
-        <div className="tabs"><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room controls <i>{view?.devices.length ?? 0}</i></button><button className={tab === 'assistant' ? 'on' : ''} onClick={() => setTab('assistant')}>Assistant</button></div>
-        {tab === 'assistant' ? <GuestAssistant token={token} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); }} /> : (
+        <div className="tabs"><button className={tab === 'stay' ? 'on' : ''} onClick={() => setTab('stay')}>Your stay</button><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room <i>{view?.devices.length ?? 0}</i></button><button className={tab === 'assistant' ? 'on' : ''} onClick={() => setTab('assistant')}>Assistant</button></div>
+        {tab === 'stay' ? <GuestJourney token={token} onMsg={say} /> : tab === 'assistant' ? <GuestAssistant token={token} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); else if (x.type === 'setLayer' && ['comfort', 'energy'].includes(x.layer)) send({ type: 'setLayer', layer: x.layer, on: x.on !== false }); }} /> : (
           <div className="guest-devs">
             {view && view.devices.length === 0 && <div className="muted pad">This room has no connected devices.</div>}
             {view?.devices.map(d => (

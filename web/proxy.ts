@@ -9,7 +9,8 @@ const ADMIN = process.env.ADMIN_KEY ?? '';
 const TECH = process.env.TECH_KEY ?? '';
 
 const guestApi = (path: string, method: string) =>
-  /^\/api\/guest\/[^/]+\/(building|floor|position)$/.test(path) && method === 'GET'
+  /^\/api\/guest\/[^/]+\/(building|floor|position|journey)$/.test(path) && method === 'GET'
+  || /^\/api\/guest\/[^/]+\/journey$/.test(path) && method === 'POST'
   || /^\/api\/guest\/[^/]+\/devices\/[^/]+\/commands$/.test(path) && method === 'POST'
   || /^\/api\/guest\/[^/]+\/(verify|chat|position)$/.test(path) && method === 'POST'
   || /^\/api\/guest\/[^/]+$/.test(path) && method === 'GET'
@@ -17,7 +18,8 @@ const guestApi = (path: string, method: string) =>
 
 const techAllowed = (path: string, method: string) =>
   path === '/tech' || path.startsWith('/api/alerts') || path.startsWith('/api/maintenance') || path.startsWith('/api/events') || path.startsWith('/api/chat') || path.startsWith('/api/kg')
-  || (path.startsWith('/api/technicians') && method === 'GET')
+  || (path.startsWith('/api/technicians') && method === 'GET') || path.startsWith('/api/predictions')
+  || (/^\/api\/(energy|comfort|arrivals)/.test(path) && method === 'GET')
   || (/^\/api\/(floor|building|devices|layout)/.test(path) && (method === 'GET' || /\/commands$/.test(path)));
 
 export function proxy(req: NextRequest) {

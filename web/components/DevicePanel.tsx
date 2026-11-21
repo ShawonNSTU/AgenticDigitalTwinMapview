@@ -11,7 +11,7 @@ type Active = { key: string; name: string; level: string; severity: number; deve
 type Device = { id: string; type: string; label: string; name: string; health: string; parts: Part[]; finding: Finding; fault: Active; faults: FaultOpt[]; readings: Record<string, unknown>; overrides: Record<string, unknown> | null; online?: boolean; source?: string; reported?: string[] };
 type Rec = { id: string; at: number; by: string; status: string; cause: string; action: string; notes: string };
 
-const LEVELS = [{ key: 'early', name: 'Early' }, { key: 'developing', name: 'Developing' }, { key: 'severe', name: 'Severe' }] as const;
+const LEVELS = [{ key: 'early', name: 'Early' }, { key: 'developing', name: 'Developing' }, { key: 'severe', name: 'Severe' }, { key: 'degrading', name: 'Degrading' }] as const;
 const json = (r: Response) => r.json();
 
 /** Selected device: health, fault simulation, diagnosis with guided repair, and live components. Refreshes every second. */

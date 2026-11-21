@@ -13,7 +13,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   return NextResponse.json({ id, type: d.type, label: TYPES[d.type].label, levels: LEVELS.map(({ key, name }) => ({ key, name })), faults: faultCatalog(d.type), active: device(id, tick())?.fault ?? null });
 }
 
-const Body = z.object({ key: z.string().min(1).max(40), level: z.enum(['early', 'developing', 'severe']).default('developing') });
+const Body = z.object({ key: z.string().min(1).max(40), level: z.enum(['early', 'developing', 'severe', 'degrading']).default('developing') });
 
 /** POST /api/devices/:id/fault {key, level} → simulate a fault on this device. It develops over about 6 s. */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

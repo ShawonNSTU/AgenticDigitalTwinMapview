@@ -778,3 +778,74 @@ body.has-pseudo-full { overflow:hidden; }
 /* the feed scrolls; nothing in a run may be squeezed by it (reasoning, cards, lists keep their full height) */
 .ag-feed > *, .ag-run > * { flex-shrink:0; }
 .ag-reason { position:relative; }
+
+/* ---------------- hotel experience: live ops, guest journey, predictions ---------------- */
+button.small { padding:4px 9px; font-size:12px; }
+.small { font-size:12px; } .tiny { font-size:11px; }
+.row.wrap { flex-wrap:wrap; }
+.ops { gap:10px; }
+.ops-card { background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:var(--shadow-sm); }
+.ops-head { display:flex; justify-content:space-between; align-items:center; }
+.ops-head b { font-size:13.5px; }
+.kpis { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+.kpis div { background:var(--panel2); border:1px solid var(--line); border-radius:9px; padding:6px 8px; display:flex; flex-direction:column; }
+.kpis small { color:var(--faint); font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; }
+.kpis b { font-size:14px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.saved { display:flex; flex-direction:column; background:var(--ok-bg); border:1px solid #a7f3d0; color:#065f46; border-radius:9px; padding:6px 9px; font-size:12px; }
+.saved b { font-variant-numeric:tabular-nums; }
+.ops-spark { width:100%; height:40px; display:block; }
+.ops-rows { display:flex; flex-direction:column; gap:1px; }
+.ops-row { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:7px; font-size:12.5px; cursor:pointer; }
+.ops-row:hover { background:var(--panel2); }
+.ops-row b { font-variant-numeric:tabular-nums; }
+.ops-row select { padding:2px 6px; font-size:12px; }
+.meter { font-style:normal; font-size:10px; color:var(--acc); border:1px solid var(--acc-line); border-radius:6px; padding:0 5px; }
+.eco-tag { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.6px; color:#047857; background:var(--ok-bg); border:1px solid #a7f3d0; border-radius:6px; padding:1px 6px; margin-right:6px; }
+.eco-row { padding:2px 0; }
+.journey-row, .pred-row { border:1px solid var(--line); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; gap:4px; cursor:pointer; }
+.journey-row:hover, .pred-row:hover { border-color:var(--line2); background:var(--panel2); }
+.state-chip, .eta-chip { font-size:11px; font-weight:600; border-radius:999px; padding:2px 8px; white-space:nowrap; font-style:normal; }
+.state-chip.ok { background:var(--ok-bg); color:var(--ok); } .state-chip.watch { background:var(--watch-bg); color:var(--watch); }
+.state-chip.acc { background:var(--acc-bg); color:var(--acc); } .state-chip.muted { background:var(--bg2); color:var(--muted); }
+.eta-chip { background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe; }
+.comfort-row { display:flex; align-items:center; gap:10px; padding:4px; border-radius:9px; cursor:pointer; }
+.comfort-row:hover { background:var(--panel2); }
+.comfort-row .grow { display:flex; flex-direction:column; gap:1px; font-size:12.5px; }
+.score-ring { flex-shrink:0; }
+.map-toolbar select.quality { padding:4px 8px; font-size:12px; }
+
+/* guest: your stay */
+.journey { display:flex; flex-direction:column; gap:12px; padding:12px 14px; overflow:auto; flex:1; }
+.stepper { display:flex; gap:4px; }
+.stepper .st { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; font-size:10.5px; color:var(--faint); text-align:center; }
+.stepper .st i { width:100%; height:4px; border-radius:4px; background:var(--line); }
+.stepper .st.done { color:var(--muted); } .stepper .st.done i { background:var(--ok); }
+.stepper .st.on { color:var(--text); font-weight:600; } .stepper .st.on i { background:linear-gradient(90deg, var(--acc), #60a5fa); animation:pulse-bar 1.6s ease-in-out infinite; }
+@keyframes pulse-bar { 50% { opacity:.55; } }
+.journey-head { margin:0; font-size:14px; color:var(--text2); }
+.journey-comfort { display:flex; gap:12px; align-items:center; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:10px 12px; cursor:pointer; }
+.journey-comfort b { font-size:18px; }
+.temp-bar { height:5px; border-radius:5px; background:var(--line); margin:6px 0 4px; overflow:hidden; }
+.temp-bar span { display:block; height:100%; background:linear-gradient(90deg, #38bdf8, var(--ok)); transition:width 1s; }
+.welcome-steps summary { cursor:pointer; font-size:12.5px; font-weight:600; color:var(--text2); }
+.welcome-steps ul { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:3px; font-size:12.5px; }
+.welcome-steps li { display:flex; align-items:center; gap:7px; color:var(--muted); }
+.welcome-steps li i { width:8px; height:8px; border-radius:50%; background:var(--line2); flex-shrink:0; }
+.welcome-steps li.done { color:var(--text2); } .welcome-steps li.done i { background:var(--ok); }
+.welcome-steps li.running i { background:var(--acc); animation:pulse-bar 1s infinite; } .welcome-steps li.failed i { background:var(--fault); }
+.st-tag { font-style:normal; font-size:10px; color:var(--acc); border:1px solid var(--acc-line); border-radius:6px; padding:0 5px; margin-left:auto; }
+.prefs { display:flex; flex-direction:column; gap:8px; }
+.pref { display:flex; align-items:center; gap:10px; font-size:12.5px; }
+.pref > span { width:84px; color:var(--muted); }
+.pref input[type=range] { flex:1; padding:0; box-shadow:none; }
+.pref b { width:58px; text-align:right; font-variant-numeric:tabular-nums; }
+.pref .seg { flex:1; }
+.guest-energy { display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--text2); background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:8px 10px; cursor:pointer; }
+.timeline { list-style:none; margin:0; padding:0 0 0 10px; border-left:2px solid var(--line); display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text2); }
+.timeline small { color:var(--faint); margin-right:6px; font-variant-numeric:tabular-nums; }
+
+/* technician: predicted failures */
+.pred-title { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+.alert-row.predicted { border-left:3px solid #8b5cf6; }
+.badge.predicted { background:#f5f3ff; color:#6d28d9; }
+.finding.predicted { border-color:#ddd6fe; background:#faf5ff; }

@@ -4,7 +4,7 @@ import { AgentPanel, type UiAction } from './agent/Agent';
 
 type Lang = 'en-US' | 'bn-BD';
 const TASKS: Record<Lang, string[]> = {
-  'en-US': ['Make the room cosy for a movie', 'Dim the lights to 30%', 'Good night', 'What can I control here?'],
+  'en-US': ['Is my room ready?', 'Make my room comfortable', 'Make the room cosy for a movie', 'I’m heading out for a while', 'What can I control here?'],
   'bn-BD': ['লাইট কম করো', 'এসি ২৪ ডিগ্রি করো', 'টিভি বন্ধ করো', 'ঘুমানোর জন্য রুম ঠিক করো'],
 };
 
