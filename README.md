@@ -24,6 +24,11 @@ Proof of concept with three features:
    live evidence and a guided repair, each step flying the camera to its component.
 5. **AI agent.** Search devices and see them highlighted on the map, get insights on what is wrong and what
    to do, and control devices (risky commands need confirmation).
+   **SmartThings agent** ([smartthings-agent/](smartthings-agent/README.md), Ollama): in the chat panel and the guest's
+   room assistant, choose "SmartThings agent" to control the zone's devices in plain words ("turn on Light 3 and dim
+   it to 40%", "close the shade halfway", "which lights are on?"). It works through the twin's SmartThings-compatible
+   API, so each change shows in 3D at once and reaches the real device when it is linked; guests stay limited to
+   their room and pass.
 
 **Hotel use case** (the 4th floor is treated as a hotel floor):
 
@@ -152,6 +157,7 @@ All device data is simulated.
 | Folder | What | Stack |
 |---|---|---|
 | [`agent-backend/`](agent-backend) | AI agent: device search, insights, control (with confirmation), map actions | Python, FastAPI, Claude tool use |
+| [`smartthings-agent/`](smartthings-agent) | SmartThings agent: controls and reads the zone's devices in plain words, through the twin | Python, FastAPI, Ollama (`gpt-oss:20b`) |
 | [`godot-renderer/`](godot-renderer) | 3D renderer: floor, devices, piping, opened-device internals | Godot 4.7, GDScript |
 | [`web/`](web) | Product UI (3D view, device palette, side panel, chat) + simulated device platform API | Next.js, TypeScript |
 | [`docs/`](docs) | Build brief ([PROMPT.md](docs/PROMPT.md)) and contracts between the parts | |
@@ -162,8 +168,10 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
    │      SSE /api/events                 │ polls /api/floor, /api/devices/:id
    │            │                         ▼
    │      Next.js Route Handlers = simulated device platform
-   └─/api/chat─▶ agent-backend /chat ──tools──▶ platform
-                   └─ ui_action events ─▶ page ─▶ Godot
+   ├─/api/chat─▶ agent-backend /chat ──tools──▶ platform
+   │               └─ ui_action events ─▶ page ─▶ Godot
+   └─/api/st-agent─▶ smartthings-agent /control/stream ──▶ /api/st/v1/devices (SmartThings-compatible) ─▶ platform
+                                                            └─ real device when linked (api.smartthings.com)
 ```
 
 ## Story mode: one guest, one night
@@ -221,6 +229,12 @@ pip install -e ".[dev]"     # includes OpenCV for the floor plan reader
 cp .env.example .env        # add ANTHROPIC_API_KEY, or leave empty for demo mode
 uvicorn app.main:app --reload --port 8000
 
+# 2b. SmartThings agent (optional) → http://localhost:8100, needs Ollama with the model pulled
+cd smartthings-agent
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+cp .env.example .env        # OLLAMA_BASE_URL, OLLAMA_MODEL (IOT_API_BASE_URL already points at the web app)
+.venv/bin/python main.py
+
 # 3. Renderer
 #    desktop showcase (Forward+), reads the same platform:
 godot --path godot-renderer
@@ -276,6 +290,7 @@ Try in the chat: "which air conditioners have a problem?", "what's wrong with OD
 
 ```bash
 cd agent-backend && pytest                              # search, tools, demo mode, eval cases, guest assistant
+cd smartthings-agent && TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   # skills + end to end via the twin
 cd web && npm run typecheck && npm run build
 # after every pull: cd web && npm install && npm run export:renderer && npm run build && npm start
 cd web && npm run test:faults                           # every fault × severity: readings, parts, diagnosis

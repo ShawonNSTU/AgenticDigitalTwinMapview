@@ -1,0 +1,603 @@
+{
+    "message": "",
+    "context": {
+        "devices": [
+            {
+                "id": "77233c09-6de7-4903-a137-ea7bf1d301ae",
+                "name": "Aqara Roller Shade Controller",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "windowShade",
+                                "command": "open",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "windowShade",
+                                "command": "close",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "windowShadeLevel",
+                                "command": "setShadeLevel",
+                                "arguments": [
+                                    "Enter a number in range 0 to 100"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "648ac2ca-a762-4fb1-91be-b8eba39b5c2c",
+                "name": "Blinds Switch",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "0f477ef7-8574-4be9-9bb3-f72ed5f719e6",
+                "name": "Desk Lamp",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switchLevel",
+                                "command": "setLevel",
+                                "arguments": [
+                                    "Enter a number in range 1 to 100"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorTemperature",
+                                "command": "setColorTemperature",
+                                "arguments": [
+                                    "Enter a number in range 2200 to 6500"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorControl",
+                                "command": "setColor",
+                                "arguments": [
+                                    {
+                                        "hue": "Enter hue",
+                                        "saturation": "Enter saturation"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "aaa3da5b-bbda-4b4e-90fc-ac11f0c6071c",
+                "name": "Left Window Light",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "ce885b72-4a0a-47c3-9549-f8e384ff9fd7",
+                "name": "Light 1",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switchLevel",
+                                "command": "setLevel",
+                                "arguments": [
+                                    "Enter a number in range 1 to 100"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorTemperature",
+                                "command": "setColorTemperature",
+                                "arguments": [
+                                    "Enter a number in range 2200 to 6500"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorControl",
+                                "command": "setColor",
+                                "arguments": [
+                                    {
+                                        "hue": "Enter hue",
+                                        "saturation": "Enter saturation"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "d82bda78-4f9b-4069-982e-b8d8af4dccd0",
+                "name": "Light 2",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switchLevel",
+                                "command": "setLevel",
+                                "arguments": [
+                                    "Enter a number in range 1 to 100"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorTemperature",
+                                "command": "setColorTemperature",
+                                "arguments": [
+                                    "Enter a number in range 2200 to 6500"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorControl",
+                                "command": "setColor",
+                                "arguments": [
+                                    {
+                                        "hue": "Enter hue",
+                                        "saturation": "Enter saturation"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "c17a9a75-5990-4638-bea8-64c9b96b2890",
+                "name": "Light 3",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switchLevel",
+                                "command": "setLevel",
+                                "arguments": [
+                                    "Enter a number in range 1 to 100"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorTemperature",
+                                "command": "setColorTemperature",
+                                "arguments": [
+                                    "Enter a number in range 2200 to 6500"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorControl",
+                                "command": "setColor",
+                                "arguments": [
+                                    {
+                                        "hue": "Enter hue",
+                                        "saturation": "Enter saturation"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "fe2dc605-3fd0-49eb-879e-9e00f252f5d5",
+                "name": "Light 4",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switchLevel",
+                                "command": "setLevel",
+                                "arguments": [
+                                    "Enter a number in range 1 to 100"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorTemperature",
+                                "command": "setColorTemperature",
+                                "arguments": [
+                                    "Enter a number in range 2200 to 6500"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorControl",
+                                "command": "setColor",
+                                "arguments": [
+                                    {
+                                        "hue": "Enter hue",
+                                        "saturation": "Enter saturation"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "e39a788e-d559-429b-a18c-298382429b2d",
+                "name": "Right Window Light",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "9bd3918b-26ee-4fbb-82cc-99c6a61da528",
+                "name": "TV Lamp",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "434402bd-cea2-463d-95e3-f9a1735e6ce8",
+                "name": "Light 5",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switchLevel",
+                                "command": "setLevel",
+                                "arguments": [
+                                    "Enter a number in range 1 to 100"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorTemperature",
+                                "command": "setColorTemperature",
+                                "arguments": [
+                                    "Enter a number in range 2200 to 6500"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "colorControl",
+                                "command": "setColor",
+                                "arguments": [
+                                    {
+                                        "hue": "Enter hue",
+                                        "saturation": "Enter saturation"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "09611dc5-d2d0-4d4b-a3a1-ce6bc9ab1c4d",
+                "name": "Dining Shade Controller",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "windowShade",
+                                "command": "open",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "windowShade",
+                                "command": "close",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "windowShadeLevel",
+                                "command": "setShadeLevel",
+                                "arguments": [
+                                    "Enter a number in range 0 to 100"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "facda6c1-5784-4819-bd73-02dc7f6925ea",
+                "name": "side lamp",
+                "actions": [
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "on",
+                                "arguments": []
+                            }
+                        ]
+                    },
+                    {
+                        "commands": [
+                            {
+                                "component": "main",
+                                "capability": "switch",
+                                "command": "off",
+                                "arguments": []
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

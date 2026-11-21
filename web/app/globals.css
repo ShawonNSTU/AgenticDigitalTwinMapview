@@ -638,3 +638,11 @@ body.has-pseudo-full { overflow:hidden; }
   .hint-x { width:38px; height:38px; }
 }
 .guest-walk button { white-space:nowrap; flex:none; }
+
+/* chat: which assistant answers */
+.chat-engine { margin:0 0 8px; display:flex; }
+.chat-engine button { flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+.chat-engine .dot { width:7px; height:7px; border-radius:50%; background:#cbd5e1; display:inline-block; }
+.chat-engine .dot.ok { background:#22c55e; }
+.chat-engine .dot.off { background:#ef4444; }
+.assist-opts { flex-wrap:wrap; }

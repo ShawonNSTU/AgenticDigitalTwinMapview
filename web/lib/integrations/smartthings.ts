@@ -134,6 +134,7 @@ export function translate(type: string, command: string, a: Record<string, unkno
       let h = 0; if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
       return [c('switch', 'on'), c('colorControl', 'setColor', [{ hue: Math.round(((h * 60 + 360) % 360) / 3.6), saturation: Math.round((mx ? d / mx : 0) * 100) }])];
     }
+    case 'light.setHueSat': return [c('switch', 'on'), c('colorControl', 'setColor', [{ hue: clamp(Math.round(Number(a.hue)), 0, 100), saturation: clamp(Math.round(Number(a.saturation)), 0, 100) }])];
     case 'light.setColorTemperature': return [c('switch', 'on'), c('colorTemperature', 'setColorTemperature', [clamp(Math.round(Number(a.kelvin)), 2200, 6500)])];
     case 'ac.setTemperature': return [c('thermostatCoolingSetpoint', 'setCoolingSetpoint', [Number(a.celsius)])];
     case 'ac.setMode': return [c('airConditionerMode', 'setAirConditionerMode', [String(a.mode) === 'fan' ? 'fanOnly' : String(a.mode)])];
@@ -341,7 +342,7 @@ export function supported<T extends { name: string; args: Record<string, any> }>
   const l = st.links[localId];
   if (!l?.capabilities?.length) return cmds;
   const caps = new Set(l.capabilities);
-  const sample: Record<string, unknown> = { on: 'true', percent: 50, celsius: 24, mode: 'cool', position: 'swing', hours: 1, kelvin: 3000, source: 'HDMI 1', level: 2, color: 'pink' };
+  const sample: Record<string, unknown> = { on: 'true', percent: 50, celsius: 24, mode: 'cool', position: 'swing', hours: 1, kelvin: 3000, source: 'HDMI 1', level: 2, color: 'pink', hue: 50, saturation: 80 };
   return cmds
     .filter(c => { const t = translate(type, c.name, sample, l.component); return !!t && t.every(x => caps.has(x.capability)); })
     .map(c => (c.name === 'setMode' && l.acModes?.length ? { ...c, args: { ...c.args, mode: (c.args.mode as string[]).filter(m => l.acModes!.includes(m)) } } : c));

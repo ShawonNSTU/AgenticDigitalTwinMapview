@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import path from 'node:path';
 import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
 import { fitSmartThingsZone } from './stzone';
-import { realState, link as stLink } from '@/lib/integrations/smartthings';
+import { realState, link as stLink, hsvHex } from '@/lib/integrations/smartthings';
 import { ensureLive } from '@/lib/integrations/stlive';
 
 type Override = Record<string, unknown>;
@@ -109,7 +109,8 @@ export function floor(t = tick()) {
 /** Colour presets for colour bulbs (hex as the 3D view shows them). */
 export const LIGHT_COLORS: Record<string, string> = { pink: '#ff6fae', purple: '#8b5cf6', blue: '#3b82f6', cyan: '#22d3ee', green: '#22c55e', amber: '#f59e0b', red: '#ef4444' };
 
-export const COMMANDS: Record<string, Record<string, { args?: Record<string, [number, number] | string[]>; confirm?: boolean; apply: (a: any, cur: any) => Override }>> = {
+// `hidden`: run by integrations (the SmartThings agent), not offered as a control in the panels
+export const COMMANDS: Record<string, Record<string, { args?: Record<string, [number, number] | string[]>; confirm?: boolean; hidden?: boolean; apply: (a: any, cur: any) => Override }>> = {
   ac: {
     power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
     setTemperature: { args: { celsius: [16, 30] }, apply: a => ({ set: +a.celsius }) },
@@ -124,6 +125,8 @@ export const COMMANDS: Record<string, Record<string, { args?: Record<string, [nu
     setColorTemperature: { args: { kelvin: [2200, 6500] }, apply: a => ({ ct: +a.kelvin, col: '' }) },
     // colour bulbs: a named colour (the SmartThings app's colour presets); white comes back with setColorTemperature
     setColor: { args: { color: Object.keys(LIGHT_COLORS) }, apply: a => ({ col: LIGHT_COLORS[String(a.color)] ?? '' }) },
+    // any colour, as SmartThings colorControl gives it (hue and saturation 0-100)
+    setHueSat: { args: { hue: [0, 100], saturation: [0, 100] }, hidden: true, apply: a => ({ col: Number(a.saturation) < 3 ? '' : hsvHex(Number(a.hue), Number(a.saturation)) }) },
   },
   tv: {
     power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },

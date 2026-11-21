@@ -119,14 +119,15 @@ function describe(p: GuestPass) {
 }
 
 /** Commands a guest may run on a device: everything that needs no confirmation (no unlocking, no stopping a wash). */
-export function guestCommands(type: string, p?: GuestPass, id?: string) {
+export function guestCommands(type: string, p?: GuestPass, id?: string, withHidden = false) {
   // the host's choice of controls for this guest (others are view-only), then what the real device supports
   if (p?.controls?.length && !p.controls.includes(type)) return [];
   const list = Object.entries(COMMANDS[type] ?? {})
+    .filter(([, c]) => withHidden || !c.hidden)
     .filter(([name, c]) => !c.confirm || (type === 'lock' && name === 'unlock' && !!p?.allowUnlock && !!p?.pin))
     .map(([name, c]) => ({ name, args: (name === 'setTemperature' && p ? { celsius: p.acRange } : c.args ?? {}) as Record<string, any>, ...(c.confirm ? { confirm: true } : {}) }));
   const prof = id ? ST_PROFILE[id] : undefined;
-  const own = prof ? list.filter(c => ST_KIND_COMMANDS[prof.kind].includes(c.name)) : list;
+  const own = prof ? list.filter(c => ST_KIND_COMMANDS[prof.kind].includes(c.name) || (withHidden && prof.kind === 'color' && c.name === 'setHueSat')) : list;
   return id ? supported(id, type, own) : own;
 }
 
@@ -174,7 +175,7 @@ export function guestFloor(p: GuestPass) {
 export async function guestCommand(p: GuestPass, id: string, command: string, args: Record<string, unknown>, pin?: string) {
   const d = byId[id];
   if (!d || d.room !== p.room || GUEST_HIDDEN.includes(d.type)) return { status: 403, body: { ok: false, error: 'This device is not in your room.' } };
-  const allowed = guestCommands(d.type, p, id).find(c => c.name === command);
+  const allowed = guestCommands(d.type, p, id, true).find(c => c.name === command);
   const who = `guest ${p.label || p.token.slice(0, 6)}`;
   if (!allowed) {
     if (command === 'unlock') audit({ deviceId: id, room: d.room, action: 'unlock', by: who, ok: false, reason: 'not allowed by the pass', via: 'simulator' });

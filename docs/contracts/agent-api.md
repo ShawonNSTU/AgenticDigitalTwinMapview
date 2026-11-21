@@ -33,3 +33,31 @@ All coordinates are fractions of the image (x right, y down).
 
 ## Environment
 `ANTHROPIC_API_KEY` (empty = demo mode), `AGENT_MODEL` (default `claude-sonnet-5-5`), `PLATFORM_URL` (default `http://localhost:3000`), `CORS_ORIGINS`, `MAX_TOOL_ROUNDS` (8).
+
+
+# SmartThings agent (smartthings-agent)
+
+The web app runs the SmartThings agent's turns and gives it a SmartThings-compatible API onto the twin.
+
+## POST /api/st-agent (host) and POST /api/guest/{pass}/st-agent (guest)
+Body `{ messages: [{role, content}], room? }` (host `room`: default the SmartThings Experience Zone; a guest always
+gets their pass's room). Response: the same event stream as `/chat` above: `tool` (host only: the agent's
+progress, "Finding device", "Sending command"), `text` (the reply), `ui_action` (`highlight` the devices it
+changed or read; `focusDevice` when it is one), `result` (guest only: `{results: [{device_id, label, ok, error?}]}`),
+`error`, `done`. `GET /api/st-agent`: `{ ok, url, model, skills }`.
+
+The web app sends the agent `{message, messages, devices: [{id, name, room, actions}], extras: {rooms_context}}`
+(built from the live twin) with `Authorization: Bearer <session>`: a random token valid for 3 minutes that carries
+the turn's scope (host, or one guest pass).
+
+## /api/st/v1/devices/{id}/{commands|status|health}
+Same paths and bodies as `api.smartthings.com/v1/devices`, for the agent (`IOT_API_BASE_URL`). Needs a session
+token (401 otherwise); `{id}` must be in the session's scope (404 otherwise).
+- `POST commands {commands: [{component, capability, command, arguments}]}`: each is mapped to a twin command
+  (`switch.on` -> `power`, `switchLevel.setLevel` -> `setLevel`, `colorControl.setColor` -> `setHueSat`,
+  `windowShadeLevel.setShadeLevel` -> `setPosition`, `thermostatCoolingSetpoint` -> `setTemperature`, ...) and run
+  through the twin (host: `dispatch`; guest: `guestCommand`). 200 `{results: [{id, status: "COMPLETED"}]}`; 403/409/422
+  `{error: {message}}` when refused, offline or invalid.
+- `GET status`: the twin's state as a SmartThings status document (the real device's reported state when linked).
+- `GET health`: `{deviceId, state: "ONLINE" | "OFFLINE"}`.
+Commands that need confirmation (unlock, stop a wash) are never offered or accepted.
