@@ -13,10 +13,9 @@ extends Node3D
 ##   lock     : green when unlocked, red when locked
 ## Offline devices go grey with a red "Offline" tag and stop doing anything.
 ##
-## The SmartThings Experience Zone's devices (and any device linked to a real SmartThings device) also carry a
-## status badge that always says what the device is doing ("Light 3 · 45%", "Shade · 40% open", "Off",
-## "Offline"); when its state changes (a command, the SmartThings app, a wall switch) the badge flashes and a ring
-## pulses out from the device, so a real change is obvious at a glance. Spot bulbs throw a visible beam and a pool
+## No text is drawn over devices in the room (states are in the side panel). When a SmartThings device in the zone
+## (or any device linked to a real one) changes state (a command, the SmartThings app, a wall switch), a soft ring
+## pulses out from it in its new colour, so a real change is noticed at a glance. Spot bulbs throw a visible beam and a pool
 ## of light; lamps light their shade only while on. Settled effects stop processing (most of a floor is idle).
 
 const MODE_COL := {"cool": Color("7cc4ff"), "heat": Color("ff9b5a"), "dry": Color("b9e6ff"), "fan": Color("e5e7eb"), "auto": Color("a7f3d0")}
@@ -31,7 +30,7 @@ var _src: Light3D          # the light a light device casts (an omni light, or a
 var _cone: MeshInstance3D  # spot bulbs: the visible beam
 var _cone_mat: StandardMaterial3D
 var _liner_mat: StandardMaterial3D  # floor lamp: the inside of its shade, lit by the bulb
-var _badge: Label3D
+var _badge_on := false   # a zone / real device: pulses a ring when its state changes
 var _burst: MeshInstance3D
 var _burst_mat: StandardMaterial3D
 var _sig := ""             # what the device is doing, to notice changes
@@ -103,33 +102,7 @@ func _wants_badge() -> bool:
 
 
 func _build_badge() -> void:
-	_badge = Label3D.new()
-	_badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_badge.fixed_size = true
-	_badge.pixel_size = 0.00095 if Store.walk else 0.0005   # walking, the camera's wider view makes text smaller
-	_badge.font_size = 26
-	add_to_group("zone_badge")
-	_badge.outline_size = 12
-	_badge.outline_modulate = Color(0.04, 0.06, 0.1, 0.92)
-	_badge.no_depth_test = not Store.walk   # walking: walls hide the badges of other rooms
-	_badge.render_priority = 2
-	# below things on the ceiling, above everything else
-	var up := 1.0
-	if variant in ["spot", "panel"] or (type == "light" and variant == "" and Store.walk):
-		up = -1.0
-	_badge.position.y = (size.y / 2 + 0.16) * up
-	if variant == "window":
-		_badge.position = Vector3(0, -0.18 if _left else -0.36, 0.1)   # on its own pane, one above the other
-	elif variant == "wall":
-		_badge.position.y = 0.42   # above the TV it hides behind
-	elif variant == "lamp":
-		_badge.position.y = 0.4    # above the lamp's shade
-	if Store.walk:
-		# walking: only the badges of the room you are in, drawn over everything (no lamp shade or pane cuts them)
-		Bus.walk_changed.connect(_on_walk_room)
-		if Walker.current_room != "":
-			_on_walk_room.call_deferred({"on": true, "room": Walker.current_room})
-	add_child(_badge)
+	_badge_on = true
 	_burst_mat = StandardMaterial3D.new()
 	_burst_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_burst_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -149,111 +122,61 @@ func _build_badge() -> void:
 	add_child(_burst)
 
 
-func _on_walk_room(info: Dictionary) -> void:
-	if _badge == null or not is_instance_valid(_badge):
-		return
-	var here := str(info.get("room", "")) == _room_key
-	_badge.visible = here or not bool(info.get("on", true))
-	_badge.no_depth_test = here
-
-
-## Badge text and colour for the device's state, and a short signature of it (to notice changes).
-## The badge's short name for a device ("Aqara Roller Shade Controller" -> "Roller Shade", "Left Window Light" ->
-## "Left Window"): the panel shows the full name.
-func _short_name() -> String:
-	var name := str(dev.data.get("name", "")).get_slice(" · ", 0)
-	name = name.trim_prefix("Aqara ").trim_suffix(" Controller")
-	if name.ends_with("Window Light"):
-		name = "Window " + name.left(1)   # "Window L", "Window R"
-	return name
-
-
-## Badges of devices close together (the window wall) are stacked instead of drawn over each other.
-func _declutter() -> void:
-	var mine := Vector2(global_position.x, global_position.z)
-	var k := 0
-	for b in get_tree().get_nodes_in_group("zone_badge"):
-		if b == self or not (b is DeviceFx):
-			continue
-		var p := Vector2((b as Node3D).global_position.x, (b as Node3D).global_position.z)
-		if p.distance_to(mine) < (0.75 if Store.walk else 1.1) and b.get_instance_id() < get_instance_id():
-			k += 1
-	# Label3D's offset is in pixels with +y down: badges above their device stack upwards, below it downwards
-	_badge.offset.y = k * (-30.0 if _badge.position.y >= 0.0 else 30.0)
-
-
+## What the device is doing, as a colour and a short signature (to notice changes).
 func _state() -> Array:
-	var name := _short_name()
 	var online: bool = live.get("online", true) != false
 	if not online:
-		return [name + " · Offline", Color("ff7b72"), "offline"]
+		return [Color("ff7b72"), "offline"]
 	match type:
 		"light":
 			var lv := int(round(float(live.get("lv", 0.0))))
 			if lv <= 0:
-				return [name + " · Off", Color("9aa4b2"), "off"]
+				return [Color("9aa4b2"), "off"]
 			var hex := str(live.get("col", ""))
 			var col := Color.html(hex) if hex.begins_with("#") and hex.length() == 7 else Color(1.0, 0.86, 0.6)
-			var dimmable := variant in ["", "spot", "wall", "desk"] or lv < 100
-			var txt := name + (" · %d%%" % lv if dimmable and lv < 100 else " · On")
-			return [txt, col.lerp(Color.WHITE, 0.35), "on%d|%s|%d" % [lv / 3, hex, int(float(live.get("ct", 0)) / 150.0)]]
+			return [col.lerp(Color.WHITE, 0.35), "on%d|%s|%d" % [lv / 3, hex, int(float(live.get("ct", 0)) / 150.0)]]
 		"blinds":
-			var pos := int(round(float(live.get("pos", 100.0))))
-			var shown := int(round(_blind_pos * 100.0)) if _blind_pos >= 0.0 else pos
-			var label := "Open" if pos >= 99 else ("Closed" if pos <= 1 else "%d%% open" % pos)
-			if absi(shown - pos) > 3:
-				label = ("opening" if pos > shown else "closing") + " %d→%d%%" % [shown, pos]
-			return [name + " · " + label, Color("9fd3ff"), "pos%d" % (pos / 3)]
+			return [Color("9fd3ff"), "pos%d" % (int(round(float(live.get("pos", 100.0)))) / 3)]
 		"plug":
 			var on: bool = bool(live.get("on", false))
-			return [name + (" · On" if on else " · Off"), Color("7ee2a8") if on else Color("9aa4b2"), "on" if on else "off"]
-	return [name, Color.WHITE, ""]
+			return [Color("7ee2a8") if on else Color("9aa4b2"), "on" if on else "off"]
+	return [Color.WHITE, ""]
 
 
 func _update_badge() -> void:
-	if _badge == null:
+	if not _badge_on:
 		return
 	var st := _state()
-	_badge.text = st[0]
-	if _fx_tween == null or not _fx_tween.is_running():
-		_badge.modulate = st[1]
-	if _sig != "" and st[2] != _sig:
-		_changed(st[1])
-	if _sig == "" and variant != "window":
-		_declutter()
-	_sig = st[2]
+	if _sig != "" and st[1] != _sig:
+		_changed(st[0])
+	_sig = st[1]
 
 
-## The device just changed state: the badge flashes and grows, and a ring pulses out twice in the state's colour.
+## The device just changed state: a soft ring pulses out twice in the state's colour (no text).
 func _changed(col: Color) -> void:
 	if _fx_tween:
 		_fx_tween.kill()
 	_burst.visible = true
-	_burst_mat.albedo_color = Color(col, 0.9)
-	_badge.modulate = Color("ffe066")
+	_burst_mat.albedo_color = Color(col, 0.7)
 	_fx_tween = create_tween()
 	for i in 2:
-		_fx_tween.tween_callback(func(): _burst.scale = Vector3.ONE * 0.4; _burst_mat.albedo_color.a = 0.9)
-		_fx_tween.parallel().tween_property(_badge, "scale", Vector3.ONE * 1.45, 0.18)
-		_fx_tween.tween_property(_burst, "scale", Vector3.ONE * 3.2, 0.75).set_ease(Tween.EASE_OUT)
-		_fx_tween.parallel().tween_property(_burst_mat, "albedo_color:a", 0.0, 0.75)
-		_fx_tween.parallel().tween_property(_badge, "scale", Vector3.ONE * 1.15, 0.6)
-	_fx_tween.tween_property(_badge, "scale", Vector3.ONE, 0.5)
-	_fx_tween.parallel().tween_property(_badge, "modulate", col, 1.2)
+		_fx_tween.tween_callback(func(): _burst.scale = Vector3.ONE * 0.4; _burst_mat.albedo_color.a = 0.7)
+		_fx_tween.tween_property(_burst, "scale", Vector3.ONE * 3.0, 0.8).set_ease(Tween.EASE_OUT)
+		_fx_tween.parallel().tween_property(_burst_mat, "albedo_color:a", 0.0, 0.8)
 	_fx_tween.tween_callback(func(): _burst.visible = false)
 
 
 func apply(l: Dictionary) -> void:
 	live = l
 	var online: bool = l.get("online", true) != false
-	_offline.visible = not online and _badge == null   # a badge says "Offline" itself
+	_offline.visible = not online and not _badge_on and not Store.walk   # no text over devices in the zone or walking
 	set_process(true)   # something may move again (stops by itself once settled)
 	_update_badge()
 	dev.body_mat.albedo_color = dev.base_color.lerp(Color(0.45, 0.45, 0.47), 0.0 if online else 0.7)
 	match type:
 		"ac":
 			var on: bool = online and bool(l.get("on", false))
-			_air.emitting = on
+			_air.emitting = on and not Store.walk   # walking: air is not something you see in a real room
 			var mode: String = str(l.get("mode", "cool"))
 			var col: Color = MODE_COL.get(mode, MODE_COL.cool)
 			(_air.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color = Color(col, 0.55)
@@ -263,18 +186,18 @@ func apply(l: Dictionary) -> void:
 				_air.amount = amount  # changing the amount restarts the emitter: only when it really changes
 			_air.initial_velocity_min = lerpf(0.4, 1.0, fan)
 			_air.initial_velocity_max = lerpf(0.8, 1.8, fan)
-			_tag.visible = on
+			_tag.visible = on and not Store.walk   # no text over devices when walking
 			_tag.text = "%s° · %s" % [str(snappedf(float(l.get("set", 24.0)), 0.5)).trim_suffix(".0"), mode.capitalize()]
 			_tag.modulate = col.lightened(0.2)
 			_climate(on, col, l)
 		"tv":
 			var on: bool = online and bool(l.get("on", false))
-			_screen_mat.emission_energy_multiplier = 0.85 if on else 0.0   # a lit picture, not a white blaze
-			_screen_mat.albedo_color = Color("0b0d10") if not on else Color("1d2b44")
+			_screen_mat.emission_energy_multiplier = 0.32 if on else 0.0   # a lit picture, not a white blaze
+			_screen_mat.albedo_color = Color("07080a")   # glossy black glass; the picture is its light
 			_lamp.visible = on
 		"purifier":
 			var on: bool = online and bool(l.get("on", true))
-			_air.emitting = on
+			_air.emitting = on and not Store.walk
 			var amount: int = 8 + int(float(l.get("fan", 2)) * 6)
 			if _air.amount != amount:
 				_air.amount = amount
@@ -353,9 +276,10 @@ func _process(delta: float) -> void:
 			if _screen_mat.emission_energy_multiplier > 0.0:
 				var src: String = str(live.get("input", "TV"))
 				var base: float = {"TV": 0.58, "HDMI 1": 0.75, "HDMI 2": 0.9, "Apps": 0.08}.get(src, 0.58)
-				var c: Color = Color.from_hsv(fposmod(base + 0.08 * sin(_t * 0.7), 1.0), 0.55, 0.9)
-				_screen_mat.emission = c.lerp(Color.WHITE, 0.15 + 0.1 * sin(_t * 3.1))
-				_lamp.light_color = c
+				var c: Color = Color.from_hsv(fposmod(base + 0.08 * sin(_t * 0.7), 1.0), 0.35, 0.9)
+				# a picture on the screen (a landscape), slowly drifting in tint and brightness like moving content
+				_screen_mat.emission = Color.WHITE.lerp(c, 0.25) * (0.9 + 0.1 * sin(_t * 1.7))
+				_lamp.light_color = c.lerp(Color.WHITE, 0.4)
 				_lamp.light_energy = 0.8 + 0.25 * sin(_t * 2.3)
 		"blinds":
 			var target: float = float(live.get("pos", 100.0)) / 100.0
@@ -363,9 +287,7 @@ func _process(delta: float) -> void:
 			var h: float = _win_h * (1.0 - _blind_pos) + 0.04
 			_slats.scale.y = h
 			_slats.position.y = -h / 2.0
-			if _badge and absf(_blind_pos - target) > 0.004:
-				_update_badge()   # "opening 40→100%" while it rolls
-			elif absf(_blind_pos - target) <= 0.004 and variant != "curtain":
+			if absf(_blind_pos - target) <= 0.004 and variant != "curtain":
 				_update_badge()
 				set_process(false)
 			if _window:
@@ -861,7 +783,10 @@ func _build_ac() -> void:
 
 
 func _build_tv() -> void:
-	_screen_mat = _mat(Color("0b0d10"), true)
+	_screen_mat = _mat(Color("07080a"), true)
+	_screen_mat.emission_texture = _scene()
+	_screen_mat.roughness = 0.08          # glossy screen: lamps reflect in it when it is off
+	_screen_mat.metallic_specular = 0.9
 	_screen_mat.emission_energy_multiplier = 0.0
 	var scr := MeshInstance3D.new()
 	var bm := BoxMesh.new()

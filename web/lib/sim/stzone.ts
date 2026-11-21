@@ -135,7 +135,7 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   put('desk_plain', L - g - 0.29, g + 0.62 + 0.75, 1.5, 0.58, BACK);
   put('mesh_chair', L - g - 0.95, g + 0.62 + 0.8, 0.6, 0.6, ALONG);
   put('desk_lamp', L - g - 0.25, g + 0.62 + 0.18, 0.25, 0.25, BACK);
-  put('plant', L - g - 0.27, g + 0.62 + 1.2, 0.3, 0.3, 0);
+  put('desk_flowers', L - g - 0.3, g + 0.62 + 1.1, 0.45, 0.3, BACK);
   put('poster', L - g - 0.02, Math.min(D - 1.3, g + 0.62 + 1.5 + 0.75), 0.7, 0.03, BACK);
   rt.furniture = [...rt.furniture, ...items];
 
@@ -152,6 +152,11 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
     diffusers: [rect(1.0, 1.0, 1.6, 1.6), rect(L * 0.52 - 0.3, D * 0.62 - 0.3, L * 0.52 + 0.3, D * 0.62 + 0.3)],
     returns: [rect(L * 0.52 - 0.3, D - band - 1.0, L * 0.52 + 0.3, D - band - 0.4)],
   };
+
+  // where to stand to take the room in on walking in (3D walk-through): inside the door, clear of the TV unit and
+  // the floor lamp, looking across to the window wall as the entry photo does
+  const [vx, vz] = at(1.05, 0.95), [lx, lz] = at(L * 0.58, D);
+  r.view = { at: [vx, vz], look: [lx, 1.15, lz] };
 
   // 2. SmartThings devices: named exactly as the zone's real SmartThings devices (lib/integrations/zone-devices.ts),
   // which they are linked to by deviceId, placed where they are in the room, and with their fixture for the 3D view

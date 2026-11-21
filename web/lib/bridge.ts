@@ -49,7 +49,7 @@ export type FromRenderer =
 
 /** The renderer build this page expects (godot-renderer/autoloads/bridge.gd VERSION). An older export in
  *  web/public/godot is reported on the page, so a stale build is never mistaken for a bug. */
-export const RENDERER_VERSION = '0.7.0';
+export const RENDERER_VERSION = '0.7.1';
 
 let frame: HTMLIFrameElement | null = null;
 const queue: ToRenderer[] = [];

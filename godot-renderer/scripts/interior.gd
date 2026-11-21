@@ -30,7 +30,7 @@ const PALETTE := {
 	"mesh_black": [Color("23262c"), 0.1, 0.7], "soil": [Color("4a3a2c"), 0.0, 0.95],
 	"water": [Color(0.45, 0.72, 0.95, 0.55), 0.0, 0.1], "warn": [Color("f2c94c"), 0.0, 0.5], "locker": [Color("aab7c4"), 0.3, 0.45],
 	"tile": [Color("e8edf2"), 0.0, 0.3], "drinks": [Color("e85d4a"), 0.0, 0.5],
-	"velvet": [Color("9aa1aa"), 0.0, 0.95], "velvet_dark": [Color("5d636c"), 0.0, 0.9], "brass": [Color("c9a24a"), 0.85, 0.3],
+	"velvet": [Color("80868f"), 0.0, 0.95], "velvet_dark": [Color("565c65"), 0.0, 0.9], "maple": [Color("d8c4a0"), 0.0, 0.45], "brass": [Color("c9a24a"), 0.85, 0.3],
 	"shade": [Color("17181b"), 0.1, 0.55], "shade_glow": [Color("ffcf8a"), 0.0, 0.5], "shade_inner": [Color("c9a46a"), 0.3, 0.45], "gloss_white": [Color("f4f4f2"), 0.0, 0.18],
 	"book_red": [Color("c0392b"), 0.0, 0.6], "walnut": [Color("6e4a2f"), 0.0, 0.5], "poster": [Color("d8343f"), 0.0, 0.6],
 	"frosted": [Color(0.86, 0.9, 0.93, 0.5), 0.05, 0.15],
@@ -45,7 +45,7 @@ const RECOLOUR := {
 	"_defaultMat": "porcelain", "glass": "glass", "paper": "white", "darkWood": "wood_dark",
 }
 const GLOW := ["led", "console", "display", "slide", "drinks", "shade_glow", "exit_green"]
-const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6}
+const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6, "maple": 0.6}
 
 var counts := {}         # kind -> number of items built (for the HUD / tests)
 var _batches := {}       # "mesh|material" -> Array[Transform3D]
@@ -290,12 +290,28 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			for i in seats:
 				_setup(-w / 2 + w * (i + 0.5) / seats, d)
 		"desk_one", "desk_plain":
-			# the SmartThings zone's L-desk (photos): one monitor and keyboard on the main desk, nothing on the return
-			_swap = {"wood": "desk_top", "metal": "desk_frame"}
+			# the SmartThings zone's L-desk (photos): maple top on chrome legs, one monitor and keyboard on the main
+			# desk, nothing on the return
+			_swap = {"wood": "maple", "metal": "chrome"}
 			_model("desk", Vector3.ZERO, w, d, 0.75, PI)
 			_swap = {}
 			if kind == "desk_one":
 				_setup(w * 0.22, d)
+		"desk_flowers":
+			# white flower bouquets in white fluted pots, standing on the desk (the zone's desk return)
+			var top := 0.755
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 41
+			for k in 3:
+				var px := (k - 1) * w * 0.36
+				var pz := (0.03 if k == 1 else -0.03)
+				_bm("gloss_white", Vector3(px, top + 0.07, pz), Vector3(0.12, 0.14, 0.12), "cyl")
+				for j in 5:
+					var a := TAU * j / 5.0 + k
+					_bm("leaf", Vector3(px + cos(a) * 0.035, top + 0.22, pz + sin(a) * 0.035), Vector3(0.012, 0.18, 0.012))
+				for j in 9:
+					var off := Vector3(rng.randf_range(-0.09, 0.09), rng.randf_range(0.27, 0.4), rng.randf_range(-0.07, 0.07))
+					_bm("porcelain" if j % 3 == 0 else "white", Vector3(px, top, pz) + off, Vector3(0.06, 0.05, 0.06), "sphere")
 		"mesh_chair":
 			# black mesh office chair with a headrest (the zone's chairs)
 			_swap = {"carpet": "mesh_black", "fabric": "mesh_black", "metalMedium": "dark"}

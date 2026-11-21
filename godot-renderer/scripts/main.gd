@@ -889,6 +889,7 @@ func start_walk(room_key := "") -> void:
 	_walk_build = false
 	rig.set_process_unhandled_input(false)
 	env.ambient_light_energy = WALK_AMBIENT
+	_walk_look(true)
 	sun.light_energy = 0.25
 	walker = Walker.new()
 	walker.name = "Walker"
@@ -901,6 +902,20 @@ func start_walk(room_key := "") -> void:
 	if room_key != "" and not Store.room(room_key).is_empty():
 		var wk := walker
 		walker.landed.connect(func(): if is_instance_valid(wk): wk.view_room(Store.room(room_key)), CONNECT_ONE_SHOT)
+
+
+## Walking, the picture is graded like a photo of a lit interior: warm-neutral fill light instead of the map's cool
+## blue, ACES tone mapping (highlights roll off instead of clipping), a soft glow round lamps, a touch of contrast.
+func _walk_look(on: bool) -> void:
+	env.ambient_light_color = Color("d8d0c4") if on else Color("aab4c3")
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES if on else Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.0
+	env.tonemap_white = 6.0 if on else 1.0
+	env.glow_intensity = 0.45 if on else 0.6
+	env.glow_hdr_threshold = 1.2 if on else 1.0
+	env.adjustment_enabled = on
+	env.adjustment_contrast = 1.1
+	env.adjustment_saturation = 1.04
 
 
 ## Back to the map, looking down at where the walk ended.
@@ -934,6 +949,7 @@ func _end_walk_state(restore := true) -> void:
 	rig.cam.current = true
 	env.ambient_light_energy = 0.55
 	sun.light_energy = SUN
+	_walk_look(false)
 	Bus.walk_changed.emit({"on": false})
 
 
@@ -1025,6 +1041,7 @@ func _start_guest(from_key := "") -> void:
 	_walk_build = false
 	rig.set_process_unhandled_input(false)
 	env.ambient_light_energy = WALK_AMBIENT
+	_walk_look(true)
 	sun.light_energy = 0.25
 	walker = Walker.new()
 	walker.name = "Walker"

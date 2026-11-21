@@ -126,10 +126,13 @@ Proof of concept with three features:
     starts, without Connect. Their status is read every 2 s in one batched request (`SMARTTHINGS_POLL_MS`), so a
     change made in the SmartThings app or at a wall switch shows on the 3D twin within about 2-3 s; a command's
     value is held on the twin until the device reports it, colour bulbs show the colour or white they were set to
-    last, and an offline device is greyed out (`web/lib/integrations/stlive.ts`). In the 3D view every zone device carries a status badge ("Light 3 · 45%",
-    "Roller Shade · opening 40→90%", "Off", "Offline"); when a real device changes, its badge flashes and a ring
-    pulses out from it. Spot bulbs show their beam, a pool of light on the floor and a scallop on the wall; lamp
-    shades are lit only while their bulb is on.
+    last, and an offline device is greyed out (`web/lib/integrations/stlive.ts`). In the 3D view no text is drawn over devices (their state is in the side panel): the room
+    itself shows it. Spot bulbs show their beam, a pool of light on the floor and a scallop on the wall; lamp shades
+    are lit only while their bulb is on; panes, the shade and the ceiling panels follow their devices; when a real
+    device changes, a soft ring pulses out from it. Walking in, you stand just inside the door looking across the
+    room (the room's `view`), with a wide, phone-camera-like field of view; materials are made to match the photos
+    (varnished oak panels, cream porcelain tiles, speckled mineral ceiling tiles, maple desks, grey velvet sofa) and
+    the walk-through is graded like an interior photo (warm fill light, ACES tone mapping).
 11. **Technician alerts.** `/tech` lists alerts from devices that are not healthy (with browser notifications for
     new ones): room and device, what it reports, affected components (measured or not), recent events,
     troubleshooting steps, service notes, the 3D twin, an AI summary of the evidence, and a form to record the

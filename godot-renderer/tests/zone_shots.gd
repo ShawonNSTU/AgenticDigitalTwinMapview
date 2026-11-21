@@ -119,7 +119,8 @@ func _run() -> void:
 	await _shot("0_overview")
 	_perf("0_overview")
 	Bridge.handle({"type": "walk", "action": "start", "room": ROOM})
-	await get_tree().create_timer(5.0).timeout
+	await get_tree().create_timer(10.0).timeout   # step in through the door, walk to the room's viewpoint, look
+	await _shot("1a_walk_in")
 	main.walker.set_process(false)   # hold the views still
 	var views := [
 		["1_entry", at(0.55, -1.1), at(0.9, D), -6.0],        # from the corridor, through the open glass door

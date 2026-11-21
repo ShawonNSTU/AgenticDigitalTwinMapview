@@ -34,7 +34,8 @@ func build() -> void:
 		_slabs[r.key] = mat
 		_slab(poly, mat)
 		if Store.room_allowed(r.key):
-			_room_label(r, poly)
+			if not Store.walk:   # walking: no names painted on the floor
+				_room_label(r, poly)
 	for n in Store.notes:
 		if Store.room_allowed(Store.room_at(Vector2(float(n.x), float(n.z))).get("key", "")) or Store.guest_allowed.is_empty():
 			_note(n)
@@ -319,8 +320,8 @@ static func _grid_tex(px: int, base: Color, line: Color, lw: int, rows := 1) -> 
 
 
 func _zone_floor(mat: StandardMaterial3D) -> void:
-	mat.albedo_color = Color("efe6d2")
-	mat.albedo_texture = _grid_tex(64, Color(1, 1, 1), Color(0.8, 0.77, 0.7), 1)
+	mat.albedo_color = Color.WHITE
+	mat.albedo_texture = _porcelain_tex()
 	mat.uv1_triplanar = true
 	mat.uv1_world_triplanar = true
 	mat.uv1_scale = Vector3.ONE / 0.6  # 600 mm porcelain tiles
@@ -335,31 +336,14 @@ var _panel_mat: StandardMaterial3D
 ## nothing across the door opening.
 func _zone_walls(r: Dictionary, h: float, doors: Array, lining: StandardMaterial3D = null, skirt_col := Color("3a2418")) -> void:
 	if lining == null and _panel_mat == null:
+		# varnished oak cladding as in the room: 1.2 x 0.6 m panels, grain along them, thin dark grooves, a sheen
 		_panel_mat = StandardMaterial3D.new()
-		_panel_mat.albedo_color = Color("9b6b40")
-		_panel_mat.roughness = 0.38
-		var tex := _grid_tex(128, Color(1, 1, 1), Color(0.45, 0.33, 0.22), 2, 2)
-		var n := FastNoiseLite.new()
-		n.frequency = 0.05
-		n.fractal_octaves = 3
-		var grain := NoiseTexture2D.new()
-		grain.noise = n
-		grain.width = 256
-		grain.height = 64
-		grain.seamless = true
-		grain.color_ramp = Gradient.new()
-		grain.color_ramp.set_color(0, Color(0.84, 0.78, 0.72))
-		grain.color_ramp.set_color(1, Color(1, 1, 1))
-		_panel_mat.albedo_texture = tex
-		_panel_mat.detail_enabled = true
-		_panel_mat.detail_albedo = grain
-		_panel_mat.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+		_panel_mat.albedo_texture = _oak_panel_tex()
+		_panel_mat.roughness = 0.28
+		_panel_mat.metallic_specular = 0.6
 		_panel_mat.uv1_triplanar = true
 		_panel_mat.uv1_world_triplanar = true
-		_panel_mat.uv1_scale = Vector3(1.0 / 2.4, 1.0 / 1.2, 1.0 / 2.4)  # 1.2 m x 0.6 m panels
-		_panel_mat.uv2_triplanar = true
-		_panel_mat.uv2_world_triplanar = true
-		_panel_mat.uv2_scale = Vector3(0.35, 3.0, 0.35)  # grain runs along the panels
+		_panel_mat.uv1_scale = Vector3(1.0 / 1.2, 1.0 / 0.6, 1.0 / 1.2)
 	var wall_mat: StandardMaterial3D = lining if lining else _panel_mat
 	var skirt := StandardMaterial3D.new()
 	skirt.albedo_color = skirt_col
@@ -403,8 +387,8 @@ func _zone_walls(r: Dictionary, h: float, doors: Array, lining: StandardMaterial
 
 func _zone_ceiling_mat() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color("f1efe9")
-	m.albedo_texture = _grid_tex(64, Color(1, 1, 1), Color(0.72, 0.72, 0.7), 2)
+	m.albedo_color = Color.WHITE
+	m.albedo_texture = _mineral_tile_tex()
 	m.uv1_triplanar = true
 	m.uv1_world_triplanar = true
 	m.uv1_scale = Vector3.ONE / 0.6  # 600 mm ceiling tiles
@@ -752,3 +736,95 @@ func _box(pos: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
 	m.position = pos
 	add_child(m)
 	return m
+
+
+
+# ---- textures for the SmartThings zone (made once, procedurally: no image files)
+
+static var _tex_cache := {}
+
+
+## One 1.2 x 0.6 m oak panel: golden oak with flowing grain and darker late-wood lines, a thin dark groove round it.
+static func _oak_panel_tex() -> ImageTexture:
+	if _tex_cache.has("oak"):
+		return _tex_cache.oak
+	var w := 384
+	var h := 192
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	# straight-ish grain along the panel: many thin darker lines that wander a little, broad tone changes along
+	# the length, faint pores; low contrast like varnished oak veneer
+	var wander := FastNoiseLite.new()
+	wander.seed = 7
+	wander.frequency = 0.004
+	var tone := FastNoiseLite.new()
+	tone.seed = 19
+	tone.frequency = 0.012
+	var pore := FastNoiseLite.new()
+	pore.seed = 23
+	pore.frequency = 0.35
+	var light := Color("b98455")
+	var dark := Color("7f5131")
+	for y in h:
+		for x in w:
+			var t := float(y) / h * 26.0 + wander.get_noise_2d(x * 0.6, y * 0.8) * 3.0
+			var line := pow(0.5 + 0.5 * sin(t * TAU), 12.0)
+			var k := line * 0.32 + (tone.get_noise_2d(x, y * 0.15) * 0.5 + 0.5) * 0.22 + maxf(pore.get_noise_2d(x * 0.4, y * 3.0), 0.0) * 0.12
+			var c := light.lerp(dark, clampf(k, 0.0, 1.0))
+			if x < 1 or x >= w - 1 or y < 1 or y >= h - 1:
+				c = Color("3b2415")       # the V-groove between panels
+			elif x < 2 or x >= w - 2 or y < 2 or y >= h - 2:
+				c = c.darkened(0.25)
+			img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	_tex_cache.oak = ImageTexture.create_from_image(img)
+	return _tex_cache.oak
+
+
+## One 600 mm cream porcelain tile: faint stone cloud, a thin light-grey grout line.
+static func _porcelain_tex() -> ImageTexture:
+	if _tex_cache.has("porcelain"):
+		return _tex_cache.porcelain
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var cloud := FastNoiseLite.new()
+	cloud.seed = 3
+	cloud.frequency = 0.02
+	cloud.fractal_octaves = 4
+	var base := Color("ece3d1")
+	for y in n:
+		for x in n:
+			var c := base.lerp(Color("d9cdb6"), clampf(cloud.get_noise_2d(x, y) * 0.6 + 0.25, 0.0, 1.0) * 0.5)
+			if x < 2 or y < 2:
+				c = Color("b9b2a6")
+			img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	_tex_cache.porcelain = ImageTexture.create_from_image(img)
+	return _tex_cache.porcelain
+
+
+## One 600 mm mineral-fibre ceiling tile: off-white with the fissures and specks of the real tiles, a grey T-bar edge.
+static func _mineral_tile_tex() -> ImageTexture:
+	if _tex_cache.has("mineral"):
+		return _tex_cache.mineral
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var base := Color("f2f0ea")
+	img.fill(base)
+	for i in 900:   # short dark fissures
+		var x := rng.randi_range(4, n - 6)
+		var y := rng.randi_range(4, n - 6)
+		var ln := rng.randi_range(1, 4)
+		var dx := rng.randi_range(-1, 1)
+		for k in ln:
+			var px := clampi(x + dx * k, 3, n - 4)
+			var py := clampi(y + k, 3, n - 4)
+			img.set_pixel(px, py, base.darkened(rng.randf_range(0.25, 0.55)))
+	for i in n:
+		for k in 3:
+			img.set_pixel(i, k, Color("cfccc6"))
+			img.set_pixel(k, i, Color("cfccc6"))
+	img.generate_mipmaps()
+	_tex_cache.mineral = ImageTexture.create_from_image(img)
+	return _tex_cache.mineral
