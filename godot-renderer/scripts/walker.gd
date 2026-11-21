@@ -24,6 +24,7 @@ var pitch := deg_to_rad(-4.0)
 var joy := Vector2.ZERO  # host stick: x turns (right = +1), y walks (up = -1)
 var eye := EYE
 var room_key := "~"
+static var current_room := ""   # the room the walker is in (device badges show only there)
 
 var _pieces: Array = []   # wall pieces [a, b] (door gaps left out)
 var _lintels: Array = []  # [a, b] over each door gap, LINTEL .. wall height
@@ -269,6 +270,17 @@ func overview(on: bool) -> void:
 func view_room(r: Dictionary) -> void:
 	if r.is_empty():
 		return
+	# a room can say where to stand to take it in (the SmartThings zone: just inside the door, looking across to
+	# the window wall, as its reference photo is taken)
+	var view: Dictionary = r.get("view", {})
+	if view.has("at") and view.has("look"):
+		var spot := Vector2(float(view.at[0]), float(view.at[1]))
+		var look := Vector3(float(view.look[0]), float(view.look[1]), float(view.look[2]))
+		if spot.distance_to(p) < 0.3 or not go_to(spot):
+			look_at_point(look)
+		else:
+			arrived.connect(func(): if p.distance_to(spot) < 0.6: look_at_point(look), CONNECT_ONE_SHOT)
+		return
 	var poly := PlanGeo.room_poly(r)
 	var c := PlanGeo.interior_point(poly)
 	var lo := Vector2(INF, INF)
@@ -366,10 +378,11 @@ func _fit_fov() -> void:
 		return
 	_fov_for = vs
 	var aspect := vs.x / vs.y
-	var across := deg_to_rad(100.0)
+	# about what a phone's main camera takes in across a room: rooms are small, a narrow view feels zoomed in
+	var across := deg_to_rad(106.0)
 	var v := rad_to_deg(2.0 * atan(tan(across / 2.0) / aspect))
 	cam.keep_aspect = Camera3D.KEEP_HEIGHT
-	cam.fov = clampf(v, 68.0, 100.0)
+	cam.fov = clampf(v, 74.0, 104.0)
 
 
 # ---- arriving by lift: inside the car with the doors shut, the doors slide open, step out into the lobby, turn
@@ -649,6 +662,7 @@ func _track_room() -> void:
 	var key: String = r.get("key", "out")
 	if key != room_key:
 		room_key = key
+		current_room = key
 		Bus.walk_changed.emit({"on": true, "room": key, "roomName": Store.room_label(r)})
 
 

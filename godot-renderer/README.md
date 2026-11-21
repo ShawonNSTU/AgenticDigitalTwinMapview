@@ -58,6 +58,8 @@ data/part_layout.json      per device type: where each part sits, which componen
 tools/install_web_templates.sh  installs only the web export templates
 tests/smoke.gd             drives every bridge command; `godot --path . -- --smoke [--shot=out.png]`
 tests/room_shots.gd        close-ups of named rooms: `-- --rooms=/tmp/rooms "--room=Gym Room"`
+tests/zone_shots.gd        the SmartThings zone from its photos' viewpoints, a live change and CPU-side cost:
+                           `-- --zone-shots=/tmp/zone` (platform running)
 tests/twin_gallery.gd      opens every device type and saves assembled + exploded screenshots: `-- --gallery=/tmp/gallery`
 tests/demo_shots.gd        screenshots of the upload flow against a running platform:
                            `godot --path . -- --demo-shots=/tmp/out --open=AC-03 --part=filter`

@@ -29,6 +29,13 @@ const TOUR: Record<string, string> = {
   temphum: 'This sensor shows the room temperature and humidity.',
 };
 
+// What the tour says about a real SmartThings device, by what it is (lib/sim/stzone.ts ST_PROFILE).
+const REAL_TOUR: Record<string, string> = {
+  color: 'A real SmartThings colour bulb: turn it on or off, dim it, pick warm or cool white, or a colour.',
+  switch: 'A real SmartThings switch: turn it on or off.',
+  shade: 'A real SmartThings roller shade: open it, close it, or stop it at any height.',
+};
+
 /** What a guest sees after scanning a room's QR code: check-in PIN, a walk from the entrance to the room in
  *  3D (or a view of the way from above), a guided tour of the room's devices, the controls each device
  *  supports, and an assistant that takes typed or spoken requests. Everything comes from
@@ -108,11 +115,20 @@ export default function GuestPage() {
     load();
   };
 
-  // the tour visits each device with something to say about it, in a sensible order
+  // The tour. A room with real SmartThings devices (the SmartThings Experience Zone): it visits every real device,
+  // one by one, in the order a person walks the room (shade first, then the ceiling, the spots, the lamps), and says
+  // where it is and what it does. Simulated devices are left out. Any other room: one stop per kind of device.
   const stops = useMemo(() => {
+    const devs = view?.devices ?? [];
+    const real = devs.filter(d => d.st);
+    if (real.length) {
+      const walk = ['Aqara Roller Shade Controller', 'Blinds Switch', 'TV Lamp', 'Light 1', 'Light 2', 'Light 3', 'Light 4', 'Light 5', 'Desk Lamp', 'Left Window Light', 'Right Window Light', 'side lamp'];
+      const at = (n: string) => { const i = walk.indexOf(n); return i < 0 ? 99 : i; };
+      return [...real].sort((a, b) => at(a.name) - at(b.name) || a.name.localeCompare(b.name));
+    }
     const order = ['ac', 'light', 'tv', 'blinds', 'fan', 'purifier', 'vacuum', 'fridge', 'lock', 'temphum'];
     const seen = new Set<string>();
-    return (view?.devices ?? []).filter(d => TOUR[d.type] && !seen.has(d.type) && seen.add(d.type)).sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+    return devs.filter(d => TOUR[d.type] && !seen.has(d.type) && seen.add(d.type)).sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
   }, [view]);
   useEffect(() => {
     if (tour == null || !stops[tour]) return;
@@ -188,7 +204,7 @@ export default function GuestPage() {
         {tour != null && stops[tour] && (
           <div className="tour glass">
             <small>{tour + 1} of {stops.length}</small>
-            <p>{TOUR[stops[tour].type]}</p>
+            {stops[tour].st ? <p><b>{stops[tour].name}</b> · {stops[tour].st!.where}. {REAL_TOUR[stops[tour].st!.kind]}</p> : <p>{TOUR[stops[tour].type]}</p>}
             <div className="row">
               <button disabled={tour === 0} onClick={() => setTour(tour - 1)}>Back</button>
               {tour < stops.length - 1 ? <button className="pri" onClick={() => setTour(tour + 1)}>Next</button> : <button className="pri" onClick={() => { setTour(null); setHintShown(false); openHolo(null); }}>Done</button>}
@@ -199,7 +215,7 @@ export default function GuestPage() {
       </section>
       <aside className="guest-panel">
         <div className="tabs"><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room controls <i>{view?.devices.length ?? 0}</i></button><button className={tab === 'assistant' ? 'on' : ''} onClick={() => setTab('assistant')}>Assistant</button></div>
-        {tab === 'assistant' ? <GuestAssistant token={token} onUi={a => { if (a.type === 'highlight' && a.ids) send({ type: 'highlight', ids: a.ids }); }} /> : (
+        {tab === 'assistant' ? <GuestAssistant token={token} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); }} /> : (
           <div className="guest-devs">
             {view && view.devices.length === 0 && <div className="muted pad">This room has no connected devices.</div>}
             {view?.devices.map(d => (

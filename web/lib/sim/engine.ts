@@ -4,6 +4,7 @@
 import building from './data/building.json';
 import devices from './data/devices.json';
 import { FAULTS, LEVELS, partHealthUnder } from './faults';
+import { log as journal } from '@/lib/kg/journal';
 
 // The layout (rooms + devices) can be replaced at runtime by an uploaded floor plan (setLayout).
 // All mutable state lives on globalThis and is mutated in place: Next.js may load this module once per
@@ -317,9 +318,10 @@ export function setFault(id: string, key: string, level = 'developing') {
   const prev = G.faults[id];
   // changing only the severity of the same fault keeps it developed; a new fault starts from zero
   G.faults[id] = { key, level: L.key, severity: L.s, since: prev && prev.key === key ? prev.since - RAMP_MS : Date.now() };
+  journal({ kind: 'fault', devices: [id], room: d.room, text: `Fault simulated on ${String(d.name).split(' · ')[0]} (${id}): ${(FAULTS[d.type] ?? []).find((f: any) => f.key === key)?.name ?? key}, ${L.key}` });
   return { ok: true };
 }
-export function clearFault(id: string) { const had = !!G.faults[id]; delete G.faults[id]; return { ok: had }; }
+export function clearFault(id: string) { const had = !!G.faults[id]; delete G.faults[id]; if (had) journal({ kind: 'fault', devices: [id], room: byId[id]?.room, text: `Fault cleared on ${String(byId[id]?.name ?? id).split(' · ')[0]} (${id})` }); return { ok: had }; }
 export function faultList() { return Object.entries(G.faults).map(([id, a]: any) => ({ id, key: a.key, level: a.level })); }
 export { LEVELS };
 

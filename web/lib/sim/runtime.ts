@@ -7,7 +7,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import path from 'node:path';
 import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
 import { fitSmartThingsZone } from './stzone';
-import { realState } from '@/lib/integrations/smartthings';
+import { realState, link as stLink, hsvHex } from '@/lib/integrations/smartthings';
+import { ensureLive } from '@/lib/integrations/stlive';
+import { log as journal, resetJournal } from '@/lib/kg/journal';
+
 
 type Override = Record<string, unknown>;
 interface Runtime {
@@ -53,6 +56,7 @@ export function setSim(p: { scenario?: string; t?: number; playing?: boolean; sp
   if (typeof p.playing === 'boolean') rt.playing = p.playing;
   if (typeof p.speed === 'number') rt.speed = Math.max(0.05, Math.min(5, p.speed));
   if (p.fix) engineState.fixT = rt.t;
+  if (p.scenario || typeof p.t === 'number') journal({ kind: 'sim', text: `Simulation: scenario ${scenarioName(engineState.scen)}, time ${String(Math.floor(rt.t)).padStart(2, '0')}:${String(Math.round((rt.t % 1) * 60)).padStart(2, '0')}` });
   rt.lastTick = Date.now();
   return simState();
 }
@@ -91,13 +95,14 @@ function live(id: string, t: number) {
 }
 
 export function floor(t = tick()) {
+  ensureLive();   // linked SmartThings devices are read in the background (lib/integrations/stlive.ts)
   return {
     time: t,
     scenario: engineState.scen,
     layoutVersion: LAYOUT.version,
     devicesVersion: LAYOUT.devVersion,
     rooms: ROOMS,
-    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h], ...(activeFault(d) ? { fault: activeFault(d)!.spec.name } : {}), ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
+    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, ...((d as any).fixture ? { fixture: (d as any).fixture } : {}), ...(stLink(d.id) ? { real: true } : {}), health: h, healthLabel: LBL[h], ...(activeFault(d) ? { fault: activeFault(d)!.spec.name } : {}), ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
   };
 }
 
@@ -107,7 +112,8 @@ export function floor(t = tick()) {
 /** Colour presets for colour bulbs (hex as the 3D view shows them). */
 export const LIGHT_COLORS: Record<string, string> = { pink: '#ff6fae', purple: '#8b5cf6', blue: '#3b82f6', cyan: '#22d3ee', green: '#22c55e', amber: '#f59e0b', red: '#ef4444' };
 
-export const COMMANDS: Record<string, Record<string, { args?: Record<string, [number, number] | string[]>; confirm?: boolean; apply: (a: any, cur: any) => Override }>> = {
+// `hidden`: run by integrations (the SmartThings agent), not offered as a control in the panels
+export const COMMANDS: Record<string, Record<string, { args?: Record<string, [number, number] | string[]>; confirm?: boolean; hidden?: boolean; apply: (a: any, cur: any) => Override }>> = {
   ac: {
     power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
     setTemperature: { args: { celsius: [16, 30] }, apply: a => ({ set: +a.celsius }) },
@@ -119,9 +125,11 @@ export const COMMANDS: Record<string, Record<string, { args?: Record<string, [nu
   light: {
     power: { args: { on: ['true', 'false'] }, apply: (a, cur) => (a.on === true || a.on === 'true') ? { lv: cur?.lastLv || 80 } : { lv: 0, lastLv: cur?.lv || 80 } },
     setLevel: { args: { percent: [0, 100] }, apply: a => ({ lv: +a.percent }) },
-    setColorTemperature: { args: { kelvin: [2700, 6500] }, apply: a => ({ ct: +a.kelvin, col: '' }) },
+    setColorTemperature: { args: { kelvin: [2200, 6500] }, apply: a => ({ ct: +a.kelvin, col: '' }) },
     // colour bulbs: a named colour (the SmartThings app's colour presets); white comes back with setColorTemperature
     setColor: { args: { color: Object.keys(LIGHT_COLORS) }, apply: a => ({ col: LIGHT_COLORS[String(a.color)] ?? '' }) },
+    // any colour, as SmartThings colorControl gives it (hue and saturation 0-100)
+    setHueSat: { args: { hue: [0, 100], saturation: [0, 100] }, hidden: true, apply: a => ({ col: Number(a.saturation) < 3 ? '' : hsvHex(Number(a.hue), Number(a.saturation)) }) },
   },
   tv: {
     power: { args: { on: ['true', 'false'] }, apply: a => ({ on: a.on === true || a.on === 'true' }) },
@@ -193,7 +201,7 @@ export function runCommand(id: string, command: string, args: Record<string, unk
 
 /* ---------------- devices placed on the floor (drag and drop) ---------------- */
 
-const plain = (d: any) => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 });
+const plain = (d: any) => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0, ...(d.fixture ? { fixture: d.fixture } : {}) });
 
 /** Room containing a point (metres), by polygon. Outside every room → 'out'. */
 export function roomAtXZ(x: number, z: number) {
@@ -208,14 +216,16 @@ function nextDeviceId(type: string) {
 }
 
 /** Add a device at (x, z) metres. Mount height comes from the type unless y is given. */
-export function addDevice(p: { type: string; x: number; z: number; y?: number; rotationY?: number; room?: string; name?: string; id?: string }) {
+/** `fixture`: how the device is fitted, for the 3D view (spot, wall, lamp, desk, panel, window, roller); optional. */
+export function addDevice(p: { type: string; x: number; z: number; y?: number; rotationY?: number; room?: string; name?: string; id?: string; fixture?: string }) {
   if (!(p.type in TYPES)) return { ok: false as const, error: `Unknown device type "${p.type}"` };
   if (p.id && byId[p.id]) return { ok: false as const, error: `Device ${p.id} already exists` };
   const id = p.id ?? nextDeviceId(p.type);
   const room = (p.room && ROOMS.find((r: any) => r.key === p.room)) || roomAtXZ(p.x, p.z);
   const label = TYPES[p.type].label;
-  const d = { id, type: p.type, room: room?.key ?? 'out', name: `${p.name ?? label} · ${room?.name ?? 'Outside'}`, position: [+p.x.toFixed(3), +(p.y ?? MOUNT[p.type] ?? 1).toFixed(3), +p.z.toFixed(3)], rotationY: +(p.rotationY ?? 0).toFixed(4) };
+  const d = { id, type: p.type, room: room?.key ?? 'out', name: `${p.name ?? label} · ${room?.name ?? 'Outside'}`, position: [+p.x.toFixed(3), +(p.y ?? MOUNT[p.type] ?? 1).toFixed(3), +p.z.toFixed(3)], rotationY: +(p.rotationY ?? 0).toFixed(4), ...(p.fixture ? { fixture: p.fixture } : {}) };
   setDevices([...DEV.map(plain), d]);
+  journal({ kind: 'device', devices: [id], room: d.room, text: `${label} ${id} placed in ${room?.name ?? 'Outside'}` });
   return { ok: true as const, device: d };
 }
 
@@ -225,8 +235,9 @@ export function moveDevice(id: string, p: { x?: number; z?: number; y?: number; 
   const x = p.x ?? cur.p[0], z = p.z ?? cur.p[2];
   const room = roomAtXZ(x, z);
   const label = TYPES[cur.type].label;
-  const next = { ...plain(cur), room: room?.key ?? 'out', name: `${label} · ${room?.name ?? 'Outside'}`, position: [x, p.y ?? cur.p[1], z], rotationY: p.rotationY ?? cur.rotationY ?? 0 };
+  const next = { ...plain(cur), room: room?.key ?? 'out', name: room?.key === cur.room ? cur.name : `${label} · ${room?.name ?? 'Outside'}`, position: [x, p.y ?? cur.p[1], z], rotationY: p.rotationY ?? cur.rotationY ?? 0 };
   setDevices(DEV.map(d => d.id === id ? next : plain(d)));
+  if (room?.key !== cur.room) journal({ kind: 'device', devices: [id], room: room?.key ?? 'out', text: `${String(cur.name).split(' · ')[0]} ${id} moved to ${room?.name ?? 'Outside'}` });
   return { ok: true as const, device: next };
 }
 
@@ -235,12 +246,14 @@ export function renameDevice(id: string, label: string) {
   const cur = byId[id];
   if (!cur) return { ok: false as const, error: `Unknown device ${id}` };
   const room = ROOMS.find((r: any) => r.key === cur.room) as any;
+  journal({ kind: 'device', devices: [id], room: cur.room, text: `${String(cur.name).split(' · ')[0]} ${id} renamed to ${label}` });
   setDevices(DEV.map(d => d.id === id ? { ...plain(d), name: `${label} · ${room?.name ?? 'Outside'}` } : plain(d)));
   return { ok: true as const };
 }
 
 export function removeDevice(id: string) {
   if (!byId[id]) return { ok: false as const, error: `Unknown device ${id}` };
+  journal({ kind: 'device', devices: [id], room: byId[id].room, text: `${String(byId[id].name).split(' · ')[0]} ${id} removed` });
   setDevices(DEV.filter(d => d.id !== id).map(plain));
   delete rt.overrides[id];
   return { ok: true as const };
@@ -257,7 +270,7 @@ export function buildingState() {
     wallHeight: LAYOUT.wallHeight,
     outdoorPad: LAYOUT.outdoorPad,
     rooms: ROOMS,
-    devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 })),
+    devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0, ...((d as any).fixture ? { fixture: (d as any).fixture } : {}) })),
     furniture: rt.furniture,
     notes: rt.notes,
     title: rt.title,
@@ -282,6 +295,8 @@ export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan:
   } else rt.plan = null;
   rt.overrides = {};
   engineState.fixT = null;
+  resetJournal();
+  journal({ kind: 'floor', text: `Floor plan "${title}" loaded: ${rooms.length} rooms, ${devices.length} devices, ${furniture.length} furniture items${plan ? ', from an uploaded image' : ''}` });
   return buildingState();
 }
 

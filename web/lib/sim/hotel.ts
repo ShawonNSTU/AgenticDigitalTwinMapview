@@ -6,6 +6,7 @@
 import { ROOMS, DEV, LAYOUT } from './engine';
 import { rt, addDevice, removeDevice } from './runtime';
 import { insideXZ } from '@/lib/layout';
+import { log as journal } from '@/lib/kg/journal';
 
 type V = [number, number];
 const sub = (a: V, b: V): V => [a[0] - b[0], a[1] - b[1]];
@@ -206,6 +207,7 @@ export function setUpGuestRoom(key: string) {
     dev('temphum', along(doorWall, t + (t > dt ? 0.4 : -0.4), 0.04), facing(doorWall));
   }
   LAYOUT.version++; // the furniture changed: renderers reload the layout
+  journal({ kind: 'floor', room: key, text: `${String((r as any).name)} set up as a guest room: ${furn.length} furniture items, ${Array.isArray(made) ? made.length : made} SmartThings devices` });
   return { ok: true as const, room: key, furniture: furn.length, devices: made };
 }
 
@@ -315,6 +317,7 @@ export function addFurniture(key: string, kind: string) {
       for (const p of ps) p.id = `f${nextId++}`;
       rt.furniture.push(...ps);
       LAYOUT.version++;
+      journal({ kind: 'floor', room: key, text: `${spec.label} added to ${String((r as any).name)}` });
       return { ok: true as const, added: ps.map(p => p.id!) };
     }
   }

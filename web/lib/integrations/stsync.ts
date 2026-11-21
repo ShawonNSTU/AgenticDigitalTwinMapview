@@ -14,6 +14,7 @@ import * as ST from './smartthings';
 import { DEV, ROOMS, byId } from '@/lib/sim/engine';
 import { addDevice, removeDevice, renameDevice, rt } from '@/lib/sim/runtime';
 import { MOUNT } from '@/lib/layout';
+import { NOT_IN_ZONE } from './zone-devices';
 
 export type AcctDevice = { stId: string; label: string; room: string; category: string; capabilities: string[]; type: string | null };
 export type SyncResult = {
@@ -142,6 +143,7 @@ export async function syncAccount(): Promise<SyncResult> {
   const todo: { a: AcctDevice; room: string }[] = [];
   for (const a of acct) {
     if (linkedSt.has(a.stId)) { res.already += 1; continue; }
+    if (zone && NOT_IN_ZONE.some(x => x.stId === a.stId)) { res.unplaced.push({ label: a.label, type: a.type, room: a.room, reason: 'not in the SmartThings Experience Zone' }); continue; }
     if (!a.type) { res.unplaced.push({ label: a.label, type: null, room: a.room, reason: `not a device the map shows (${a.category || 'no category'})` }); continue; }
     const room = roomFor(a);
     if (!room) { res.unplaced.push({ label: a.label, type: a.type, room: a.room, reason: a.room ? `no room named “${a.room}” on this floor` : 'not in a SmartThings room' }); continue; }
