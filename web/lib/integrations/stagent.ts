@@ -28,10 +28,11 @@ export const roleOf = (s: Scope): Role => (s.kind === 'guest' ? 'guest' : s.role
 /** Who owns saved routines and the "last things done": all staff together, or one guest pass. */
 export const ownerKey = (s: Scope) => (s.kind === 'guest' ? `guest:${s.pass.token}` : 'staff');
 
-/** The device commands the assistant ran in the owner's latest turn (for "save this as a routine"), kept 10 minutes. */
+/** The device commands the assistant ran in the owner's latest turn (for "save this as a routine"), kept 30 minutes (LAST_ACTION_MS). */
+const LAST_ACTION_MS = 30 * 60_000;
 const gl = globalThis as unknown as { __lastActions?: Map<string, { at: number; actions: unknown[] }> };
 const lastActions = (gl.__lastActions ??= new Map());
-export const takeLastActions = (s: Scope) => { const l = lastActions.get(ownerKey(s)); return l && Date.now() - l.at < 600_000 ? l.actions : []; };
+export const takeLastActions = (s: Scope) => { const l = lastActions.get(ownerKey(s)); return l && Date.now() - l.at < LAST_ACTION_MS ? l.actions : []; };
 type Session = { scope: Scope; until: number };
 const g = globalThis as unknown as { __stAgentSessions?: Map<string, Session> };
 const sessions: Map<string, Session> = (g.__stAgentSessions ??= new Map());
