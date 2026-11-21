@@ -41,7 +41,7 @@ Rules:
 
 Reply with JSON only: {{"result": "OK|NONE", "devices": ["<exact name>", ...]}}"""
 
-SYSTEM = """You are {bot}, an assistant in a SmartThings demo experience zone. Answer the user's question about the current state of the devices.
+SYSTEM = """You are {bot}, an assistant in a smart building with SmartThings devices. Answer the user's question about the current state of the devices.
 
 Live readings (just read from the devices):
 {states}

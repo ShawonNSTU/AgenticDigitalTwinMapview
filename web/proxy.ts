@@ -24,7 +24,7 @@ export function proxy(req: NextRequest) {
   if (!ADMIN) return NextResponse.next();
   const { pathname } = req.nextUrl;
   if (pathname.startsWith('/guest/') || pathname.startsWith('/here/') || pathname.startsWith('/godot/') || pathname.startsWith('/_next/')
-    || pathname === '/favicon.ico' || pathname === '/signin' || pathname === '/api/signin' || guestApi(pathname, req.method)) return NextResponse.next();
+    || pathname.startsWith('/api/st/v1/') /* the assistant's device API: its own per-turn session token */ || pathname === '/favicon.ico' || pathname === '/signin' || pathname === '/api/signin' || guestApi(pathname, req.method)) return NextResponse.next();
   const role = req.cookies.get('twin_role')?.value;
   if (role === `host:${ADMIN}`) return NextResponse.next();
   if (TECH && role === `tech:${TECH}` && techAllowed(pathname, req.method)) return NextResponse.next();

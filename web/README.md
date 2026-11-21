@@ -8,7 +8,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-`AGENT_URL` (see `.env.example`) points the `/api/chat` proxy at the agent backend.
+`ST_AGENT_URL` points the `/api/chat` routes at the assistant (smartthings-agent, Ollama); `AGENT_URL` at the floor-plan service (agent-backend).
 
 | Path | Purpose |
 |---|---|

@@ -8,7 +8,7 @@ from app.core.skill import ReplySkill, register
 from app.devices.catalog import build_actions, device_line
 from app.devices.matching import exact_matches, shortlist
 
-SYSTEM = """You are {bot}, an assistant in a SmartThings demo experience zone. Answer the user's question about the devices here.
+SYSTEM = """You are {bot}, an assistant in a smart building with SmartThings devices. Answer the user's question about the devices here.
 
 Devices ({count} in total; name: what it can control):
 {devices}

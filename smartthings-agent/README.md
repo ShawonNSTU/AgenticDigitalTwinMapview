@@ -1,43 +1,49 @@
-# SmartThings Agent
+# SmartThings Agent: the one assistant
 
-Skill-based (agentic) rewrite of `loungex-chatbot`: the SmartThingsBot. It runs on an OSS model through Ollama
-(default `gpt-oss:20b`). In this repository it is the digital twin's **SmartThings agent**: the twin's chat panel
-(host) and the guest page's room assistant talk to it, and it controls the SmartThings Experience Zone through the
-twin.
-
-## In the digital twin PoC
+The twin's only chat assistant, for the **administrator, the technician and the guest** (different pages, same
+agent; the web app sends the role and limits what each may see and do). It runs on an Ollama model
+(`OLLAMA_MODEL`, `OLLAMA_BASE_URL`) and works on the zone's **real SmartThings devices** and on every other
+**simulated device**, through the twin.
 
 ```
- Browser ─▶ web /api/st-agent (host) or /api/guest/{pass}/st-agent (guest)
-              │  builds the device list and rooms from the live twin, opens a short session
+ Browser ─▶ web /api/chat (staff)  or  /api/guest/{pass}/chat (guest)
+              │  builds the device list for the role, opens a short session (role + scope)
               ▼
-            this agent :8100  POST /control/stream  (router -> one skill -> Ollama)
-              │  IOT_API_BASE_URL = http://localhost:3000/api/st/v1/devices, Bearer <session>
+            this agent :8100  POST /control/stream   router -> one skill -> Ollama
+              │  Bearer <session>
               ▼
             web /api/st/v1/devices/{id}/commands|status|health   (SmartThings-compatible)
-              │  runs every command through the twin: 3D view at once, zone rules (Blinds Switch before the
-              │  shade), guest permissions; a device linked to a real SmartThings device gets the real command
+            web /api/st/v1/twin/floor|insight/{id}               (staff only: health, evidence)
               ▼
             simulator  or  api.smartthings.com (the twin holds SMARTTHINGS_TOKEN; this agent never sees it)
 ```
 
-- Device ids are the twin's (`LT-03`); the real SmartThings deviceId of a linked device works too. Names are the
-  zone's real SmartThings labels ("Light 3", "Aqara Roller Shade Controller").
-- The chat shows the agent's progress steps; the 3D view highlights the devices it changed or read and turns to a
-  single one.
-- A guest's agent only sees and controls the guest's room, with the pass's controls and temperature range.
-  Commands that need confirmation (unlocking the door) are never offered to the agent.
-- `chat/` from the original repository is not used: its jobs (device list, token, streaming) are the web app's.
+| Skill | Who | What |
+|---|---|---|
+| `device_control` | all | power, brightness, colour temperature, shade, AC temperature/mode/fan, TV, fan, purifier, lock, vacuum; relative changes; many devices at once |
+| `device_status` | all | live state, read fresh from the twin |
+| `device_info`, `rooms`, `chitchat` | all | what exists, rooms, small talk |
+| `diagnostics` | admin, technician | find devices by type/room/health on the whole building, show them in 3D, explain a fault from the twin's evidence |
 
-Run it next to the web app (Ollama with the model pulled):
+- **Roles**: staff see the whole building; a guest only the guest's room, with the pass's controls and
+  temperature range. Commands that need confirmation (unlock, stop a wash) are never offered to the agent.
+- **Names**: the zone's real SmartThings labels ("Light 3"). Where a kind repeats, the room goes first
+  ("Gym Room Air conditioner").
+- **Robust**: unreachable model -> a plain message and the fix (staff see `OLLAMA_BASE_URL`); a turn has a
+  deadline (`TURN_TIMEOUT_S`); `MAX_CONCURRENT_TURNS` queues load; `GET /health?deep=true` and `GET /ready` check
+  Ollama, the model and the device API; invalid model output is retried with feedback; every command is built
+  and validated by code, never taken raw from the model.
+
+## Run it
 ```bash
 cd smartthings-agent
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-cp .env.example .env          # OLLAMA_BASE_URL, OLLAMA_MODEL; IOT_API_BASE_URL already points at the twin
-.venv/bin/python main.py      # :8100 (the web app's ST_AGENT_URL)
-TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   # unit tests + end to end through the twin
+cp .env.example .env          # set OLLAMA_BASE_URL (your Ollama server) and OLLAMA_MODEL; .env is gitignored
+.venv/bin/python main.py      # :8100 (the web app's ST_AGENT_URL); or: docker build -t st-agent . 
+.venv/bin/python -m pytest -q                         # unit tests, no model needed
+TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   # + end to end through the running twin
 ```
-Then choose "SmartThings agent" in the chat panel (host) or the room assistant (guest page).
+The chat panel shows a green dot when the agent, Ollama and the model are ready, otherwise what to fix.
 
 ## Standalone
 

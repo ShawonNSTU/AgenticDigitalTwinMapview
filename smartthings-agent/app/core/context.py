@@ -38,6 +38,16 @@ class TurnContext:
             except Exception:  # a UI hint must never break a turn
                 pass
 
+    @property
+    def role(self) -> str:
+        """Who is asking: "admin", "technician" or "guest" (sent by the web app; unknown = the least privileged)."""
+        r = str(self.extras.get("role") or "guest").lower()
+        return r if r in {"admin", "technician", "guest"} else "guest"
+
+    @property
+    def is_staff(self) -> bool:
+        return self.role in {"admin", "technician"}
+
     def history_text(self, last_n: int | None = None) -> str:
         turns = self.history if last_n is None else self.history[-last_n:]
         return "\n".join(f"{m.role}: {m.text}" for m in turns)

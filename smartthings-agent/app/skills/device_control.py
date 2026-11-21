@@ -135,9 +135,9 @@ class Executed:
 class DeviceControlSkill(Skill):
     name = "device_control"
     progress_text = "Finding device"
-    description = "Change devices: power, brightness, color temperature, blinds/shade position, also relative changes (\"by 5%\", \"a bit brighter\"). Several devices or actions at once are fine."
+    description = "Change devices: power, brightness, color temperature, shade position, AC temperature/mode/fan, TV volume/input, fan, purifier, lock, vacuum; also relative changes (\"by 5%\", \"a bit brighter\"). Several devices or actions at once are fine."
     examples = ["turn off all the lights", "increase the Desk Lamp brightness by 5%", "turn on Light 1 and dim it to 40%"]
-    capability = "control the devices in this experience zone, one or many at once"
+    capability = "control the devices in this building (lights, shades, air conditioners and more), one or many at once"
 
     def __init__(self, llm: LLM, settings: Settings):
         super().__init__(llm, settings)

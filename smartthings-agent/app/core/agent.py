@@ -5,13 +5,14 @@ import logging
 
 from app.config import Settings
 from app.core.context import TurnContext
-from app.core.llm import LLM, LLMError
+from app.core.llm import LLM, LLMError, LLMUnavailable
 from app.core.router import Router
 from app.core.skill import Skill, SkillResult, load_skills
 
 log = logging.getLogger("agent")
 
 BUSY_MESSAGE = "Sorry, I'm having trouble understanding that right now. Could you please try again?"
+DOWN_MESSAGE = "The AI model is not reachable right now, so I can't answer. Please try again in a moment."
 
 
 class Agent:
@@ -33,6 +34,9 @@ class Agent:
         ctx.progress("routing", "Understanding")
         try:
             route = await self.router.route(ctx, skills)
+        except LLMUnavailable as exc:
+            log.error("router: model unreachable: %s", exc)
+            return SkillResult("error", DOWN_MESSAGE, {"error": str(exc), "llm_unavailable": True})
         except LLMError as exc:
             log.error("router failed: %s", exc)
             return SkillResult("error", BUSY_MESSAGE, {"error": str(exc)})
@@ -41,6 +45,9 @@ class Agent:
         ctx.progress(skill.name, skill.progress_text)
         try:
             result = await skill.run(ctx, route.request)
+        except LLMUnavailable as exc:
+            log.error("skill %s: model unreachable: %s", skill.name, exc)
+            result = SkillResult("error", DOWN_MESSAGE, {"error": str(exc), "llm_unavailable": True})
         except LLMError as exc:
             log.error("skill %s failed: %s", skill.name, exc)
             result = SkillResult("error", BUSY_MESSAGE, {"error": str(exc)})

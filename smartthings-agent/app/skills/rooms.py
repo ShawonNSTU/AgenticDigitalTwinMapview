@@ -13,7 +13,7 @@ from app.rooms.store import Room, room_of, rooms_for
 
 MAX_ACTIVITY_LINES = 5
 
-SYSTEM = """You are {bot}, an assistant in a SmartThings demo experience zone. Answer the user's question about the rooms here.
+SYSTEM = """You are {bot}, an assistant in a smart building with SmartThings devices. Answer the user's question about the rooms here.
 
 Rooms ({count} in total):
 {rooms}

@@ -39,16 +39,19 @@ All coordinates are fractions of the image (x right, y down).
 
 The web app runs the SmartThings agent's turns and gives it a SmartThings-compatible API onto the twin.
 
-## POST /api/st-agent (host) and POST /api/guest/{pass}/st-agent (guest)
-Body `{ messages: [{role, content}], room? }` (host `room`: default the SmartThings Experience Zone; a guest always
-gets their pass's room). Response: the same event stream as `/chat` above: `tool` (host only: the agent's
-progress, "Finding device", "Sending command"), `text` (the reply), `ui_action` (`highlight` the devices it
-changed or read; `focusDevice` when it is one), `result` (guest only: `{results: [{device_id, label, ok, error?}]}`),
-`error`, `done`. `GET /api/st-agent`: `{ ok, url, model, skills }`.
+## POST /api/chat (staff) and POST /api/guest/{pass}/chat (guest)
+One assistant (smartthings-agent) for the administrator, the technician and the guest. Body
+`{ messages: [{role, content}], room? }` (staff `room`: limit to one room, default the whole building; a guest always
+gets their pass's room). The role comes from the sign-in cookie (`tech:` = technician, else administrator).
+Events: `tool` (staff only: progress), `text` (the reply), `ui_action` (`highlight` devices it changed, read or
+found; `focusDevice`; `openDevice {id, part?}` with `select`; `clearHighlight`), `result` (guest only:
+`{results: [{device_id, label, ok, error?}]}`), `error`, `done`.
+`GET /api/chat`: `{ ok, ready, problem, model, skills, llm }`; `problem` says what to fix (Ollama URL, model not
+pulled, device API down).
 
 The web app sends the agent `{message, messages, devices: [{id, name, room, actions}], extras: {rooms_context}}`
-(built from the live twin) with `Authorization: Bearer <session>`: a random token valid for 3 minutes that carries
-the turn's scope (host, or one guest pass).
+(built from the live twin; `extras.role` = admin | technician | guest) with `Authorization: Bearer <session>`: a random token valid for 3 minutes that carries
+the turn's scope (staff, or one guest pass).
 
 ## /api/st/v1/devices/{id}/{commands|status|health}
 Same paths and bodies as `api.smartthings.com/v1/devices`, for the agent (`IOT_API_BASE_URL`). Needs a session
@@ -61,3 +64,7 @@ token (401 otherwise); `{id}` must be in the session's scope (404 otherwise).
 - `GET status`: the twin's state as a SmartThings status document (the real device's reported state when linked).
 - `GET health`: `{deviceId, state: "ONLINE" | "OFFLINE"}`.
 Commands that need confirmation (unlock, stop a wash) are never offered or accepted.
+
+## /api/st/v1/twin/{floor | insight/{id}} (staff sessions only; 403 for a guest)
+`floor` -> `{time, scenario, rooms, devices: [{id, name, type, room, health, finding?}]}`; `insight/{id}` -> the
+device's parts with health and the finding (evidence, confidence, guided steps). Read by the agent's `diagnostics` skill.

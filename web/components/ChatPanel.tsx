@@ -12,33 +12,19 @@ type Msg = { role: 'user' | 'assistant' | 'tool'; text: string };
  *   select    { id }              open a device in the side panel
  *   error     { message }
  */
-type Engine = 'twin' | 'st';
-const GREETING: Record<Engine, string> = {
-  twin: 'Ask me about the devices on this floor, for example "show all air conditioners with a problem" or "why is the bedroom warm?"',
-  st: 'I control the SmartThings Experience Zone\'s devices, for example "turn on Light 3 and dim it to 40%", "close the roller shade halfway" or "which lights are on?". You see each change in the room.',
-};
-const PLACEHOLDER: Record<Engine, string> = { twin: 'Search devices or ask about a fault…', st: 'e.g. make the room cosy for a movie' };
+const GREETING = 'Ask me about any device in the building, for example "turn on Light 3 and dim it to 40%", "close the roller shade halfway", "which lights are on?", "show all air conditioners with a problem" or "what\'s wrong with AC-04?". Every change shows in the 3D view.';
 
-/** Two assistants: the twin's agent (agent-backend: search, faults, the whole floor) and the SmartThings agent
- *  (smartthings-agent: controls and reads the zone's devices in plain words, through the twin). */
+/** The assistant: one agent (smartthings-agent) for the administrator and the technician. It controls and reads
+ *  the zone's real SmartThings devices and every other (simulated) device, and finds and explains faults. */
 export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void }) {
-  const [engine, setEngine] = useState<Engine>('twin');
-  const [stUp, setStUp] = useState<boolean | null>(null);
+  const [health, setHealth] = useState<{ ready: boolean; problem: string | null; model: string | null } | null>(null);
   useEffect(() => {
-    let saved: string | null = null;
-    try { saved = localStorage.getItem('twin-chat-engine'); } catch { /* private mode */ }
-    fetch('/api/st-agent').then(r => r.json()).then(h => {
-      setStUp(!!h.ok);
-      const e: Engine = saved === 'twin' || saved === 'st' ? saved : h.ok ? 'st' : 'twin';
-      setEngine(e); setMsgs([{ role: 'assistant', text: GREETING[e] }]);
-    }).catch(() => setStUp(false));
+    let alive = true;
+    const poll = () => fetch('/api/chat').then(r => r.json()).then(h => { if (alive) setHealth({ ready: !!h.ready, problem: h.problem ?? null, model: h.model ?? null }); }).catch(() => { if (alive) setHealth({ ready: false, problem: 'The assistant is not reachable.', model: null }); });
+    poll(); const t = setInterval(poll, 15000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
-  const pick = (e: Engine) => {
-    if (e === engine || busy) return;
-    setEngine(e); history.current = []; setMsgs([{ role: 'assistant', text: GREETING[e] }]);
-    try { localStorage.setItem('twin-chat-engine', e); } catch { /* private mode */ }
-  };
-  const [msgs, setMsgs] = useState<Msg[]>([{ role: 'assistant', text: GREETING.twin }]);
+  const [msgs, setMsgs] = useState<Msg[]>([{ role: 'assistant', text: GREETING }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const history = useRef<{ role: string; content: string }[]>([]);
@@ -50,7 +36,7 @@ export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void
     history.current.push({ role: 'user', content: q });
     let answer = '';
     try {
-      const res = await fetch(engine === 'st' ? '/api/st-agent' : '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history.current }) });
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history.current }) });
       const reader = res.body!.getReader(); const dec = new TextDecoder(); let buf = '';
       for (;;) {
         const { value, done } = await reader.read(); if (done) break;
@@ -70,14 +56,9 @@ export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void
   }
   return (
     <div className="chat">
-      <div className="seg chat-engine" role="tablist" aria-label="Assistant">
-        <button type="button" className={engine === 'twin' ? 'on' : ''} onClick={() => pick('twin')}>Twin assistant</button>
-        <button type="button" className={engine === 'st' ? 'on' : ''} onClick={() => pick('st')} title={stUp === false ? 'Not running: start smartthings-agent' : 'Controls the SmartThings zone in plain words'}>
-          SmartThings agent <i className={`dot ${stUp ? 'ok' : stUp === false ? 'off' : ''}`} />
-        </button>
-      </div>
+      <div className="chat-status" title={health?.model ? `Model: ${health.model}` : undefined}><i className={`dot ${health ? (health.ready ? 'ok' : 'off') : ''}`} />{health ? (health.ready ? `Assistant ready${health.model ? ` · ${health.model}` : ''}` : health.problem ?? 'Assistant not ready') : 'Checking the assistant…'}</div>
       <div className="msgs">{msgs.map((m, i) => <div key={i} className={`msg ${m.role}`}>{m.text}</div>)}{busy && <div className="msg tool">Thinking…</div>}</div>
-      <form onSubmit={ask} className="row"><input value={input} onChange={e => setInput(e.target.value)} placeholder={PLACEHOLDER[engine]} /><button className="pri" disabled={busy}>Send</button></form>
+      <form onSubmit={ask} className="row"><input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask or tell me what to do, e.g. make the room cosy for a movie" /><button className="pri" disabled={busy}>Send</button></form>
     </div>
   );
 }

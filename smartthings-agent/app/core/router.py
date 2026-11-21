@@ -17,7 +17,7 @@ log = logging.getLogger("agent.router")
 
 FALLBACK_SKILL = "chitchat"
 
-SYSTEM = """You are the router of {bot}, an assistant in a SmartThings demo experience zone.
+SYSTEM = """You are the router of {bot}, an assistant in a smart building with SmartThings devices.
 Choose the ONE skill that should handle the user's latest message, and rewrite that message as a standalone request.
 
 Skills:

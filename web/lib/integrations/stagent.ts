@@ -11,7 +11,7 @@
 // to the twin's API, and it carries the scope (host, or one guest pass).
 import { randomBytes } from 'node:crypto';
 import { DEV, ROOMS, byId } from '@/lib/sim/engine';
-import { COMMANDS, device } from '@/lib/sim/runtime';
+import { COMMANDS, device, floor as floorSnapshot } from '@/lib/sim/runtime';
 import { GUEST_HIDDEN } from '@/lib/sim/stzone';
 import { guestCommands, guestCommand, type GuestPass } from '@/lib/sim/guests';
 import { dispatch } from '@/lib/sim/dispatch';
@@ -21,7 +21,10 @@ export const ST_AGENT_URL = () => (process.env.ST_AGENT_URL ?? 'http://localhost
 
 /* ---------------- sessions ---------------- */
 
-export type Scope = { kind: 'host'; room?: string } | { kind: 'guest'; pass: GuestPass };
+export type Role = 'admin' | 'technician' | 'guest';
+/** Who a chat turn is for: staff (admin, technician) see the whole building, a guest only the guest's room. */
+export type Scope = { kind: 'host'; role: 'admin' | 'technician'; room?: string } | { kind: 'guest'; pass: GuestPass };
+export const roleOf = (s: Scope): Role => (s.kind === 'guest' ? 'guest' : s.role);
 type Session = { scope: Scope; until: number };
 const g = globalThis as unknown as { __stAgentSessions?: Map<string, Session> };
 const sessions: Map<string, Session> = (g.__stAgentSessions ??= new Map());
@@ -47,10 +50,14 @@ export function sessionFor(authorization: string | null): Scope | null {
 const nameOf = (d: any) => String(d.name).split(' · ')[0];
 const roomName = (key: string) => (ROOMS as any[]).find(r => r.key === key)?.name ?? key;
 
-/** The twin devices in scope: the guest's room, or (host) one room / the SmartThings Experience Zone by default. */
+/** Types the agent can read but not control (sensors, appliances without a command, cameras). */
+const READ_ONLY = ['temphum', 'motion', 'leak', 'camera', 'doorbell', 'fridge', 'oven', 'washer', 'dryer', 'speaker', 'odu'];
+
+/** The twin devices in scope. A guest: the guest's room, only what the pass lets a guest use. Staff: the whole
+ *  building (real SmartThings devices of the zone and every simulated device), or one room when `room` is set. */
 export function devicesInScope(scope: Scope) {
-  const room = scope.kind === 'guest' ? scope.pass.room : scope.room ?? 'smartthings-experience-zone';
-  return (DEV as any[]).filter(d => d.room === room && !GUEST_HIDDEN.includes(d.type) && COMMANDS[d.type]);
+  if (scope.kind === 'guest') return (DEV as any[]).filter(d => d.room === scope.pass.room && !GUEST_HIDDEN.includes(d.type) && COMMANDS[d.type]);
+  return (DEV as any[]).filter(d => (!scope.room || d.room === scope.room) && (COMMANDS[d.type] || READ_ONLY.includes(d.type)));
 }
 
 /** A device id the agent sent: the twin's id, or the real SmartThings deviceId of a linked device. */
@@ -95,6 +102,8 @@ function actionsFor(d: any, name: string, scope: Scope): { commands: StCmd[] }[]
     case 'tv.setInput': return (spec.args.source as string[]).map(s => cmd('mediaInputSource', 'setInputSource', [INPUT[s] ?? s]));
     case 'purifier.setFan': return PURIFIER_FAN.map(m => cmd('airPurifierFanMode', 'setAirPurifierFanMode', [m]));
     case 'fan.setSpeed': return [cmd('fanSpeed', 'setFanSpeed', [range(1, 3)])];
+    case 'fan.setOscillation': return ['all', 'fixed'].map(m => cmd('fanOscillationMode', 'setFanOscillationMode', [m]));
+    case 'ac.setSwing': return (spec.args.position as string[]).map(m => cmd('fanOscillationMode', 'setFanOscillationMode', [m]));
     case 'lock.lock': return [cmd('lock', 'lock')];
     case 'vacuum.start': return [cmd('robotCleanerMovement', 'setRobotCleanerMovement', ['cleaning'])];
     case 'vacuum.dock': return [cmd('robotCleanerMovement', 'setRobotCleanerMovement', ['homing'])];
@@ -102,14 +111,32 @@ function actionsFor(d: any, name: string, scope: Scope): { commands: StCmd[] }[]
   return [];
 }
 
-/** The agent's `devices` (id, name, room, actions) and `rooms_context` for a scope. Device names are the twin's
- *  names, which are the real SmartThings labels in the zone. */
+/** The name the agent knows a device by: the twin's name (the real SmartThings label in the zone). Where several
+ *  devices share a name (a building has many "Air conditioner"), the room goes in front: "Bedroom Air conditioner",
+ *  so a person can say it the way they would in words. */
+export function agentNames(devs: any[]): Record<string, string> {
+  const base = (d: any) => nameOf(d);
+  const count: Record<string, number> = {};
+  for (const d of devs) count[base(d)] = (count[base(d)] ?? 0) + 1;
+  const out: Record<string, string> = {};
+  const used: Record<string, number> = {};
+  for (const d of devs) {
+    let n = count[base(d)] > 1 ? `${roomName(d.room)} ${base(d)}` : base(d);
+    used[n] = (used[n] ?? 0) + 1;
+    if (used[n] > 1) n = `${n} ${d.id}`;   // two of the same kind in one room: the id tells them apart
+    out[d.id] = n;
+  }
+  return out;
+}
+
+/** The agent's `devices` (id, name, room, actions) and `rooms_context` for a scope. */
 export function agentContext(scope: Scope) {
   const devs = devicesInScope(scope);
+  const names = agentNames(devs);
   const devices = devs.map(d => ({
-    id: d.id, name: nameOf(d), room: roomName(d.room),
+    id: d.id, name: names[d.id], room: roomName(d.room),
     actions: allowedCommands(d, scope).flatMap(n => actionsFor(d, n, scope)),
-  })).filter(d => d.actions.length || ['temphum', 'motion', 'leak', 'camera'].includes(byId[d.id].type));
+  })).filter(d => d.actions.length || READ_ONLY.includes(byId[d.id].type));
   const rooms = [...new Set(devs.map(d => d.room))].map(k => ({ id: k, name: roomName(k), devices: devices.filter(x => byId[x.id].room === k).map(x => x.name) }));
   return { devices, rooms_context: { rooms } };
 }
@@ -135,6 +162,7 @@ export function toTwin(d: any, c: StCmd): { name: string; args: Record<string, u
     case 'mediaInputSource.setInputSource': return { name: 'setInput', args: { source: Object.entries(INPUT).find(([, v]) => v === a[0])?.[0] ?? String(a[0]) } };
     case 'airPurifierFanMode.setAirPurifierFanMode': return { name: 'setFan', args: { level: Math.max(1, PURIFIER_FAN.indexOf(String(a[0])) + 1) } };
     case 'fanSpeed.setFanSpeed': return { name: 'setSpeed', args: { level: n } };
+    case 'fanOscillationMode.setFanOscillationMode': return d.type === 'ac' ? { name: 'setSwing', args: { position: String(a[0]) } } : { name: 'setOscillation', args: { on: a[0] === 'all' || a[0] === 'vertical' || a[0] === 'horizontal' ? 'true' : 'false' } };
     case 'lock.lock': return { name: 'lock', args: {} };
     case 'robotCleanerMovement.setRobotCleanerMovement': return { name: a[0] === 'cleaning' ? 'start' : 'dock', args: {} };
   }
@@ -205,14 +233,62 @@ export function statusDoc(d: any) {
     case 'fan': m.switch = { switch: at(r.on === false ? 'off' : 'on') }; if (r.speed != null) m.fanSpeed = { fanSpeed: at(Number(r.speed)) }; break;
     case 'lock': m.lock = { lock: at(r.locked === false ? 'unlocked' : 'locked') }; if (r.batt != null) m.battery = { battery: at(Number(r.batt), '%') }; break;
     case 'temphum': if (r.temp != null) m.temperatureMeasurement = { temperature: at(Number(r.temp), 'C') }; if (r.hum != null) m.relativeHumidityMeasurement = { humidity: at(Number(r.hum), '%') }; break;
-    case 'vacuum': m.robotCleanerMovement = { robotCleanerMovement: at(r.state === 'Cleaning' ? 'cleaning' : 'homing') }; break;
+    case 'vacuum': m.robotCleanerMovement = { robotCleanerMovement: at(r.state === 'Cleaning' ? 'cleaning' : 'homing') }; if (r.batt != null) m.battery = { battery: at(Number(r.batt), '%') }; break;
+    // appliances, sensors and cameras: readable by the agent, not controllable
+    case 'motion': m.motionSensor = { motion: at(r.motion ? 'active' : 'inactive') }; if (r.batt != null) m.battery = { battery: at(Number(r.batt), '%') }; break;
+    case 'leak': m.waterSensor = { water: at(r.wet ? 'wet' : 'dry') }; if (r.batt != null) m.battery = { battery: at(Number(r.batt), '%') }; break;
+    case 'fridge':
+      if (r.fz != null) m.temperatureMeasurement = { temperature: at(Math.round(Number(r.fz) * 10) / 10, 'C') };
+      if (r.door) m.contactSensor = { contact: at(/open/i.test(String(r.door)) ? 'open' : 'closed') };
+      break;
+    case 'oven': m.switch = { switch: at(r.on ? 'on' : 'off') }; if (r.temp != null) m.temperatureMeasurement = { temperature: at(Number(r.temp), 'C') }; break;
+    case 'washer': if (r.state) m.washerOperatingState = { machineState: at(String(r.state).toLowerCase()) }; break;
+    case 'dryer': if (r.state) m.dryerOperatingState = { machineState: at(String(r.state).toLowerCase()) }; break;
+    case 'speaker': m.switch = { switch: at(r.on === false ? 'off' : 'on') }; if (r.vol != null) m.audioVolume = { volume: at(Number(r.vol)) }; break;
+    case 'camera': m.switch = { switch: at(r.rec === false ? 'off' : 'on') }; break;
+    case 'doorbell': if (r.batt != null) m.battery = { battery: at(Number(r.batt), '%') }; break;
+    case 'odu': m.switch = { switch: at(Number(r.hz ?? 0) > 0 ? 'on' : 'off') }; break;
   }
   return { components: { main: m }, online: s ? s.online !== false : false };
+}
+
+/* ---------------- floor health and a device's evidence (staff only) ---------------- */
+
+/** Every device in scope with its health and, when not healthy, the finding's title. */
+export function twinFloor(scope: Scope) {
+  const devs = devicesInScope(scope);
+  const names = agentNames(devs);
+  const f: any = floorSnapshot();
+  const health: Record<string, string> = Object.fromEntries((f.devices as any[]).map(d => [d.id, d.health]));
+  return {
+    time: f.time, scenario: f.scenario,
+    rooms: [...new Set(devs.map(d => d.room))].map(k => ({ id: k, name: roomName(k) })),
+    devices: devs.map(d => {
+      const h = health[d.id] ?? 'ok';
+      const fin = h !== 'ok' ? (device(d.id) as any)?.finding?.title : undefined;
+      return { id: d.id, name: names[d.id], type: d.type, room: d.room, health: h, ...(fin ? { finding: fin } : {}) };
+    }),
+  };
+}
+
+/** One device's parts with health and the current finding (evidence, confidence, guided steps). */
+export function twinInsight(d: any, scope: Scope) {
+  const s: any = device(d.id);
+  if (!s) return null;
+  const names = agentNames(devicesInScope(scope));
+  const f = s.finding;
+  return {
+    id: d.id, name: names[d.id] ?? nameOf(d), type: d.type, room: d.room, room_name: roomName(d.room), health: s.health,
+    source: s.source, online: s.online,
+    parts: (s.parts as any[]).map(p => ({ key: p.key, name: p.name, value: p.value, health: p.health, inferred: p.inferred })),
+    finding: f ? { lvl: f.lvl, title: f.title, conf: f.conf, ev: f.ev, steps: (f.steps as any[]).map(x => ({ t: x.t, p: x.p })) } : null,
+  };
 }
 
 /* ---------------- one chat turn: the PoC's chat events from the agent's stream ---------------- */
 
 export type Turn = { messages: { role: string; content: string }[] };
+const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHighlight']);
 const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 /**
@@ -236,11 +312,11 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
           up = await fetch(`${ST_AGENT_URL()}/control/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${session}` },
-            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context } }),
+            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope) } }),
             signal: AbortSignal.timeout(120_000),
           });
         } catch {
-          out('error', { message: `The SmartThings agent is not reachable at ${ST_AGENT_URL()}. Start smartthings-agent (see its README).` });
+          out('error', { message: opts.guest ? 'The assistant is not available right now.' : `The assistant service is not reachable at ${ST_AGENT_URL()}. Start smartthings-agent (see its README).` });
           return;
         }
         if (!up.ok || !up.body) { out('error', { message: `The SmartThings agent answered HTTP ${up.status}.` }); return; }
@@ -259,19 +335,31 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
             if (ev === 'status') { if (!opts.guest) out('tool', { name: 'SmartThings agent', summary: String(data.text ?? data.stage ?? '') }); }
             else if (ev === 'error') out('error', { message: String(data.detail ?? 'The SmartThings agent failed.') });
             else if (ev === 'final') {
-              const text = String(data?.data?.question ?? data?.message ?? '');
-              if (text) out('text', { text });
-              const results: any[] = data?.data?.results ?? [];
-              const states: any[] = data?.data?.states ?? [];
+              const d = data?.data ?? {};
+              const text = String(d.question ?? data?.message ?? '');
+              if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model is not reachable. Check OLLAMA_BASE_URL in smartthings-agent/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
+              else if (text) out(data?.status === 'error' ? 'error' : 'text', data?.status === 'error' ? { message: text } : { text });
+              const results: any[] = d.results ?? [];
+              const states: any[] = d.states ?? [];
               const ids = [...new Set([...results, ...states].map(r => String(r.device_id ?? '')).map(id => resolveDevice(id, scope)?.id).filter(Boolean))] as string[];
               if (ids.length) {
-                out('ui_action', { type: 'highlight', ids, reason: results.length ? 'changed by the SmartThings agent' : 'asked about' });
+                out('ui_action', { type: 'highlight', ids, reason: results.length ? 'changed by the assistant' : 'asked about' });
                 // the 3D view turns to a single device; the chat stays open (no `select`: that would replace it)
                 if (ids.length === 1) out('ui_action', { type: 'focusDevice', id: ids[0] });
               }
+              // the diagnostics skill (staff): highlight / focus / open a device and its part, with ids checked against the scope
+              if (scope.kind === 'host') for (const u of Array.isArray(d.ui) ? d.ui : []) {
+                if (!u || !ALLOWED_UI.has(u.type)) continue;
+                if (u.type === 'clearHighlight') { out('ui_action', { type: 'clearHighlight' }); continue; }
+                const ok = (Array.isArray(u.ids) ? u.ids : [u.id]).map((i: unknown) => resolveDevice(String(i), scope)?.id).filter(Boolean) as string[];
+                if (!ok.length) continue;
+                if (u.type === 'highlight') out('ui_action', { type: 'highlight', ids: ok, reason: 'found by the assistant' });
+                else if (u.type === 'focusDevice') out('ui_action', { type: 'focusDevice', id: ok[0] });
+                else if (u.type === 'openDevice') { out('ui_action', { type: 'openDevice', id: ok[0], ...(typeof u.part === 'string' ? { part: u.part } : {}) }); out('select', { id: ok[0] }); }
+              }
               if (opts.guest && results.length) out('result', { results: results.map(r => {
-                const d = resolveDevice(String(r.device_id), scope);
-                return { device_id: d?.id ?? r.device_id, label: r.device_name, type: d?.type ?? '', command: '', args: {}, summary: 'done', ok: r.status === 'success', error: r.status === 'success' ? undefined : String(r.api_result?.response?.error?.message ?? r.api_result?.error ?? 'did not respond') };
+                const dv = resolveDevice(String(r.device_id), scope);
+                return { device_id: dv?.id ?? r.device_id, label: r.device_name, type: dv?.type ?? '', command: '', args: {}, summary: 'done', ok: r.status === 'success', error: r.status === 'success' ? undefined : String(r.api_result?.response?.error?.message ?? r.api_result?.error ?? 'did not respond') };
               }) });
             }
           }
@@ -287,11 +375,16 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
   return new Response(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
 }
 
-/** Whether the SmartThings agent is up (GET {ST_AGENT_URL}/health). */
+/** Whether the assistant is up and can answer: the agent service, and (deep) the Ollama model behind it. */
 export async function agentHealth() {
   try {
-    const r = await fetch(`${ST_AGENT_URL()}/health`, { signal: AbortSignal.timeout(2500) });
+    const r = await fetch(`${ST_AGENT_URL()}/health?deep=true`, { signal: AbortSignal.timeout(6000) });
     const d = await r.json();
-    return { ok: r.ok, url: ST_AGENT_URL(), model: d?.model ?? null, skills: d?.skills ?? [] };
-  } catch { return { ok: false, url: ST_AGENT_URL(), model: null, skills: [] }; }
+    const llm = d?.llm ?? {};
+    const problem = !r.ok ? `The assistant answered HTTP ${r.status}.`
+      : llm.reachable === false ? `Ollama is not reachable at ${llm.url}. Set OLLAMA_BASE_URL in smartthings-agent/.env.`
+      : llm.model_present === false ? `Ollama has no model "${d.model}". Run: ollama pull ${d.model}`
+      : d?.device_api?.reachable === false ? `The device API is not reachable at ${d.device_api.url}.` : null;
+    return { ok: r.ok, ready: !problem, problem, url: ST_AGENT_URL(), model: d?.model ?? null, skills: d?.skills ?? [], llm };
+  } catch { return { ok: false, ready: false, problem: `The assistant service is not running at ${ST_AGENT_URL()}. Start smartthings-agent.`, url: ST_AGENT_URL(), model: null, skills: [], llm: null }; }
 }

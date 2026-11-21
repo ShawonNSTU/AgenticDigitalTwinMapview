@@ -53,6 +53,14 @@ READINGS: dict[tuple[str, str], str] = {
     ("powerMeter", "power"): "power use",
     ("energyMeter", "energy"): "energy use",
     ("battery", "battery"): "battery",
+    ("waterSensor", "water"): "water leak",
+    ("ovenOperatingState", "machineState"): "oven state",
+    ("ovenSetpoint", "ovenSetpoint"): "oven setpoint",
+    ("robotCleanerMovement", "robotCleanerMovement"): "cleaning",
+    ("robotCleanerCleaningMode", "robotCleanerCleaningMode"): "cleaning mode",
+    ("airPurifierFanMode", "airPurifierFanMode"): "purifier fan",
+    ("dustSensor", "fineDustLevel"): "PM2.5",
+    ("refrigeration", "rapidCooling"): "rapid cooling",
 }
 # Unit used when the status has none.
 DEFAULT_UNITS: dict[tuple[str, str], str] = {

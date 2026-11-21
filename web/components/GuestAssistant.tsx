@@ -35,19 +35,9 @@ export default function GuestAssistant({ token, onUi }: { token: string; onUi: (
     const u = new SpeechSynthesisUtterance(t); u.lang = lang; window.speechSynthesis.speak(u);
   };
 
-  // which assistant answers: the room assistant (agent-backend) or the SmartThings agent (smartthings-agent)
-  const [engine, setEngine] = useState<'room' | 'st'>('room');
-  const [stUp, setStUp] = useState(false);
-  useEffect(() => {
-    let saved: string | null = null;
-    try { saved = localStorage.getItem('guest-assistant-engine'); } catch { /* private mode */ }
-    fetch('/api/st-agent').then(r => r.json()).then(h => { setStUp(!!h.ok); setEngine(saved === 'room' || saved === 'st' ? saved : h.ok ? 'st' : 'room'); }).catch(() => {});
-  }, []);
-  const pickEngine = (e: 'room' | 'st') => { setEngine(e); try { localStorage.setItem('guest-assistant-engine', e); } catch { /* private mode */ } };
-
   const stream = async (history: Msg[], confirm?: Action[]) => {
     setBusy(true);
-    const r = await fetch(engine === 'st' ? `/api/guest/${token}/st-agent` : `/api/guest/${token}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const r = await fetch(`/api/guest/${token}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: history.filter(m => m.content).map(m => ({ role: m.role, content: m.content })), confirm }) });
     if (!r.body) { setBusy(false); return; }
     const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = '';
@@ -132,8 +122,7 @@ export default function GuestAssistant({ token, onUi }: { token: string; onUi: (
       <div className="assist-opts">
         <div className="seg"><button type="button" className={lang === 'en-US' ? 'on' : ''} onClick={() => setLang('en-US')}>English</button><button type="button" className={lang === 'bn-BD' ? 'on' : ''} onClick={() => setLang('bn-BD')}>বাংলা</button></div>
         <label className="muted"><input type="checkbox" checked={speak} onChange={e => setSpeak(e.target.checked)} /> Read replies aloud</label>
-        <div className="seg" title="Which assistant answers"><button type="button" className={engine === 'room' ? 'on' : ''} onClick={() => pickEngine('room')}>Room assistant</button><button type="button" className={engine === 'st' ? 'on' : ''} onClick={() => pickEngine('st')} disabled={!stUp} title={stUp ? 'SmartThings agent' : 'SmartThings agent is not running'}>SmartThings agent</button></div>
-      </div>
+</div>
     </div>
   );
 }

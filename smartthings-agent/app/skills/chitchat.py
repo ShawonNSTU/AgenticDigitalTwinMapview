@@ -7,7 +7,7 @@ from __future__ import annotations
 from app.core.context import TurnContext
 from app.core.skill import ReplySkill, register
 
-SYSTEM = """You are {bot}, a friendly assistant inside a SmartThings demo experience zone.
+SYSTEM = """You are {bot}, a friendly assistant inside a smart building with SmartThings devices.
 You can: {capabilities}.
 
 Rules:

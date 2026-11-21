@@ -42,7 +42,12 @@ def _env_list(name: str) -> list[str]:
 class Settings:
     # --- LLM (Ollama) ---
     ollama_model: str = field(default_factory=lambda: _env("OLLAMA_MODEL", "gpt-oss:20b"))
-    ollama_base_url: str = field(default_factory=lambda: _env("OLLAMA_BASE_URL", "http://localhost:11434"))
+    # PLACEHOLDER: point this at your Ollama server (the machine that has the model pulled), e.g. http://10.0.0.5:11434
+    ollama_base_url: str = field(default_factory=lambda: _env("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/"))
+    # Only for an Ollama behind an authenticating proxy / hosted Ollama: sent as "Authorization: Bearer <key>".
+    ollama_api_key: str = field(default_factory=lambda: _env("OLLAMA_API_KEY"))
+    # How long Ollama keeps the model loaded after a turn ("5m", "1h", "-1" = forever). Avoids a cold start per chat.
+    ollama_keep_alive: str = field(default_factory=lambda: _env("OLLAMA_KEEP_ALIVE", "30m"))
     # gpt-oss accepts "low" | "medium" | "high"; other thinking models accept "true"/"false"; empty = model default.
     ollama_think: str = field(default_factory=lambda: _env("OLLAMA_THINK", "low"))
     llm_timeout_s: float = field(default_factory=lambda: _env_float("LLM_TIMEOUT_S", 60.0))
@@ -63,6 +68,11 @@ class Settings:
     st_timeout_s: float = field(default_factory=lambda: _env_float("ST_TIMEOUT_S", 15.0))
     # When true, commands are NOT sent to SmartThings (useful for local testing).
     st_dry_run: bool = field(default_factory=lambda: _env_bool("ST_DRY_RUN", False))
+
+    # The twin's read-only floor and diagnostics API (host / technician only). Default: next to IOT_API_BASE_URL.
+    twin_api_base_url: str = field(default_factory=lambda: _env("TWIN_API_BASE_URL"))
+    # Diagnostics skill (find devices by health, explain a fault from the twin's evidence). Needs the twin API.
+    diagnostics_enabled: bool = field(default_factory=lambda: _env_bool("DIAGNOSTICS_ENABLED", True))
 
     # --- Conversation / prompt budget ---
     history_max_messages: int = field(default_factory=lambda: _env_int("HISTORY_MAX_MESSAGES", 6))
@@ -87,10 +97,25 @@ class Settings:
         default_factory=lambda: PROJECT_ROOT / _env("ROOMS_DATA_PATH", "data/rooms.json")
     )
 
+    # --- Robustness ---
+    # Turns running at once. A local Ollama serves one model call at a time, so extra turns wait their turn.
+    max_concurrent_turns: int = field(default_factory=lambda: _env_int("MAX_CONCURRENT_TURNS", 4))
+    # Longest a whole turn may take (routing + skill + device calls); then the user gets a clear message.
+    turn_timeout_s: float = field(default_factory=lambda: _env_float("TURN_TIMEOUT_S", 90.0))
+
     # --- Server ---
     host: str = field(default_factory=lambda: _env("HOST", "0.0.0.0"))
     port: int = field(default_factory=lambda: _env_int("PORT", 8100))   # 8000 is the twin's agent-backend
     log_level: str = field(default_factory=lambda: _env("LOG_LEVEL", "INFO").upper())
+
+
+    @property
+    def twin_base(self) -> str:
+        """Base URL of the twin API: TWIN_API_BASE_URL, else IOT_API_BASE_URL with its trailing /devices -> /twin."""
+        if self.twin_api_base_url:
+            return self.twin_api_base_url.rstrip("/")
+        base = self.st_api_base_url
+        return (base[: -len("/devices")] if base.endswith("/devices") else base) + "/twin"
 
 
 settings = Settings()

@@ -4,7 +4,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any, AsyncIterator, Optional
+
+import httpx
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,18 +48,54 @@ def create_app(settings: Settings = default_settings, llm: LLM | None = None) ->
     app.add_middleware(
         CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
     )
-    agent = Agent(llm or OllamaLLM(settings), settings)
+    model = llm or OllamaLLM(settings)
+    agent = Agent(model, settings)
     st = SmartThingsClient(settings)
     app.state.agent = agent
     running: set[asyncio.Task] = set()
+    gate = asyncio.Semaphore(max(1, settings.max_concurrent_turns))   # turns running at once; the rest wait
+
+    async def turn(ctx) -> SkillResult:
+        """One agent turn with a wait for a free slot and an overall deadline (a hung model must not hang the chat)."""
+        async with gate:
+            try:
+                return await asyncio.wait_for(agent.handle(ctx), timeout=settings.turn_timeout_s)
+            except asyncio.TimeoutError:
+                log.error("turn timed out after %.0fs: %s", settings.turn_timeout_s, ctx.message)
+                return SkillResult("error", "That took too long. Please try again.", {"error": "timeout", "timeout": True})
+
+    async def twin_up() -> dict[str, Any]:
+        """Is the SmartThings-compatible API this agent calls reachable? Any HTTP answer (even 401) means yes."""
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                r = await client.get(f"{settings.st_api_base_url}/health-check")
+            return {"reachable": True, "status": r.status_code, "ms": round((time.monotonic() - t0) * 1000)}
+        except httpx.HTTPError as exc:
+            return {"reachable": False, "error": str(exc) or type(exc).__name__}
 
     @app.get("/")
     async def root():
         return {"message": f"{settings.bot_name} agent is active"}
 
     @app.get("/health")
-    async def health():
-        return {"status": "ok", "model": settings.ollama_model, "skills": [s.name for s in agent.skills]}
+    async def health(deep: bool = False):
+        """Liveness (always fast). `?deep=true` also checks the Ollama server + model and the device API."""
+        out: dict[str, Any] = {"status": "ok", "model": settings.ollama_model, "skills": [s.name for s in agent.skills]}
+        if deep:
+            check = getattr(model, "check", None)
+            out["llm"] = {"url": settings.ollama_base_url, **(await check() if check else {"reachable": True, "model_present": True})}
+            out["device_api"] = {"url": settings.st_api_base_url, **(await twin_up())}
+            out["ready"] = bool(out["llm"]["reachable"] and out["llm"]["model_present"] and out["device_api"]["reachable"])
+        return out
+
+    @app.get("/ready")
+    async def ready():
+        """200 when the model and the device API are both reachable, else 503 with what is wrong."""
+        out = await health(deep=True)
+        if not out["ready"]:
+            raise HTTPException(status_code=503, detail=out)
+        return out
 
     @app.get("/skills")
     async def skills():
@@ -66,7 +105,7 @@ def create_app(settings: Settings = default_settings, llm: LLM | None = None) ->
     async def control(request: ControlRequest, authorization: Optional[str] = Header(None)):
         ctx = build_context(request, _bearer(authorization), settings)
         try:
-            result = await agent.handle(ctx)
+            result = await turn(ctx)
         except Exception as exc:  # never leak a stack trace to the chat UI
             log.exception("unhandled error")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -83,7 +122,7 @@ def create_app(settings: Settings = default_settings, llm: LLM | None = None) ->
         ctx.on_progress = lambda stage, text: queue.put_nowait((stage, text))
 
         async def events() -> AsyncIterator[str]:
-            task = asyncio.create_task(agent.handle(ctx))
+            task = asyncio.create_task(turn(ctx))
             try:
                 while True:
                     getter = asyncio.create_task(queue.get())

@@ -168,10 +168,12 @@ Browser ── Next.js page ──postMessage──▶ Godot web build (iframe)
    │      SSE /api/events                 │ polls /api/floor, /api/devices/:id
    │            │                         ▼
    │      Next.js Route Handlers = simulated device platform
-   ├─/api/chat─▶ agent-backend /chat ──tools──▶ platform
-   │               └─ ui_action events ─▶ page ─▶ Godot
-   └─/api/st-agent─▶ smartthings-agent /control/stream ──▶ /api/st/v1/devices (SmartThings-compatible) ─▶ platform
-                                                            └─ real device when linked (api.smartthings.com)
+   └─/api/chat (admin, technician), /api/guest/{pass}/chat (guest)
+        ─▶ smartthings-agent /control/stream (Ollama: one assistant for every role)
+             ──▶ /api/st/v1/devices (SmartThings-compatible) and /api/st/v1/twin (staff) ─▶ platform
+                  │  └─ real device when linked (api.smartthings.com)
+                  └─ ui_action events ─▶ page ─▶ Godot
+   agent-backend: floor-plan reading only
 ```
 
 ## Story mode: one guest, one night
