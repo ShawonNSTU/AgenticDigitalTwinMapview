@@ -306,7 +306,8 @@ func view_room(r: Dictionary) -> void:
 	if best == Vector2.INF or best.distance_to(p) < 0.5 or not go_to(best):
 		look_at_point(at)
 		return
-	arrived.connect(func(): look_at_point(at), CONNECT_ONE_SHOT)
+	# turn to the room once there; a tap elsewhere on the way cancels it (no turning round where you chose to go)
+	arrived.connect(func(): if p.distance_to(best) < 0.6: look_at_point(at), CONNECT_ONE_SHOT)
 
 
 func look_at_point(q: Vector3) -> void:

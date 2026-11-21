@@ -970,6 +970,7 @@ var _guest_from := ""
 ## rooms show no names, furniture or devices (the platform sends only the guest room's devices).
 ## On arrival the guest is kept inside their room.
 func _start_guest(from_key := "") -> void:
+	_guest_settled = false
 	if walker or world == null:
 		return
 	_arrival_lift = {}
@@ -1167,9 +1168,15 @@ func _guest_entrance(nav: WalkNav, target_room: Dictionary) -> Vector2:
 	return nav.nearest_free(_busiest_room_point(), 200)
 
 
+var _guest_settled := false   # the guest has arrived in their room (the arrival runs once per walk)
+
+
+## The guest reached their room: keep them in it, step to where the whole room is in view, say so. Only the first
+## time: every later walk inside the room (a tap on the floor) ends here too and must stay where it ended.
 func _guest_arrived() -> void:
-	if walker == null or _guest_room == "" or walker.room_key != _guest_room:
+	if walker == null or _guest_room == "" or walker.room_key != _guest_room or _guest_settled:
 		return
+	_guest_settled = true
 	walker.confine(Store.room(_guest_room))
 	# step to where the whole room is in view and turn to take it in
 	walker.view_room(Store.room(_guest_room))

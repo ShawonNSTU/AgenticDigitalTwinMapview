@@ -78,6 +78,26 @@ func _run() -> void:
 	w._apply()
 	await _wait(0.4)
 	await _shot("g1_arrived")
+	# let the arrival settle (the step to the whole-room view), then tap two spots on the room's floor: the guest
+	# must stay where they tapped, not be walked back to the arrival spot
+	for i in 200:
+		w._process(0.05)
+	var poly := PlanGeo.room_poly(Store.room(room))
+	var spots: Array = []
+	for q in poly:
+		var c := PlanGeo.interior_point(poly)
+		var s := w.nav.nearest_free(c.lerp(q, 0.6), 10)
+		if Geometry2D.is_point_in_polygon(s, poly) and w.nav.is_free(s) and spots.size() < 2 and (spots.is_empty() or spots[0].distance_to(s) > 1.2):
+			spots.append(s)
+	var strayed := 0
+	for s in spots:
+		w.go_to(s)
+		for i in 300:   # 15 s: there, and a while after
+			w._process(0.05)
+		if w.p.distance_to(s) > 0.6:
+			strayed += 1
+			print("tapped ", s, " but stands at ", w.p)
+	_check(spots.size() == 2 and strayed == 0, "a tap on the room's floor takes the guest there and they stay (%d of %d moved away)" % [strayed, spots.size()])
 	# try to leave: walk straight in 12 directions for 15 m
 	var left := 0
 	for d in 12:
