@@ -730,7 +730,7 @@ body.has-pseudo-full { overflow:hidden; }
 .ag-reason { border-left:2px solid var(--acc-line); padding:2px 0 2px 10px; }
 .ag-reason > button { display:inline-flex; align-items:center; gap:6px; padding:2px 0; border:0; background:none; box-shadow:none; font-size:12px; color:var(--muted); font-weight:600; }
 .ag-reason > button i { font-style:normal; color:var(--acc); } .ag-reason > button em { font-style:normal; color:var(--faint); }
-.ag-reason.live > button { color:var(--acc-dark); } .ag-reason.live > button i { animation:ag-pulse 1s infinite; border-radius:50%; }
+.ag-reason-live > button { color:var(--acc-dark); } .ag-reason-live > button i { display:inline-block; animation:ag-spin 2.4s linear infinite; }
 .ag-reason-text { margin-top:4px; max-height:160px; overflow:auto; font-size:12.5px; line-height:1.5; color:var(--muted); white-space:pre-wrap; font-style:italic; }
 .rich table { border-collapse:collapse; font-size:12.5px; width:100%; }
 .rc-table { overflow-x:auto; margin:4px 0 8px; border:1px solid var(--line); border-radius:8px; }
@@ -775,3 +775,6 @@ body.has-pseudo-full { overflow:hidden; }
 .ag-todo li.done .ag-todo-ico { background:var(--ok); border-color:var(--ok); }
 .ag-todo li.failed .ag-todo-ico { background:var(--fault); border-color:var(--fault); }
 .ag-todo li.needs_input .ag-todo-ico { background:var(--watch); border-color:var(--watch); }
+/* the feed scrolls; nothing in a run may be squeezed by it (reasoning, cards, lists keep their full height) */
+.ag-feed > *, .ag-run > * { flex-shrink:0; }
+.ag-reason { position:relative; }

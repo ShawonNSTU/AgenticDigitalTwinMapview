@@ -87,22 +87,23 @@ async function runRoutine(id: string, room: string, scope: Scope, by: string): P
   if (!room || !(ROOMS as any[]).some(x => x.key === room)) return bad(422, 'Say which room');
   const devs = devicesInScope(scope).filter(d => d.room === room);
   const names = agentNames(devs);
-  const results: { device_id: string; name: string; steps: string[]; ok: boolean; error?: string }[] = [];
-  for (const d of devs) {
-    const steps = r.steps[d.type]; if (!steps?.length) continue;
+  // every device at once (a real SmartThings call takes a moment each); one device's own steps stay in order
+  const rows = await Promise.all(devs.map(async d => {
+    const steps = r.steps[d.type]; if (!steps?.length) return null;
     const allowed = scope.kind === 'guest'
       ? new Set(guestCommands(d.type, scope.pass, d.id, true).filter((c: any) => !c.confirm).map((c: any) => c.name))
       : new Set(supported(d.id, d.type, Object.entries(COMMANDS[d.type] ?? {}).filter(([, c]) => !c.confirm).map(([name, c]) => ({ name, args: (c.args ?? {}) as Record<string, any> }))).map((c: any) => c.name));
     const run = steps.filter(s => allowed.has(s.command));
-    if (!run.length) continue;
+    if (!run.length) return null;
     let fail = '';
     for (const s of run) {
       const res: any = scope.kind === 'guest' ? await guestCommand(scope.pass, d.id, s.command, s.args ?? {}) : await dispatch(d.id, s.command, s.args ?? {}, false, by);
       const good = 'body' in res ? res.status === 200 : res.ok;
       if (!good) { fail = 'body' in res ? String(res.body.error ?? 'refused') : String(res.error ?? 'refused'); break; }
     }
-    results.push({ device_id: d.id, name: names[d.id], steps: run.map(s => s.command), ok: !fail, ...(fail ? { error: fail } : {}) });
-  }
+    return { device_id: d.id, name: names[d.id], steps: run.map(s => s.command), ok: !fail, ...(fail ? { error: fail } : {}) };
+  }));
+  const results = rows.filter(Boolean) as { device_id: string; name: string; steps: string[]; ok: boolean; error?: string }[];
   if (!results.length) return ok({ routine: r.name, room: roomLabel(room), results, note: 'This room has no devices this routine can use.' });
   return ok({ routine: r.name, room: roomLabel(room), results });
 }
@@ -131,16 +132,19 @@ async function runSaved(id: string, scope: Scope, by: string): Promise<Out> {
   if (!r) return bad(404, 'No such saved routine');
   const devs = devicesInScope(scope);
   const names = agentNames(devs);
+  const byDevice = new Map<string, typeof r.steps>();
+  for (const st of r.steps) byDevice.set(st.deviceId, [...(byDevice.get(st.deviceId) ?? []), st]);
   const per = new Map<string, { device_id: string; name: string; steps: string[]; ok: boolean; error?: string }>();
-  for (const s of r.steps) {
-    const d = resolveDevice(s.deviceId, scope);
-    const row = per.get(s.deviceId) ?? { device_id: s.deviceId, name: d ? names[d.id] ?? s.deviceId : s.deviceId, steps: [], ok: true };
-    per.set(s.deviceId, row);
-    if (!row.ok) continue;                                    // a device that failed gets no more steps
-    if (!d) { row.ok = false; row.error = 'not available any more'; continue; }
-    const res: any = scope.kind === 'guest' ? await guestCommand(scope.pass, d.id, s.command, s.args) : await dispatch(d.id, s.command, s.args, false, by);
-    const good = 'body' in res ? res.status === 200 : res.ok;
-    if (good) row.steps.push(s.command); else { row.ok = false; row.error = 'body' in res ? String(res.body.error ?? 'refused') : String(res.error ?? 'refused'); }
-  }
+  await Promise.all([...byDevice].map(async ([devId, list]) => {
+    const d = resolveDevice(devId, scope);
+    const row = { device_id: devId, name: d ? names[d.id] ?? devId : devId, steps: [] as string[], ok: true, error: undefined as string | undefined };
+    per.set(devId, row);
+    if (!d) { row.ok = false; row.error = 'not available any more'; return; }
+    for (const s of list) {
+      const res: any = scope.kind === 'guest' ? await guestCommand(scope.pass, d.id, s.command, s.args) : await dispatch(d.id, s.command, s.args, false, by);
+      const good = 'body' in res ? res.status === 200 : res.ok;
+      if (good) row.steps.push(s.command); else { row.ok = false; row.error = 'body' in res ? String(res.body.error ?? 'refused') : String(res.error ?? 'refused'); break; }
+    }
+  }));
   return ok({ routine: r.name, room: '', results: [...per.values()] });
 }

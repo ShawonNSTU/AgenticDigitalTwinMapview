@@ -141,7 +141,7 @@ function Reasoning({ run }: { run: Run }) {
   if (!run.reasoning.trim()) return null;
   const show = live || open;
   return (
-    <div className={`ag-reason ${live ? 'live' : ''}`}>
+    <div className={`ag-reason ${live ? 'ag-reason-live' : ''}`}>
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={show}><i>✦</i>{live ? 'Reasoning…' : 'Reasoning'}<em>{show ? '▾' : '▸'}</em></button>
       {show && <div ref={box} className="ag-reason-text">{run.reasoning.trim()}</div>}
     </div>
@@ -219,7 +219,7 @@ export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Ru
       )}
       <Reasoning run={run} />
       {run.todo.length > 0 && <TodoList run={run} />}
-      {run.status === 'running' && !run.text && !run.error && !run.todo.length && <Thinking run={run} />}
+      {run.status === 'running' && !run.text && !run.error && !run.todo.length && !run.reasoning.trim() && <Thinking run={run} />}
       {run.text && <Answer text={run.text} animate={animate} onTyped={onTyped} onAsk={q => !busy && onAsk(q)} />}
       {after && run.cards.map((c, i) => c.kind === 'guest_pass' ? <PassCard key={i} c={c} /> : null)}
       {after && last && !busy && run.choices.length > 0 && (
