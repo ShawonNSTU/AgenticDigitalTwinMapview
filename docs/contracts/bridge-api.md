@@ -90,7 +90,12 @@ Renderer → host:
 |---|---|
 | `{type:'anchor', id, x, y, visible}` | Device position on the renderer viewport, `x`/`y` as 0–1 fractions; `visible` false when it is behind the camera or off screen. |
 
-Device variants (by device name, see `DeviceNode.variant`): "Ceiling AC…" is a ceiling cassette; lights named
+Device variants (see `DeviceNode.variant`): a device's `fixture` from the platform comes first: `spot` (a spot bulb
+hanging from the zone's ceiling band), `wall` (a bulb in a wall socket), `lamp`, `desk`, `panel`, `window`, `roller`
+(a roller curtain), `bespoke` (the coral Bespoke air purifier). `real: true` marks a device linked to a real
+SmartThings device; it and every light, blinds and plug in the zone carry a live status badge. A room's `ceiling`
+({band, drop, panels, diffusers, returns}: rectangles {x, z, w, d}) lays out its drop ceiling. Without a fixture,
+by device name: "Ceiling AC…" is a ceiling cassette; lights named
 "Floor lamp…"/"side lamp…" sit in a floor lamp, "Desk lamp" on the desk, "TV lamp"/"Main ceiling…" drive the
 zone's LED ceiling panels, "…window" or "…window light" are back-lit window panes behind the nearest roller curtain; blinds named "…roller shade…" or
 "…curtain…" are a roller curtain and "Projector screen…" a roller screen; "TV 65"…" is a TV on a stand.

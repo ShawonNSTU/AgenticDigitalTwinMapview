@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the SmartThings Experience Zone's 13 real devices against the SmartThings API (standard library only).
+"""Check the SmartThings Experience Zone's 12 real devices against the SmartThings API (standard library only).
 
 Read-only by default: for every device in web/lib/integrations/zone-devices.ts it checks that the deviceId exists
 for the token, that its label and capabilities are what the twin expects, and reads its status and health.
@@ -32,8 +32,8 @@ def registry():
     out = []
     for m in re.finditer(r"\{ label: '([^']+)', stId: '([0-9a-f-]+)', type: '(\w+)', capabilities: (\w+) \}", src):
         out.append({"label": m.group(1), "stId": m.group(2), "type": m.group(3), "caps": caps[m.group(4)]})
-    if len(out) != 13:
-        sys.exit(f"expected 13 devices in {REGISTRY}, found {len(out)}")
+    if len(out) != 12:
+        sys.exit(f"expected 12 devices in {REGISTRY}, found {len(out)}")
     return out
 
 

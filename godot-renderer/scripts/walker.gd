@@ -24,6 +24,7 @@ var pitch := deg_to_rad(-4.0)
 var joy := Vector2.ZERO  # host stick: x turns (right = +1), y walks (up = -1)
 var eye := EYE
 var room_key := "~"
+static var current_room := ""   # the room the walker is in (device badges show only there)
 
 var _pieces: Array = []   # wall pieces [a, b] (door gaps left out)
 var _lintels: Array = []  # [a, b] over each door gap, LINTEL .. wall height
@@ -649,6 +650,7 @@ func _track_room() -> void:
 	var key: String = r.get("key", "out")
 	if key != room_key:
 		room_key = key
+		current_room = key
 		Bus.walk_changed.emit({"on": true, "room": key, "roomName": Store.room_label(r)})
 
 

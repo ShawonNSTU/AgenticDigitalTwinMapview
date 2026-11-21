@@ -437,6 +437,10 @@ func _zone_ceiling(r: Dictionary, h: float) -> void:
 	grille.roughness = 0.5
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color("2b2e33")
+	var spec: Dictionary = r.get("ceiling", {})
+	if not spec.is_empty():
+		_zone_ceiling_spec(spec, h, panel, frame, grille, dark)
+		return
 	var fit := func(f: Vector2) -> Vector3:
 		# snap to the 600 mm grid inside the room
 		var p := lo + sz * f
@@ -458,6 +462,28 @@ func _zone_ceiling(r: Dictionary, h: float) -> void:
 
 
 var _zone_panels := {}
+
+
+## The zone's ceiling as the platform lays it out (stzone.ts, from the room's photos): the lowered band where the
+## spot bulbs hang, LED panels (they follow the "TV Lamp" device), supply diffusers and a return grille.
+func _zone_ceiling_spec(spec: Dictionary, h: float, panel: Material, frame: Material, grille: Material, dark: Material) -> void:
+	for p in spec.get("panels", []):
+		var c := Vector3(float(p.x), h - 0.012, float(p.z))
+		ceilings.add_child(_ceil_box(c, Vector3(float(p.w), 0.02, float(p.d)), frame))
+		ceilings.add_child(_ceil_box(c + Vector3(0, -0.006, 0), Vector3(float(p.w) - 0.04, 0.02, float(p.d) - 0.04), panel))
+	for p in spec.get("diffusers", []):
+		var c := Vector3(float(p.x), h - 0.012, float(p.z))
+		ceilings.add_child(_ceil_box(c, Vector3(0.6, 0.02, 0.6), frame))
+		for k in 4:  # concentric square louvres
+			var s := 0.54 - k * 0.11
+			ceilings.add_child(_ceil_box(c + Vector3(0, -0.012 - k * 0.012, 0), Vector3(s, 0.012, s), grille if k % 2 == 0 else dark))
+	for p in spec.get("returns", []):
+		var c := Vector3(float(p.x), h - 0.012, float(p.z))
+		ceilings.add_child(_ceil_box(c, Vector3(0.6, 0.02, 0.6), frame))
+		ceilings.add_child(_ceil_box(c + Vector3(0, -0.008, 0), Vector3(0.44, 0.012, 0.44), dark))
+	var drop := float(spec.get("drop", 0.28))
+	for b in spec.get("band", []):
+		ceilings.add_child(_ceil_box(Vector3(float(b.x), h - drop / 2, float(b.z)), Vector3(float(b.w), drop, float(b.d)), frame))
 
 
 ## The zone's LED ceiling panels follow its "main ceiling lights" device (level 0..1).

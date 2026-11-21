@@ -12,6 +12,12 @@ extends Node3D
 ##   vacuum   : cleans a path around its room and goes back to its dock
 ##   lock     : green when unlocked, red when locked
 ## Offline devices go grey with a red "Offline" tag and stop doing anything.
+##
+## The SmartThings Experience Zone's devices (and any device linked to a real SmartThings device) also carry a
+## status badge that always says what the device is doing ("Light 3 · 45%", "Shade · 40% open", "Off",
+## "Offline"); when its state changes (a command, the SmartThings app, a wall switch) the badge flashes and a ring
+## pulses out from the device, so a real change is obvious at a glance. Spot bulbs throw a visible beam and a pool
+## of light; lamps light their shade only while on. Settled effects stop processing (most of a floor is idle).
 
 const MODE_COL := {"cool": Color("7cc4ff"), "heat": Color("ff9b5a"), "dry": Color("b9e6ff"), "fan": Color("e5e7eb"), "auto": Color("a7f3d0")}
 
@@ -21,6 +27,15 @@ var size := Vector3.ONE
 var live: Dictionary = {}
 var _t := randf() * 10.0
 var _lamp: OmniLight3D
+var _src: Light3D          # the light a light device casts (an omni light, or a spot light for spot bulbs)
+var _cone: MeshInstance3D  # spot bulbs: the visible beam
+var _cone_mat: StandardMaterial3D
+var _liner_mat: StandardMaterial3D  # floor lamp: the inside of its shade, lit by the bulb
+var _badge: Label3D
+var _burst: MeshInstance3D
+var _burst_mat: StandardMaterial3D
+var _sig := ""             # what the device is doing, to notice changes
+var _fx_tween: Tween
 var _glow_mat: StandardMaterial3D
 var _air: CPUParticles3D
 var _flap: Node3D
@@ -72,14 +87,169 @@ func setup(d: DeviceNode, t: String, s: Vector3, v := "") -> DeviceFx:
 	_offline.position.y = size.y / 2 + 0.42
 	_offline.visible = false
 	add_child(_offline)
+	if _wants_badge():
+		_build_badge()
 	return self
+
+
+## Devices whose state matters to people watching the room: the zone's SmartThings devices and real ones.
+func _wants_badge() -> bool:
+	if not ["light", "blinds", "plug"].has(type):
+		return false
+	if bool(dev.data.get("real", false)):
+		return true
+	var r: Dictionary = Store.room(_room_key)
+	return str(r.get("finish", "")) == "st-zone"
+
+
+func _build_badge() -> void:
+	_badge = Label3D.new()
+	_badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_badge.fixed_size = true
+	_badge.pixel_size = 0.00095 if Store.walk else 0.0005   # walking, the camera's wider view makes text smaller
+	_badge.font_size = 26
+	add_to_group("zone_badge")
+	_badge.outline_size = 12
+	_badge.outline_modulate = Color(0.04, 0.06, 0.1, 0.92)
+	_badge.no_depth_test = not Store.walk   # walking: walls hide the badges of other rooms
+	_badge.render_priority = 2
+	# below things on the ceiling, above everything else
+	var up := 1.0
+	if variant in ["spot", "panel"] or (type == "light" and variant == "" and Store.walk):
+		up = -1.0
+	_badge.position.y = (size.y / 2 + 0.16) * up
+	if variant == "window":
+		_badge.position = Vector3(0, -0.18 if _left else -0.36, 0.1)   # on its own pane, one above the other
+	elif variant == "wall":
+		_badge.position.y = 0.42   # above the TV it hides behind
+	elif variant == "lamp":
+		_badge.position.y = 0.4    # above the lamp's shade
+	if Store.walk:
+		# walking: only the badges of the room you are in, drawn over everything (no lamp shade or pane cuts them)
+		Bus.walk_changed.connect(_on_walk_room)
+		if Walker.current_room != "":
+			_on_walk_room.call_deferred({"on": true, "room": Walker.current_room})
+	add_child(_badge)
+	_burst_mat = StandardMaterial3D.new()
+	_burst_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_burst_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_burst_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_burst_mat.no_depth_test = true
+	_burst = MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.16
+	tm.outer_radius = 0.2
+	tm.rings = 24
+	tm.ring_segments = 6
+	_burst.mesh = tm
+	_burst.material_override = _burst_mat
+	_burst.visible = false
+	if variant == "window" or type == "blinds" or variant == "wall":
+		_burst.rotation.x = PI / 2   # on a wall: the ring faces the room
+	add_child(_burst)
+
+
+func _on_walk_room(info: Dictionary) -> void:
+	if _badge == null or not is_instance_valid(_badge):
+		return
+	var here := str(info.get("room", "")) == _room_key
+	_badge.visible = here or not bool(info.get("on", true))
+	_badge.no_depth_test = here
+
+
+## Badge text and colour for the device's state, and a short signature of it (to notice changes).
+## The badge's short name for a device ("Aqara Roller Shade Controller" -> "Roller Shade", "Left Window Light" ->
+## "Left Window"): the panel shows the full name.
+func _short_name() -> String:
+	var name := str(dev.data.get("name", "")).get_slice(" · ", 0)
+	name = name.trim_prefix("Aqara ").trim_suffix(" Controller")
+	if name.ends_with("Window Light"):
+		name = "Window " + name.left(1)   # "Window L", "Window R"
+	return name
+
+
+## Badges of devices close together (the window wall) are stacked instead of drawn over each other.
+func _declutter() -> void:
+	var mine := Vector2(global_position.x, global_position.z)
+	var k := 0
+	for b in get_tree().get_nodes_in_group("zone_badge"):
+		if b == self or not (b is DeviceFx):
+			continue
+		var p := Vector2((b as Node3D).global_position.x, (b as Node3D).global_position.z)
+		if p.distance_to(mine) < (0.75 if Store.walk else 1.1) and b.get_instance_id() < get_instance_id():
+			k += 1
+	# Label3D's offset is in pixels with +y down: badges above their device stack upwards, below it downwards
+	_badge.offset.y = k * (-30.0 if _badge.position.y >= 0.0 else 30.0)
+
+
+func _state() -> Array:
+	var name := _short_name()
+	var online: bool = live.get("online", true) != false
+	if not online:
+		return [name + " · Offline", Color("ff7b72"), "offline"]
+	match type:
+		"light":
+			var lv := int(round(float(live.get("lv", 0.0))))
+			if lv <= 0:
+				return [name + " · Off", Color("9aa4b2"), "off"]
+			var hex := str(live.get("col", ""))
+			var col := Color.html(hex) if hex.begins_with("#") and hex.length() == 7 else Color(1.0, 0.86, 0.6)
+			var dimmable := variant in ["", "spot", "wall", "desk"] or lv < 100
+			var txt := name + (" · %d%%" % lv if dimmable and lv < 100 else " · On")
+			return [txt, col.lerp(Color.WHITE, 0.35), "on%d|%s|%d" % [lv / 3, hex, int(float(live.get("ct", 0)) / 150.0)]]
+		"blinds":
+			var pos := int(round(float(live.get("pos", 100.0))))
+			var shown := int(round(_blind_pos * 100.0)) if _blind_pos >= 0.0 else pos
+			var label := "Open" if pos >= 99 else ("Closed" if pos <= 1 else "%d%% open" % pos)
+			if absi(shown - pos) > 3:
+				label = ("opening" if pos > shown else "closing") + " %d→%d%%" % [shown, pos]
+			return [name + " · " + label, Color("9fd3ff"), "pos%d" % (pos / 3)]
+		"plug":
+			var on: bool = bool(live.get("on", false))
+			return [name + (" · On" if on else " · Off"), Color("7ee2a8") if on else Color("9aa4b2"), "on" if on else "off"]
+	return [name, Color.WHITE, ""]
+
+
+func _update_badge() -> void:
+	if _badge == null:
+		return
+	var st := _state()
+	_badge.text = st[0]
+	if _fx_tween == null or not _fx_tween.is_running():
+		_badge.modulate = st[1]
+	if _sig != "" and st[2] != _sig:
+		_changed(st[1])
+	if _sig == "" and variant != "window":
+		_declutter()
+	_sig = st[2]
+
+
+## The device just changed state: the badge flashes and grows, and a ring pulses out twice in the state's colour.
+func _changed(col: Color) -> void:
+	if _fx_tween:
+		_fx_tween.kill()
+	_burst.visible = true
+	_burst_mat.albedo_color = Color(col, 0.9)
+	_badge.modulate = Color("ffe066")
+	_fx_tween = create_tween()
+	for i in 2:
+		_fx_tween.tween_callback(func(): _burst.scale = Vector3.ONE * 0.4; _burst_mat.albedo_color.a = 0.9)
+		_fx_tween.parallel().tween_property(_badge, "scale", Vector3.ONE * 1.45, 0.18)
+		_fx_tween.tween_property(_burst, "scale", Vector3.ONE * 3.2, 0.75).set_ease(Tween.EASE_OUT)
+		_fx_tween.parallel().tween_property(_burst_mat, "albedo_color:a", 0.0, 0.75)
+		_fx_tween.parallel().tween_property(_badge, "scale", Vector3.ONE * 1.15, 0.6)
+	_fx_tween.tween_property(_badge, "scale", Vector3.ONE, 0.5)
+	_fx_tween.parallel().tween_property(_badge, "modulate", col, 1.2)
+	_fx_tween.tween_callback(func(): _burst.visible = false)
 
 
 func apply(l: Dictionary) -> void:
 	live = l
 	var online: bool = l.get("online", true) != false
-	_offline.visible = not online
-	dev.body_mat.albedo_color = (Color("eef0f3") if type != "tv" else Color("22262c")).lerp(Color(0.45, 0.45, 0.47), 0.0 if online else 0.7)
+	_offline.visible = not online and _badge == null   # a badge says "Offline" itself
+	set_process(true)   # something may move again (stops by itself once settled)
+	_update_badge()
+	dev.body_mat.albedo_color = dev.base_color.lerp(Color(0.45, 0.45, 0.47), 0.0 if online else 0.7)
 	match type:
 		"ac":
 			var on: bool = online and bool(l.get("on", false))
@@ -99,7 +269,7 @@ func apply(l: Dictionary) -> void:
 			_climate(on, col, l)
 		"tv":
 			var on: bool = online and bool(l.get("on", false))
-			_screen_mat.emission_energy_multiplier = 1.6 if on else 0.0
+			_screen_mat.emission_energy_multiplier = 0.85 if on else 0.0   # a lit picture, not a white blaze
 			_screen_mat.albedo_color = Color("0b0d10") if not on else Color("1d2b44")
 			_lamp.visible = on
 		"purifier":
@@ -134,24 +304,44 @@ func _process(delta: float) -> void:
 			var hex := str(live.get("col", ""))
 			if hex.begins_with("#") and hex.length() == 7:  # a colour bulb set to a colour
 				col = Color.html(hex)
+			var settled := absf(_light_level - target) < 0.003 and _cur_col.is_equal_approx(col)
 			_cur_col = _cur_col.lerp(col, 1.0 - exp(-6.0 * delta))
 			col = _cur_col
-			_lamp.light_color = col
-			_lamp.light_energy = _light_level * (2.6 if Store.walk else 3.2) * {"lamp": 0.55, "desk": 0.35, "window": 0.45}.get(variant, 1.0)
+			if _src:
+				_src.light_color = col
+				_src.light_energy = _light_level * (2.6 if Store.walk else 3.2) * {"lamp": 0.7, "desk": 0.35, "window": 0.45, "wall": 0.55}.get(variant, 1.0)
+			if _pool_mat:
+				_pool_mat.albedo_color = Color(col, 0.55 * _light_level)
+				_wash_mat.albedo_color = Color(col, 0.5 * _light_level)
+			if _cone:
+				_cone.visible = Store.walk and _light_level > 0.02
+				_cone_mat.albedo_color = Color(col, 0.1 * _light_level)
+			if _liner_mat:
+				_liner_mat.emission = col
+				_liner_mat.emission_energy_multiplier = _light_level * 2.2
 			if variant == "window":
+				settled = false  # the clouds drift while it is lit (stops once it is dark)
 				var cur := _window_curtain()
 				var open := cur._blind_pos if cur and cur._blind_pos >= 0.0 else 1.0
-				_lamp.light_energy *= 0.25 + 0.75 * open  # the curtain holds most of it back
+				_src.light_energy *= 0.25 + 0.75 * open  # (the pane's own glow is what shows; no room light)
 				_scene_mat.albedo_color = Color(0.06, 0.07, 0.1).lerp(Color.WHITE, _light_level)
 				_cloud_mat.albedo_color = Color(1, 1, 1, _light_level)
 				_cloud_mat.uv1_offset.x = (0.0 if _left else 0.5) + fmod(_t * 0.004, 1.0)
 				if cur:
 					cur._backlight[dev.data.get("id", "")] = _light_level
+					cur.set_process(true)
+				if _light_level < 0.01 and target == 0.0:
+					settled = true
 			if variant == "panel" and FloorBuilder.current:
 				FloorBuilder.current.set_panels(_room_key, _light_level)
-			_lamp.visible = _light_level > 0.01
+			if _src:
+				_src.visible = _light_level > 0.01 and variant != "window"   # a back-lit pane only glows
+			# a bulb that is off is plainly off: grey, no glow
 			_glow_mat.emission = col
-			_glow_mat.emission_energy_multiplier = 0.2 + _light_level * 3.0
+			_glow_mat.emission_energy_multiplier = _light_level * 3.4
+			_glow_mat.albedo_color = Color(0.32, 0.33, 0.35).lerp(col, clampf(_light_level * 3.0, 0.0, 1.0))
+			if settled:
+				set_process(false)
 		"ac":
 			if _flap:
 				var swing: String = str(live.get("swing", "swing"))
@@ -173,6 +363,11 @@ func _process(delta: float) -> void:
 			var h: float = _win_h * (1.0 - _blind_pos) + 0.04
 			_slats.scale.y = h
 			_slats.position.y = -h / 2.0
+			if _badge and absf(_blind_pos - target) > 0.004:
+				_update_badge()   # "opening 40→100%" while it rolls
+			elif absf(_blind_pos - target) <= 0.004 and variant != "curtain":
+				_update_badge()
+				set_process(false)
 			if _window:
 				(_window.material_override as StandardMaterial3D).emission_energy_multiplier = 0.25 + 1.4 * _blind_pos
 				_sun.visible = _blind_pos > 0.05
@@ -183,6 +378,9 @@ func _process(delta: float) -> void:
 					bl = maxf(bl, float(v))
 				(_slats.material_override as StandardMaterial3D).emission_energy_multiplier = bl * 0.16 * (1.0 - _blind_pos)
 				(_slats.material_override as StandardMaterial3D).albedo_color = Color("f6f3ec").darkened(0.12 * (1.0 - bl))
+				if absf(_blind_pos - target) <= 0.004:
+					_update_badge()
+					set_process(false)   # woken again by a window light that changes, or a new state
 			elif variant == "projector":  # a soft projected picture once it is mostly down
 				(_slats.material_override as StandardMaterial3D).emission_energy_multiplier = clampf((0.6 - _blind_pos) * 1.2, 0.0, 0.5)
 		"fan":
@@ -242,7 +440,14 @@ func _mat(c: Color, glow := false, alpha := 1.0) -> StandardMaterial3D:
 
 
 func _build_light() -> void:
+	if variant == "spot":
+		_build_spot()
+		return
 	_lamp = OmniLight3D.new()
+	_src = _lamp
+	_lamp.distance_fade_enabled = true   # far away on the map, a light costs nothing
+	_lamp.distance_fade_begin = 22.0
+	_lamp.distance_fade_length = 6.0
 	_lamp.position.y = -size.y - 0.05
 	var r: Dictionary = Store.room(_room_key)
 	var reach := 4.0
@@ -260,6 +465,38 @@ func _build_light() -> void:
 	_glow_mat = _mat(Color(1.0, 0.9, 0.75), true)
 	if variant == "window":
 		_build_window()
+		return
+	if variant == "lamp":
+		# the gold inside of the floor lamp's drum shade, lit by the bulb; the light falls out under the shade
+		_lamp.omni_range = 3.2
+		_lamp.position.y = -0.12
+		_liner_mat = _mat(Color("e2bf86"), true)
+		_liner_mat.emission_energy_multiplier = 0.0
+		var ln := MeshInstance3D.new()
+		var lc := CylinderMesh.new()
+		lc.top_radius = 0.222
+		lc.bottom_radius = 0.222
+		lc.height = 0.27
+		lc.cap_top = false
+		lc.cap_bottom = false
+		ln.mesh = lc
+		_liner_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		ln.material_override = _liner_mat
+		ln.position.y = 0.04
+		add_child(ln)
+	if variant == "wall":
+		# the bulb itself, pointing out of its wall socket
+		_lamp.omni_range = 2.6
+		_lamp.position = Vector3(0, -0.02, 0.12)
+		var b := MeshInstance3D.new()
+		var bs := SphereMesh.new()
+		bs.radius = 0.034
+		bs.height = 0.08
+		b.mesh = bs
+		b.material_override = _glow_mat
+		b.rotation.x = PI / 2
+		b.position = Vector3(0, -0.02, 0.07)
+		add_child(b)
 		return
 	var disc := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
@@ -364,6 +601,103 @@ static func _clouds() -> ImageTexture:
 	img.generate_mipmaps()
 	_cloud_tex = ImageTexture.create_from_image(img)
 	return _cloud_tex
+
+
+## A spot bulb on the ceiling band: a spot light shining down (a pool of light on the floor and the wall), the
+## bulb's face glowing, and, walking, a soft visible beam. Off: a grey bulb, no beam, no light.
+func _build_spot() -> void:
+	# No Light3D: on the web every light draws each object it reaches once more, and the zone has four spots.
+	# The light is drawn instead: a pool on the floor and a scallop on the wall behind (the device faces away from
+	# its wall, stzone.ts), both added light that follows the bulb's level and colour.
+	_glow_mat = _mat(Color(1.0, 0.9, 0.75), true)
+	_pool_mat = _glow_quad_mat(true)
+	var pool := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(1.5, 1.5)
+	pool.mesh = pm
+	pool.material_override = _pool_mat
+	pool.position = Vector3(0, -dev.position.y + 0.006, 0.12)
+	pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(pool)
+	_wash_mat = _glow_quad_mat(false)
+	var wash := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(1.1, 1.9)
+	wash.mesh = qm
+	wash.material_override = _wash_mat
+	wash.position = Vector3(0, -size.y * 0.5 - 0.85, -0.265)
+	wash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(wash)
+	var face := MeshInstance3D.new()
+	var fm := CylinderMesh.new()
+	fm.top_radius = 0.03
+	fm.bottom_radius = 0.03
+	fm.height = 0.006
+	face.mesh = fm
+	face.material_override = _glow_mat
+	face.position.y = -size.y * 0.5 - 0.045
+	add_child(face)
+	# the beam: a cone that fades out downwards, added light (never darkens what is behind it)
+	_cone_mat = StandardMaterial3D.new()
+	_cone_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_cone_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_cone_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_cone_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_cone_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill_from = Vector2(0, 0)
+	gt.fill_to = Vector2(0, 1)
+	gt.width = 4
+	gt.height = 64
+	_cone_mat.albedo_texture = gt
+	_cone = MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	var length := 1.5
+	cm.top_radius = 0.03
+	cm.bottom_radius = tan(deg_to_rad(26.0)) * length
+	cm.height = length
+	cm.cap_top = false
+	cm.cap_bottom = false
+	cm.radial_segments = 20
+	cm.rings = 1
+	_cone.mesh = cm
+	_cone.material_override = _cone_mat
+	_cone.position.y = -size.y * 0.5 - 0.05 - length / 2
+	_cone.visible = false
+	_cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_cone)
+
+
+var _pool_mat: StandardMaterial3D
+var _wash_mat: StandardMaterial3D
+
+
+## Additive soft light for a spot: a round pool (floor) or a scallop brightest just under the bulb (wall).
+func _glow_quad_mat(round_pool: bool) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.add_point(0.45, Color(1, 1, 1, 0.45))
+	g.set_color(g.get_point_count() - 1, Color(1, 1, 1, 0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5) if round_pool else Vector2(0.5, 0.02)
+	gt.fill_to = Vector2(0.5, 0.0) if round_pool else Vector2(0.5, 0.98)
+	gt.width = 64
+	gt.height = 64
+	m.albedo_texture = gt
+	m.albedo_color = Color(1, 1, 1, 0)
+	return m
 
 
 func _build_window() -> void:

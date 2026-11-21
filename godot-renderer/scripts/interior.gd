@@ -31,7 +31,7 @@ const PALETTE := {
 	"water": [Color(0.45, 0.72, 0.95, 0.55), 0.0, 0.1], "warn": [Color("f2c94c"), 0.0, 0.5], "locker": [Color("aab7c4"), 0.3, 0.45],
 	"tile": [Color("e8edf2"), 0.0, 0.3], "drinks": [Color("e85d4a"), 0.0, 0.5],
 	"velvet": [Color("9aa1aa"), 0.0, 0.95], "velvet_dark": [Color("5d636c"), 0.0, 0.9], "brass": [Color("c9a24a"), 0.85, 0.3],
-	"shade": [Color("17181b"), 0.1, 0.55], "shade_glow": [Color("ffcf8a"), 0.0, 0.5], "gloss_white": [Color("f4f4f2"), 0.0, 0.18],
+	"shade": [Color("17181b"), 0.1, 0.55], "shade_glow": [Color("ffcf8a"), 0.0, 0.5], "shade_inner": [Color("c9a46a"), 0.3, 0.45], "gloss_white": [Color("f4f4f2"), 0.0, 0.18],
 	"book_red": [Color("c0392b"), 0.0, 0.6], "walnut": [Color("6e4a2f"), 0.0, 0.5], "poster": [Color("d8343f"), 0.0, 0.6],
 	"frosted": [Color(0.86, 0.9, 0.93, 0.5), 0.05, 0.15],
 	"steel_door": [Color("b9bdc3"), 0.55, 0.28], "box_blue": [Color("b9d3ea"), 0.0, 0.5], "exit_green": [Color("33e07a"), 0.0, 0.4],
@@ -63,11 +63,22 @@ var _cur: Dictionary = {}
 
 
 func build(items: Array) -> void:
+	# Rooms with lights get their own batches. On the web (Compatibility renderer) every omni/spot light draws each
+	# object it touches once more; a floor-wide batch is touched by every light on the floor, a room's batch only
+	# by that room's lights (the SmartThings zone's lights: ~2200 -> ~900 draw calls walking in it).
+	var lit := {}
+	for d in Store.devices:
+		if str(d.get("type", "")) == "light":
+			lit[str(d.get("room", ""))] = true
 	for f in items:
 		_cur = f
+		var room := str(f.get("room", ""))
+		if room == "":
+			room = str(Store.room_at(Vector2(float(f.x), float(f.z))).get("key", ""))
+		_cur_cell = room if lit.has(room) else "*"
 		_item(str(f.get("kind", "")), Vector3(float(f.x), 0, float(f.z)), float(f.w), float(f.d), float(f.get("rot", 0.0)))
 	for key in _batches:
-		var parts: PackedStringArray = key.split("|")
+		var parts: PackedStringArray = key.split("|").slice(1)
 		var xs: Array = _batches[key]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -153,8 +164,11 @@ func _mat(k: String) -> StandardMaterial3D:
 	return m
 
 
+var _cur_cell := "*"   # batch cell of the item being built: its room if the room has lights, else the whole floor
+
+
 func _emit(mesh: String, mat: String, t: Transform3D) -> void:
-	_batches.get_or_add(mesh + "|" + mat, []).append(t)
+	_batches.get_or_add(_cur_cell + "|" + mesh + "|" + mat, []).append(t)
 
 
 ## Loads a glTF model once and splits it into single-surface meshes (so each can be instanced with its own
@@ -275,6 +289,18 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			var seats := maxi(1, roundi(w / 0.66))
 			for i in seats:
 				_setup(-w / 2 + w * (i + 0.5) / seats, d)
+		"desk_one", "desk_plain":
+			# the SmartThings zone's L-desk (photos): one monitor and keyboard on the main desk, nothing on the return
+			_swap = {"wood": "desk_top", "metal": "desk_frame"}
+			_model("desk", Vector3.ZERO, w, d, 0.75, PI)
+			_swap = {}
+			if kind == "desk_one":
+				_setup(w * 0.22, d)
+		"mesh_chair":
+			# black mesh office chair with a headrest (the zone's chairs)
+			_swap = {"carpet": "mesh_black", "fabric": "mesh_black", "metalMedium": "dark"}
+			_model("chairDesk", Vector3.ZERO, w, d)
+			_swap = {}
 		"workstation":
 			# a four-seat pod: shared top, cross dividers, end frames, a task chair at each seat
 			_b("desk_top", Vector3(0, 0.74, 0), Vector3(0.96, 0.035, 0.62))
@@ -488,7 +514,8 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_bm("brass", Vector3(0, top / 2, 0), Vector3(0.025, top, 0.025), "cyl")
 			_bm("frosted", Vector3(0, top * 0.7, 0), Vector3(0.06, 0.18, 0.06), "cyl")
 			_bm("shade", Vector3(0, top, 0), Vector3(0.5, 0.3, 0.5), "cyl")
-			_bm("shade_glow", Vector3(0, top - 0.01, 0), Vector3(0.46, 0.29, 0.46), "cyl")
+			# gold lining, unlit: a smart bulb in the lamp (DeviceFx "lamp") lights it only while it is on
+			_bm("shade_inner", Vector3(0, top - 0.01, 0), Vector3(0.46, 0.29, 0.46), "cyl")
 		"bookcase_white":
 			# white bookcase: closed cupboard below, open shelves above with red and white books
 			var bh := minf(h - 0.15, 1.95)
@@ -562,7 +589,7 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_bm("gloss_white", Vector3(0, 0.765, 0), Vector3(0.16, 0.02, 0.16), "cyl")
 			_bm("frosted", Vector3(0, 0.95, -0.02), Vector3(0.03, 0.36, 0.03), "cyl")
 			_bm("gloss_white", Vector3(0, 1.15, 0.06), Vector3(0.2, 0.06, 0.12), "sphere")
-			_bm("shade_glow", Vector3(0, 1.12, 0.07), Vector3(0.12, 0.01, 0.07))
+			_bm("shade_inner", Vector3(0, 1.12, 0.07), Vector3(0.12, 0.01, 0.07))
 		"monitor":
 			_setup(-w * 0.15, d)
 		"plant":

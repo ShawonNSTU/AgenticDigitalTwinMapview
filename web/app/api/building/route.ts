@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const Room = z.object({ key: z.string().regex(/^[a-z0-9_-]+$/), name: z.string().min(1), x: z.tuple([z.number(), z.number()]), z: z.tuple([z.number(), z.number()]), poly: z.array(z.tuple([z.number(), z.number()])).min(3).max(200).optional(), color: z.string(), label: z.string().max(120).optional(), labelAt: z.tuple([z.number(), z.number()]).optional(), zone: z.string().max(20).optional() });
 const Note = z.object({ text: z.string().min(1).max(60), x: z.number(), z: z.number(), size: z.number().positive().max(10).optional(), rot: z.number().optional() });
-const Device = z.object({ id: z.string().min(2), type: z.string().refine(t => t in TYPES, 'unknown device type'), room: z.string(), name: z.string(), position: z.tuple([z.number(), z.number(), z.number()]), rotationY: z.number().optional() });
+const Device = z.object({ id: z.string().min(2), type: z.string().refine(t => t in TYPES, 'unknown device type'), room: z.string(), name: z.string(), position: z.tuple([z.number(), z.number(), z.number()]), rotationY: z.number().optional(), fixture: z.string().max(20).optional() });
 const Furniture = z.object({ kind: z.string().min(2).max(40), x: z.number(), z: z.number(), w: z.number().positive().max(60), d: z.number().positive().max(60), rot: z.number().optional(), h: z.number().positive().max(10).optional() });
 const Body = z.object({
   rooms: z.array(Room).min(1).max(60),

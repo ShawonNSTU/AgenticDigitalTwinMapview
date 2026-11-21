@@ -28,8 +28,12 @@ export const ZONE_DEVICES: ZoneDevice[] = [
   { label: 'Right Window Light', stId: 'e39a788e-d559-429b-a18c-298382429b2d', type: 'light', capabilities: SWITCH },
   { label: 'TV Lamp', stId: '9bd3918b-26ee-4fbb-82cc-99c6a61da528', type: 'light', capabilities: SWITCH },
   { label: 'Light 5', stId: '434402bd-cea2-463d-95e3-f9a1735e6ce8', type: 'light', capabilities: COLOR_BULB },
-  { label: 'Aqara Roller Shade Controller of dining', stId: '09611dc5-d2d0-4d4b-a3a1-ce6bc9ab1c4d', type: 'blinds', capabilities: SHADE },
   { label: 'side lamp', stId: 'facda6c1-5784-4819-bd73-02dc7f6925ea', type: 'light', capabilities: SWITCH },
+];
+
+/** Devices in the zone's SmartThings account that are not in this room: never placed or linked here. */
+export const NOT_IN_ZONE: { label: string; stId: string }[] = [
+  { label: 'Aqara Roller Shade Controller of dining', stId: '09611dc5-d2d0-4d4b-a3a1-ce6bc9ab1c4d' },
 ];
 
 /** Argument ranges the real devices accept (SmartThings refuses values outside them). */

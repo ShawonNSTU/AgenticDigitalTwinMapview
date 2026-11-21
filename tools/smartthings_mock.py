@@ -2,7 +2,7 @@
 the SmartThings integration without an account. Run: python3 tools/smartthings_mock.py, then start the web app with
 SMARTTHINGS_API=http://127.0.0.1:9010/v1 SMARTTHINGS_TOKEN=test-token. GET /_log lists the commands received.
 
-The SmartThings Experience Zone's 13 real devices are here under their real deviceIds and labels
+The SmartThings Experience Zone's 12 real devices are here under their real deviceIds and labels
 (docs/smartthings-zone-devices.md). POST /_set/{deviceId} {"capability": .., "attribute": .., "value": ..} changes a
 device as the SmartThings app or a wall switch would (the twin must follow it on its own); POST /_health/{deviceId}
 {"state": "OFFLINE"} takes it offline. GET /devices?deviceId=..&includeStatus=true&includeHealth=true answers in one
@@ -50,10 +50,11 @@ ZONE = {
     "e39a788e-d559-429b-a18c-298382429b2d": _switch("Right Window Light", True),
     "9bd3918b-26ee-4fbb-82cc-99c6a61da528": _switch("TV Lamp", True),
     "434402bd-cea2-463d-95e3-f9a1735e6ce8": _bulb("Light 5", True, 80),
-    "09611dc5-d2d0-4d4b-a3a1-ce6bc9ab1c4d": _shade("Aqara Roller Shade Controller of dining", 0),
     "facda6c1-5784-4819-bd73-02dc7f6925ea": _switch("side lamp"),
 }
 DEV.update(ZONE)
+# in the same account but not in the zone room: the twin must never place or link it there
+DEV["09611dc5-d2d0-4d4b-a3a1-ce6bc9ab1c4d"] = _shade("Aqara Roller Shade Controller of dining", 0)
 # rooms and categories as the real account reports them (GET /devices gives roomId and components[].categories)
 ROOMS = {"room-401": "Room 401", "room-403": "Training Room 403"}
 META = {
@@ -67,6 +68,7 @@ DEV.update({
     "st-hub": {"label": "SmartThings Hub", "caps": ["bridge"], "state": {}, "health": "ONLINE"},
 })
 LOG = []
+META["09611dc5-d2d0-4d4b-a3a1-ce6bc9ab1c4d"] = ("room-401", "Blind")
 for _k, _v in ZONE.items():
     META[_k] = ("room-401", "Blind" if "windowShade" in _v["caps"] else "Light" if "Light" in _v["label"] or "Lamp" in _v["label"] or "lamp" in _v["label"] else "Switch")
 

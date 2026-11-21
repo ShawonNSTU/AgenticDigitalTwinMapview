@@ -53,7 +53,7 @@ curl 'https://api.smartthings.com/devices?deviceId={id1}&deviceId={id2}&includeS
 If the API answers that request without statuses, each device is read with `GET /v1/devices/{deviceId}/status`
 (and `/health` every 30 s) instead, at most every 4 s. A `429` pauses polling for the time SmartThings asks.
 
-## Devices (13)
+## Devices (12)
 
 | Device | Device ID | Twin type | Commands |
 |---|---|---|---|
@@ -68,10 +68,9 @@ If the API answers that request without statuses, each device is read with `GET 
 | Right Window Light | `e39a788e-d559-429b-a18c-298382429b2d` | light (switch) | `switch.on`, `switch.off` |
 | TV Lamp | `9bd3918b-26ee-4fbb-82cc-99c6a61da528` | light (switch) | `switch.on`, `switch.off` |
 | Light 5 | `434402bd-cea2-463d-95e3-f9a1735e6ce8` | light (colour) | as Desk Lamp |
-| Aqara Roller Shade Controller of dining | `09611dc5-d2d0-4d4b-a3a1-ce6bc9ab1c4d` | blinds | as Aqara Roller Shade Controller |
 | side lamp | `facda6c1-5784-4819-bd73-02dc7f6925ea` | light (switch) | `switch.on`, `switch.off` |
 
-All on the `main` component.
+All on the `main` component. (The account's "Aqara Roller Shade Controller of dining" is not in this room and is not linked.)
 
 ## How the twin follows them
 

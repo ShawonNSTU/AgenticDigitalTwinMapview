@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import path from 'node:path';
 import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
 import { fitSmartThingsZone } from './stzone';
-import { realState } from '@/lib/integrations/smartthings';
+import { realState, link as stLink } from '@/lib/integrations/smartthings';
 import { ensureLive } from '@/lib/integrations/stlive';
 
 type Override = Record<string, unknown>;
@@ -99,7 +99,7 @@ export function floor(t = tick()) {
     layoutVersion: LAYOUT.version,
     devicesVersion: LAYOUT.devVersion,
     rooms: ROOMS,
-    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, health: h, healthLabel: LBL[h], ...(activeFault(d) ? { fault: activeFault(d)!.spec.name } : {}), ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
+    devices: DEV.map(d => { const h = health(d, t); return { id: d.id, type: d.type, label: TYPES[d.type].label, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY, ...((d as any).fixture ? { fixture: (d as any).fixture } : {}), ...(stLink(d.id) ? { real: true } : {}), health: h, healthLabel: LBL[h], ...(activeFault(d) ? { fault: activeFault(d)!.spec.name } : {}), ...(LIVE[d.type] ? { live: live(d.id, t) } : {}) }; }),
   };
 }
 
@@ -195,7 +195,7 @@ export function runCommand(id: string, command: string, args: Record<string, unk
 
 /* ---------------- devices placed on the floor (drag and drop) ---------------- */
 
-const plain = (d: any) => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 });
+const plain = (d: any) => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0, ...(d.fixture ? { fixture: d.fixture } : {}) });
 
 /** Room containing a point (metres), by polygon. Outside every room → 'out'. */
 export function roomAtXZ(x: number, z: number) {
@@ -210,13 +210,14 @@ function nextDeviceId(type: string) {
 }
 
 /** Add a device at (x, z) metres. Mount height comes from the type unless y is given. */
-export function addDevice(p: { type: string; x: number; z: number; y?: number; rotationY?: number; room?: string; name?: string; id?: string }) {
+/** `fixture`: how the device is fitted, for the 3D view (spot, wall, lamp, desk, panel, window, roller); optional. */
+export function addDevice(p: { type: string; x: number; z: number; y?: number; rotationY?: number; room?: string; name?: string; id?: string; fixture?: string }) {
   if (!(p.type in TYPES)) return { ok: false as const, error: `Unknown device type "${p.type}"` };
   if (p.id && byId[p.id]) return { ok: false as const, error: `Device ${p.id} already exists` };
   const id = p.id ?? nextDeviceId(p.type);
   const room = (p.room && ROOMS.find((r: any) => r.key === p.room)) || roomAtXZ(p.x, p.z);
   const label = TYPES[p.type].label;
-  const d = { id, type: p.type, room: room?.key ?? 'out', name: `${p.name ?? label} · ${room?.name ?? 'Outside'}`, position: [+p.x.toFixed(3), +(p.y ?? MOUNT[p.type] ?? 1).toFixed(3), +p.z.toFixed(3)], rotationY: +(p.rotationY ?? 0).toFixed(4) };
+  const d = { id, type: p.type, room: room?.key ?? 'out', name: `${p.name ?? label} · ${room?.name ?? 'Outside'}`, position: [+p.x.toFixed(3), +(p.y ?? MOUNT[p.type] ?? 1).toFixed(3), +p.z.toFixed(3)], rotationY: +(p.rotationY ?? 0).toFixed(4), ...(p.fixture ? { fixture: p.fixture } : {}) };
   setDevices([...DEV.map(plain), d]);
   return { ok: true as const, device: d };
 }
@@ -227,7 +228,7 @@ export function moveDevice(id: string, p: { x?: number; z?: number; y?: number; 
   const x = p.x ?? cur.p[0], z = p.z ?? cur.p[2];
   const room = roomAtXZ(x, z);
   const label = TYPES[cur.type].label;
-  const next = { ...plain(cur), room: room?.key ?? 'out', name: `${label} · ${room?.name ?? 'Outside'}`, position: [x, p.y ?? cur.p[1], z], rotationY: p.rotationY ?? cur.rotationY ?? 0 };
+  const next = { ...plain(cur), room: room?.key ?? 'out', name: room?.key === cur.room ? cur.name : `${label} · ${room?.name ?? 'Outside'}`, position: [x, p.y ?? cur.p[1], z], rotationY: p.rotationY ?? cur.rotationY ?? 0 };
   setDevices(DEV.map(d => d.id === id ? next : plain(d)));
   return { ok: true as const, device: next };
 }
@@ -259,7 +260,7 @@ export function buildingState() {
     wallHeight: LAYOUT.wallHeight,
     outdoorPad: LAYOUT.outdoorPad,
     rooms: ROOMS,
-    devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0 })),
+    devices: DEV.map(d => ({ id: d.id, type: d.type, room: d.room, name: d.name, position: d.p, rotationY: d.rotationY ?? 0, ...((d as any).fixture ? { fixture: (d as any).fixture } : {}) })),
     furniture: rt.furniture,
     notes: rt.notes,
     title: rt.title,

@@ -262,6 +262,15 @@ static func device_y(d: Dictionary) -> float:
 			return mount_y("light")
 		"window":
 			return 1.42 * k  # the middle of the window behind the curtain (sill 0.9 m, head 1.95 m)
+		"spot":
+			# walking: hanging under the lowered band; on the map: with the other lights at the cut plane
+			if Store.walk:
+				var r: Dictionary = Store.room(str(d.get("room", "")))
+				var drop := float(r.get("ceiling", {}).get("drop", 0.0)) if r.has("ceiling") else 0.0
+				return Store.wall_height - drop - 0.1
+			return mount_y("light")
+		"wall":
+			return minf(1.35 * k, Store.wall_height - 0.12)
 		"stand":
 			return (0.58 + 0.42 + 0.05) * k if Store.walk else maxf(0.58 * k + 0.47, 0.6)
 	return mount_y(t)

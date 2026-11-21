@@ -92,6 +92,10 @@ func _ready() -> void:
 			var g := Node.new()
 			g.set_script(load("res://tests/twin_gallery.gd"))
 			add_child(g)
+		if a.begins_with("--zone-shots="):
+			var zs := Node.new()
+			zs.set_script(load("res://tests/zone_shots.gd"))
+			add_child(zs)
 		if a.begins_with("--fx-shots="):
 			var fs := Node.new()
 			fs.set_script(load("res://tests/fx_shots.gd"))
