@@ -6,7 +6,7 @@ import { send } from '@/lib/bridge';
 import type { FromRenderer } from '@/lib/bridge';
 
 export const ROOM = 'smartthings-experience-zone';
-export const GUEST = 'Nadia Karim';   // a fictional guest
+export const GUEST = 'Marufur Rahaman';   // a fictional guest
 export const TECH_FROM = 'utility-room';
 
 export type Dev = { id: string; type: string; name: string; room: string; readings?: Record<string, unknown> };
@@ -129,7 +129,7 @@ export const CHAPTERS: Chapter[] = [
     key: 'arrive', title: 'Check-in, lift, welcome', when: 'Thursday · 21:15',
     steps: [
       async c => {
-        c.caption(`${GUEST} checks in`, 'The front desk issues a pass for Room 401: a QR code, valid for her stay only.');
+        c.caption(`${GUEST} checks in`, 'The front desk issues a pass for Room 401: a QR code, valid for his stay only.');
         const p = await c.api('/api/guest', { method: 'POST', body: { room: ROOM, label: GUEST, hours: 14 } });
         c.state.token = p.token;
         const QRCode = (await import('qrcode')).default;
@@ -138,27 +138,27 @@ export const CHAPTERS: Chapter[] = [
         await c.wait(4500);
       },
       async c => {
-        c.caption('Her phone becomes her key and her remote', 'No app to install. The pass opens a 3D view of the floor with only her way and her room.');
-        c.phone({ kind: 'guest', lines: [{ who: 'system', text: `Welcome, Nadia. Room 401 is ready. Your route starts at the lifts.` }], status: 'Walking to Room 401' });
+        c.caption('His phone becomes his key and his remote', 'No app to install. The pass opens a 3D view of the floor with only his way and his room.');
+        c.phone({ kind: 'guest', lines: [{ who: 'system', text: `Welcome, Marufur. Room 401 is ready. Your route starts at the lifts.` }], status: 'Walking to Room 401' });
         await c.wait(3500);
       },
       async c => {
-        c.caption('She arrives by lift', 'The twin plans her route: out of the lobby and down the passage, 12 metres. Other rooms stay closed.');
+        c.caption('He arrives by lift', 'The twin plans his route: out of the lobby and down the passage, 12 metres. Other rooms stay closed.');
         story('walk', { room: ROOM, from: 'lift-lobby' });
         await c.waitFor(m => m.type === 'walk' && (m as any).guest === 'arrived', 70000);
         await c.wait(800);
       },
       async c => {
-        c.caption('The door opens for her pass only', 'Unlocked through SmartThings, written to the audit log, locks again by itself.');
+        c.caption('The door opens for his pass only', 'Unlocked through SmartThings, written to the audit log, locks again by itself.');
         const lock = c.dev('Door lock');
         prev(lock?.id, { locked: false }, 'Unlocked');
         await c.cmd('Door lock', 'unlock', {}).catch(() => null); await c.wait(2500);
       },
       async c => {
-        c.caption('The room welcomes her', 'Lights fade up, the curtain rises over the window, the AC starts and the TV says hello.');
+        c.caption('The room welcomes him', 'Lights fade up, the curtain rises over the window, the AC starts and the TV says hello.');
         const tv = c.dev('TV 65"');
         await run(c, WELCOME, 500);
-        if (tv) story('tv', { id: tv.id, text: 'Welcome, Nadia', sub: 'Room 401 · Enjoy your stay' });
+        if (tv) story('tv', { id: tv.id, text: 'Welcome, Marufur', sub: 'Room 401 · Enjoy your stay' });
         c.phone({ kind: 'guest', lines: [{ who: 'system', text: 'You are in Room 401. Lights, curtain, AC and TV are set for you.' }], status: 'In Room 401' });
         await c.wait(5000);
       },
@@ -170,7 +170,7 @@ export const CHAPTERS: Chapter[] = [
       async c => {
         if (!c.state.token) { const p = await c.api('/api/guest', { method: 'POST', body: { room: ROOM, label: GUEST } }); c.state.token = p.token; }
         const q = "I'm a bit cold. Dim the lights, it's movie time.";
-        c.caption('She just asks', 'The assistant understands plain requests, in English or Bangla.');
+        c.caption('He just asks', 'The assistant understands plain requests, in English or Bangla.');
         const lines: ChatLine[] = [{ who: 'guest', text: q }];
         c.phone({ kind: 'guest', lines, status: 'Assistant thinking…' });
         const r1 = await chat(c.state.token, [{ role: 'user', content: q }]).catch(() => null);
@@ -180,11 +180,11 @@ export const CHAPTERS: Chapter[] = [
         } else {
           lines.push({ who: 'assistant', text: 'Warmer AC, lights down for the movie and the curtain closed. Shall I?', plan: [{ label: 'Ceiling AC', summary: 'Set to 26 °C' }, { label: 'Lights', summary: 'Dim to 10-25 %, a purple glow behind the TV' }, { label: 'Curtain', summary: 'Close' }] });
         }
-        c.phone({ kind: 'guest', lines: [...lines], status: 'Waiting for her OK' });
+        c.phone({ kind: 'guest', lines: [...lines], status: 'Waiting for his OK' });
         c.state.plan = plan; c.state.lines = lines; await c.wait(4000);
       },
       async c => {
-        c.caption('It asks first, then acts on the real devices', 'Every command goes through the same checks as the app: her room, her permissions, what each device supports.');
+        c.caption('It asks first, then acts on the real devices', 'Every command goes through the same checks as the app: his room, his permissions, what each device supports.');
         const lines: ChatLine[] = [...(c.state.lines ?? []), { who: 'guest', text: 'Yes, go ahead' }];
         c.phone({ kind: 'guest', lines, status: 'Working…' });
         let done = false;
@@ -206,7 +206,7 @@ export const CHAPTERS: Chapter[] = [
       async c => {
         story('endWalk', { fly: false }); story('room', { room: ROOM, pitch: -46, yaw: -20, secs: 2.5 });
         const ac = c.dev('Ceiling AC'); c.state.ac = ac?.id;
-        c.caption('02:10. The AC starts to lose refrigerant', 'Nadia is asleep. The twin notices first: the gas pipe runs warm and the superheat climbs.');
+        c.caption('02:10. The AC starts to lose refrigerant', 'Marufur is asleep. The twin notices first: the gas pipe runs warm and the superheat climbs.');
         if (ac) {
           const cat = await c.api(`/api/devices/${ac.id}/fault`);
           const f = (cat.faults ?? []).find((x: any) => /refrig|leak|gas/i.test(`${x.key} ${x.name}`)) ?? cat.faults?.[0];
@@ -263,9 +263,9 @@ export const CHAPTERS: Chapter[] = [
         c.state.night = e[ROOM] ?? 0; await c.wait(7500);
       },
       async c => {
-        c.caption('08:00. Nadia checks out', 'Her pass expires at once; Room 401 switches itself off.');
+        c.caption('08:00. Marufur checks out', 'His pass expires at once; Room 401 switches itself off.');
         if (c.state.token) await c.api(`/api/guest/${c.state.token}`, { method: 'DELETE' }).catch(() => null);
-        c.phone({ kind: 'guest', lines: [{ who: 'system', text: 'Thanks for staying, Nadia. Your pass has ended.' }], status: 'Checked out' });
+        c.phone({ kind: 'guest', lines: [{ who: 'system', text: 'Thanks for staying, Marufur. Your pass has ended.' }], status: 'Checked out' });
         const tv = c.dev('TV 65"'); if (tv) story('tv', { id: tv.id, text: '' });
         await run(c, OFF, 250);
         const saved = Math.max(1.2, c.state.night ?? 0);

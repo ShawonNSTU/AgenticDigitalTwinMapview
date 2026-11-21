@@ -141,9 +141,9 @@ the renderer). Five chapters on the 4th floor, with captions and a phone beside 
    every SmartThings device as it reports in; the AC circuits show; the camera settles on the SmartThings
    Experience Zone, tonight's Room 401.
 2. **Check-in, lift, welcome.** The front desk issues a pass (QR on the phone). The guest arrives by lift, follows
-   her route, the door unlocks for her pass only, and the room welcomes her: lights fade up, the curtain rises over
-   the lit window, the AC starts and the TV says "Welcome, Nadia".
-3. **The smart stay.** She types "I'm a bit cold. Dim the lights, it's movie time." The assistant plans it (AC 2°
+   his route, the door unlocks for his pass only, and the room welcomes him: lights fade up, the curtain rises over
+   the lit window, the AC starts and the TV says "Welcome, Marufur".
+3. **The smart stay.** He types "I'm a bit cold. Dim the lights, it's movie time." The assistant plans it (AC 2°
    warmer, dimmable lights down, on/off lights off, curtain closed, TV on), asks first, then runs it on the devices.
 4. **Something breaks.** At 02:10 the AC develops a refrigerant fault; the twin highlights it, opens the unit into
    its parts (X-ray), the assigned technician gets the alert on his phone, walks the route to the unit in first
