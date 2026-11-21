@@ -167,7 +167,13 @@ export async function send(localId: string, type: string, command: string, args:
   if (!l) throw new Error(`${localId} is not linked to SmartThings`);
   const cmds = translate(type, command, args, l.component);
   if (!cmds) throw new Error(`"${command}" has no SmartThings equivalent for this device`);
-  await call(`/devices/${encodeURIComponent(l.stId)}/commands`, { method: 'POST', body: JSON.stringify({ commands: cmds }) });
+  const res: any = await call(`/devices/${encodeURIComponent(l.stId)}/commands`, { method: 'POST', body: JSON.stringify({ commands: cmds }) });
+  // the API can take the request and still report that the device did not run it
+  const failed = (res?.results ?? []).filter((x: any) => /FAILED|REJECTED/i.test(String(x?.status)));
+  if (failed.length) {
+    refresh(localId).catch(() => {});
+    throw new Error(`SmartThings: ${l.label ?? 'the device'} did not run the command (${failed.map((x: any) => x.status).join(', ')}${st.status[localId]?.online === false ? ', device offline' : ''})`);
+  }
   // the twin keeps what was asked for until the device reports it (a shade takes a while to roll)
   const keys = [...new Set(cmds.flatMap(c => KEYS[c.capability] ?? []))].filter(k => !expect || k in expect);
   const before = st.status[localId]?.readings ?? {};

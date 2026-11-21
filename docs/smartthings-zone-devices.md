@@ -27,6 +27,19 @@ curl -X POST 'https://api.smartthings.com/v1/devices/{deviceId}/commands' \
   -d '{"commands":[{"component":"main","capability":"switchLevel","command":"setLevel","arguments":[60]}]}'
 ```
 
+## Checking the real devices
+
+`tools/smartthings_zone_check.py` (Python standard library only) checks every device against the API: the deviceId
+exists for the token, the label and capabilities are as above, health and status. With `--control` it runs every
+command each device supports, waits until the device reports the change, then restores the device as it was (lights
+and shades change for a few seconds each):
+
+```bash
+python3 tools/smartthings_zone_check.py              # read-only; token from SMARTTHINGS_TOKEN or web/.env
+python3 tools/smartthings_zone_check.py --control    # full command test
+python3 tools/smartthings_zone_check.py --control --only "Light 1"
+```
+
 ## Live status
 
 All the zone's devices are read in one request per round (every `SMARTTHINGS_POLL_MS`):

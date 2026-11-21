@@ -85,6 +85,41 @@ def _item(k, v):
     return {"deviceId": k, "label": v["label"], "roomId": room, "locationId": "loc-1",
             "components": [{"id": "main", "capabilities": [{"id": c} for c in v["caps"]], "categories": [{"name": cat, "categoryType": "manufacturer"}]}]}
 FAIL = {"next": False}
+# commands of the standard capabilities the zone uses: name -> validator of the positional arguments
+SPEC = {
+    "switch": {"on": lambda a: a == [], "off": lambda a: a == []},
+    "switchLevel": {"setLevel": lambda a: len(a) in (1, 2) and isinstance(a[0], int) and 0 <= a[0] <= 100},
+    "colorTemperature": {"setColorTemperature": lambda a: len(a) == 1 and isinstance(a[0], int) and 1 <= a[0] <= 30000},
+    "colorControl": {"setColor": lambda a: len(a) == 1 and isinstance(a[0], dict) and all(isinstance(a[0].get(k), (int, float)) and 0 <= a[0][k] <= 100 for k in ("hue", "saturation")),
+                     "setHue": lambda a: len(a) == 1 and 0 <= a[0] <= 100, "setSaturation": lambda a: len(a) == 1 and 0 <= a[0] <= 100},
+    "windowShade": {"open": lambda a: a == [], "close": lambda a: a == [], "pause": lambda a: a == []},
+    "windowShadeLevel": {"setShadeLevel": lambda a: len(a) == 1 and isinstance(a[0], int) and 0 <= a[0] <= 100},
+}
+# the real devices' own limits (docs/smartthings-zone-devices.md)
+LIMITS = {("switchLevel", "setLevel"): (1, 100), ("colorTemperature", "setColorTemperature"): (2200, 6500)}
+
+
+def _invalid(dev, body):
+    """Why the real API would refuse this command body (None if it would accept it)."""
+    if not isinstance(body, dict) or not isinstance(body.get("commands"), list) or not body["commands"]:
+        return "The request body is malformed: expected {\"commands\": [...]}"
+    for c in body["commands"]:
+        if set(c) - {"component", "capability", "command", "arguments"} or not all(k in c for k in ("capability", "command")):
+            return f"malformed command {c}"
+        if c.get("component", "main") != "main":
+            return f"no component {c.get('component')}"
+        cap, cmd, args = c["capability"], c["command"], c.get("arguments", [])
+        if dev in ZONE and cap not in DEV[dev]["caps"]:
+            return f"{DEV[dev]['label']} has no capability {cap}"
+        if dev in ZONE:
+            if cmd not in SPEC.get(cap, {}):
+                return f"{cap} has no command {cmd}"
+            if not isinstance(args, list) or not SPEC[cap][cmd](args):
+                return f"{cap}.{cmd}: invalid arguments {args}"
+            lim = LIMITS.get((cap, cmd))
+            if lim and not lim[0] <= args[0] <= lim[1]:
+                return f"{cap}.{cmd}: {args[0]} is outside {lim[0]}-{lim[1]}"
+    return None
 STATS = {"list": 0, "status": 0}
 
 
@@ -151,7 +186,15 @@ class H(BaseHTTPRequestHandler):
         if self.headers.get("Authorization") != "Bearer test-token":
             return self._send(401, {"error": {"message": "Unauthorized"}})
         dev = self.path.removeprefix("/v1").strip("/").split("/")[1]
-        LOG.append({"device": dev, "body": body})
+        if dev not in DEV:
+            return self._send(404, {"error": {"code": "NotFoundError", "message": f"device {dev} not found"}})
+        bad = _invalid(dev, body)
+        LOG.append({"device": dev, "body": body, "refused": bad})
+        if bad:
+            return self._send(422, {"error": {"code": "ConstraintViolationError", "message": bad}})
+        if DEV[dev]["health"] != "ONLINE":
+            # the API takes the command but the device can't run it
+            return self._send(200, {"results": [{"id": "x", "status": "FAILED"}]})
         if FAIL["next"]:
             FAIL["next"] = False
             return self._send(422, {"error": {"code": "ConstraintViolationError", "message": "device did not respond"}})
