@@ -30,7 +30,7 @@ static func variant(d: Dictionary) -> String:
 				return "lamp"
 			if n.begins_with("desk lamp"):
 				return "desk"
-			if n.ends_with("window"):
+			if n.ends_with("window") or n.ends_with("window light"):
 				return "window"
 			if n == "tv lamp" or n.begins_with("main ceiling"):
 				return "panel"

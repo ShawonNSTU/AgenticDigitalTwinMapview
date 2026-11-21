@@ -92,6 +92,6 @@ Renderer → host:
 
 Device variants (by device name, see `DeviceNode.variant`): "Ceiling AC…" is a ceiling cassette; lights named
 "Floor lamp…"/"side lamp…" sit in a floor lamp, "Desk lamp" on the desk, "TV lamp"/"Main ceiling…" drive the
-zone's LED ceiling panels, "…window" are back-lit window panes behind the curtain; blinds named "…roller shade…" or
+zone's LED ceiling panels, "…window" or "…window light" are back-lit window panes behind the nearest roller curtain; blinds named "…roller shade…" or
 "…curtain…" are a roller curtain and "Projector screen…" a roller screen; "TV 65"…" is a TV on a stand.
 Rooms with `finish: "st-zone"` get the SmartThings Experience Zone finish (panelling, tiles, drop ceiling).

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
 import { fitSmartThingsZone } from './stzone';
 import { realState } from '@/lib/integrations/smartthings';
+import { ensureLive } from '@/lib/integrations/stlive';
 
 type Override = Record<string, unknown>;
 interface Runtime {
@@ -91,6 +92,7 @@ function live(id: string, t: number) {
 }
 
 export function floor(t = tick()) {
+  ensureLive();   // linked SmartThings devices are read in the background (lib/integrations/stlive.ts)
   return {
     time: t,
     scenario: engineState.scen,
@@ -119,7 +121,7 @@ export const COMMANDS: Record<string, Record<string, { args?: Record<string, [nu
   light: {
     power: { args: { on: ['true', 'false'] }, apply: (a, cur) => (a.on === true || a.on === 'true') ? { lv: cur?.lastLv || 80 } : { lv: 0, lastLv: cur?.lv || 80 } },
     setLevel: { args: { percent: [0, 100] }, apply: a => ({ lv: +a.percent }) },
-    setColorTemperature: { args: { kelvin: [2700, 6500] }, apply: a => ({ ct: +a.kelvin, col: '' }) },
+    setColorTemperature: { args: { kelvin: [2200, 6500] }, apply: a => ({ ct: +a.kelvin, col: '' }) },
     // colour bulbs: a named colour (the SmartThings app's colour presets); white comes back with setColorTemperature
     setColor: { args: { color: Object.keys(LIGHT_COLORS) }, apply: a => ({ col: LIGHT_COLORS[String(a.color)] ?? '' }) },
   },

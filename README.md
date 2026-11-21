@@ -39,14 +39,15 @@ Proof of concept with three features:
    with LED panels and AC diffusers and a lowered band for the spot bulbs, a grey tufted sofa facing a 65" TV on a
    walnut unit, a coffee table, a roller projector screen, four brass floor lamps, a white bookcase beside the
    panelled column, an L-desk with chairs under a wall TV, a Bespoke air purifier and a frosted glass door. Its
-   lights and curtain carry the names they have in the zone's SmartThings app (room 401): Light 1 (back of the main
+   lights and curtains carry the labels of the zone's real SmartThings devices (room 401): Light 1 (back of the main
    TV), Light 2 (top of the TV), Light 3 (above the shelf), Light 4 (between the curtain and the shelf), Light 5
-   (door entrance), Desk lamp, TV lamp (the main ceiling lights; the LED ceiling panels follow it), aqara roller
-   shade control (the white roller curtain), blinds switch (powers the curtain motor; it is switched on by itself
-   when the curtain is moved), Left window and Right window (hidden lights behind the left and right panes of the window behind the curtain: a lit pane shows the outdoor view with drifting clouds, an unlit one is dark glass; raising the curtain reveals the window, and lit panes glow through the lowered curtain), side lamp (dining room)
+   (door entrance), Desk Lamp, TV Lamp (the main ceiling lights; the LED ceiling panels follow it), Aqara Roller
+   Shade Controller (the white roller curtain), Aqara Roller Shade Controller of dining (the dining side's shade),
+   Blinds Switch (powers the curtain motor; it is switched on by itself
+   when the curtain is moved), Left Window Light and Right Window Light (hidden lights behind the left and right panes of the window behind the curtain: a lit pane shows the outdoor view with drifting clouds, an unlit one is dark glass; raising the curtain reveals the window, and lit panes glow through the lowered curtain), side lamp
    (the big standing lamp). Also in the room: ceiling cassette AC, two TVs, purifier, door lock, temperature
-   sensor and two indoor cameras (never shown to guests). On `/integrations`, "Link by name" links them to the
-   real devices in one step. A guest QR can be made for it straight away; every other room needs Hotel setup
+   sensor and two indoor cameras (never shown to guests). With a SmartThings token they are linked to the
+   real devices by deviceId at once (see 12 below). A guest QR can be made for it straight away; every other room needs Hotel setup
    first (the room card says so and the
    API refuses a pass for a room without its devices). Layout: `web/lib/sim/stzone.ts`.
 
@@ -115,6 +116,12 @@ Proof of concept with three features:
     device then goes to the SmartThings API, and its reported status and online state replace the simulated values. Unlocking follows the hotel's access policy: only the guest's own door, only
     if the pass allows it, after the check-in PIN, with the PIN asked again after a set time, a limit on unlocks,
     automatic relocking, and an audit log of every attempt.
+    **The zone's 13 real devices are known by deviceId** ([docs/smartthings-zone-devices.md](docs/smartthings-zone-devices.md),
+    `web/lib/integrations/zone-devices.ts`): with `SMARTTHINGS_TOKEN` in `web/.env` they are linked as soon as the app
+    starts, without Connect. Their status is read every 2 s in one batched request (`SMARTTHINGS_POLL_MS`), so a
+    change made in the SmartThings app or at a wall switch shows on the 3D twin within about 2-3 s; a command's
+    value is held on the twin until the device reports it, colour bulbs show the colour or white they were set to
+    last, and an offline device is greyed out (`web/lib/integrations/stlive.ts`).
 11. **Technician alerts.** `/tech` lists alerts from devices that are not healthy (with browser notifications for
     new ones): room and device, what it reports, affected components (measured or not), recent events,
     troubleshooting steps, service notes, the 3D twin, an AI summary of the evidence, and a form to record the

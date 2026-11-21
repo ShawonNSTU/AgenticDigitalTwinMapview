@@ -65,8 +65,8 @@ const WELCOME: [string, string, Record<string, unknown>][] = [
   ['Light 1', 'setLevel', { percent: 70 }], ['Light 2', 'setLevel', { percent: 60 }],
   ['Light 3', 'setLevel', { percent: 60 }], ['Light 4', 'setLevel', { percent: 60 }],
   ['side lamp', 'power', { on: 'true' }],
-  ['aqara roller shade control', 'open', {}],
-  ['Left window', 'power', { on: 'true' }], ['Right window', 'power', { on: 'true' }],
+  ['Aqara Roller Shade Controller', 'open', {}],
+  ['Left Window Light', 'power', { on: 'true' }], ['Right Window Light', 'power', { on: 'true' }],
   ['Ceiling AC', 'power', { on: 'true' }], ['Ceiling AC', 'setTemperature', { celsius: 24 }],
   ['TV 65"', 'power', { on: 'true' }],
 ];
@@ -75,10 +75,10 @@ const MOVIE: [string, string, Record<string, unknown>][] = [
   ['TV lamp', 'power', { on: 'false' }],
   ['Light 1', 'setColor', { color: 'purple' }], ['Light 1', 'setLevel', { percent: 25 }],
   ['Light 2', 'setLevel', { percent: 10 }], ['Light 3', 'setLevel', { percent: 10 }], ['Light 4', 'setLevel', { percent: 10 }],
-  ['aqara roller shade control', 'close', {}],
+  ['Aqara Roller Shade Controller', 'close', {}],
 ];
 const OFF: [string, string, Record<string, unknown>][] = [
-  ['TV lamp', 'power', { on: 'false' }], ['side lamp', 'power', { on: 'false' }], ['Left window', 'power', { on: 'false' }], ['Right window', 'power', { on: 'false' }],
+  ['TV lamp', 'power', { on: 'false' }], ['side lamp', 'power', { on: 'false' }], ['Left Window Light', 'power', { on: 'false' }], ['Right Window Light', 'power', { on: 'false' }],
   ['Light 1', 'power', { on: 'false' }], ['Light 2', 'power', { on: 'false' }], ['Light 3', 'power', { on: 'false' }], ['Light 4', 'power', { on: 'false' }], ['Light 5', 'power', { on: 'false' }],
   ['Desk lamp', 'power', { on: 'false' }], ['Ceiling AC', 'power', { on: 'false' }], ['TV 65"', 'power', { on: 'false' }], ['Wall TV', 'power', { on: 'false' }],
 ];

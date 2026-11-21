@@ -273,7 +273,7 @@ func _build_light() -> void:
 
 
 # ---- the zone's window behind the curtain: one window, a left and a right pane, each lit from behind by its own
-# smart light ("Left window" / "Right window"). Lit, a pane shows the outdoor view (sky with drifting clouds, sun,
+# smart light ("Left Window Light" / "Right Window Light"). Lit, a pane shows the outdoor view (sky with drifting clouds, sun,
 # hills, trees, a lake); unlit it is dark glass. The curtain in front hides it as it comes down, and a lit window
 # glows through the white fabric.
 
@@ -441,9 +441,14 @@ func _build_window() -> void:
 func _window_curtain() -> DeviceFx:
 	if _curtain and is_instance_valid(_curtain):
 		return _curtain
+	# the room can have more than one roller shade: a window pane is behind the one nearest to it
+	var best := INF
 	for n in get_tree().get_nodes_in_group("zone_curtain"):
 		if n is DeviceFx and n._room_key == _room_key:
-			_curtain = n
+			var dist := global_position.distance_to((n as Node3D).global_position)
+			if dist < best:
+				best = dist
+				_curtain = n
 	return _curtain
 
 

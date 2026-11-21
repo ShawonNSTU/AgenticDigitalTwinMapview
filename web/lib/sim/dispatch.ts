@@ -32,7 +32,8 @@ export async function dispatch(id: string, command: string, args: Record<string,
   const sim: Result = runCommand(id, command, args, confirmed, by) as Result;
   let res: Result = { ...sim, via: 'simulator' };
   if (sim.ok && linked) {
-    try { await ST.send(id, d.type, command, args); res = { ...sim, via: 'smartthings' }; }
+    const expect = COMMANDS[d.type]?.[command]?.apply(args, rt.overrides[id] ?? {}) ?? undefined;
+    try { await ST.send(id, d.type, command, args, expect); res = { ...sim, via: 'smartthings' }; }
     catch (e) {
       if (before) rt.overrides[id] = before; else delete rt.overrides[id];
       res = { ok: false, error: (e as Error).message, via: 'smartthings' };

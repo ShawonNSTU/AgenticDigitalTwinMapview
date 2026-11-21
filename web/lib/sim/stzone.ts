@@ -117,8 +117,8 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   put('poster', 2.0, D - g - 0.02, 0.7, 0.03, OUT);
   rt.furniture = [...rt.furniture, ...items];
 
-  // 2. SmartThings devices: named exactly as in the zone's SmartThings app (room 401), so real devices link by
-  // name on /integrations, and placed where the room's device list says
+  // 2. SmartThings devices: named exactly as the zone's real SmartThings devices (lib/integrations/zone-devices.ts),
+  // which they are linked to by deviceId, and placed where the room's device list says
   for (const d of DEV.filter((d: any) => d.room === r.key)) removeDevice(d.id);
   const ids: Record<string, string> = {};
   const dev = (type: string, s: number, q: number, rot: number, name: string) => { const [x, z] = at(s, q); const res: any = addDevice({ type, x, z, rotationY: rot, room: r.key, name }); if (res?.device) ids[name] = res.device.id; };
@@ -127,13 +127,15 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   dev('light', L - 0.45, shelfQ + 0.1, 0, 'Light 3');         // left side, above the shelf
   dev('light', L - 0.45, shelfQ - 0.7, 0, 'Light 4');         // between the curtain and the shelf
   dev('light', dt, 0.6, 0, 'Light 5');                        // door entrance
-  dev('light', g + 1.25, D - g - 0.25, 0, 'Desk lamp');
-  dev('light', L * 0.5, D * 0.5, 0, 'TV lamp');               // the main ceiling lights
-  dev('blinds', L - g - 0.085, curtQ, BACK, 'aqara roller shade control');
-  dev('light', L - g - 0.035, curtQ + 0.33, BACK, 'Left window');   // left pane, as seen from the room
-  dev('light', L - g - 0.035, curtQ - 0.33, BACK, 'Right window');
-  dev('plug', L - g - 0.02, curtQ - 1.0, BACK, 'blinds switch');
-  dev('light', L - g - 0.25, shelfQ - 0.7, 0, 'side lamp (dining room)');
+  dev('light', g + 1.25, D - g - 0.25, 0, 'Desk Lamp');
+  dev('light', L * 0.5, D * 0.5, 0, 'TV Lamp');               // the main ceiling lights
+  dev('blinds', L - g - 0.085, curtQ, BACK, 'Aqara Roller Shade Controller');
+  dev('light', L - g - 0.035, curtQ + 0.33, BACK, 'Left Window Light');   // left pane, as seen from the room
+  dev('light', L - g - 0.035, curtQ - 0.33, BACK, 'Right Window Light');
+  dev('plug', L - g - 0.02, curtQ - 1.0, BACK, 'Blinds Switch');
+  dev('light', L - g - 0.25, shelfQ - 0.7, 0, 'side lamp');  // the big standing lamp (dining side)
+  // the dining side's roller shade, on the far wall towards the end-wall corner
+  dev('blinds', L - 0.9, D - g - 0.085, OUT, 'Aqara Roller Shade Controller of dining');
   // the rest of the room's Samsung kit
   dev('tv', tvS, g + 0.23, IN, 'TV 65"');
   dev('tv', g + 0.04, deskQ, ALONG, 'Wall TV');
@@ -146,7 +148,8 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   for (const k of Object.keys(ST_PROFILE)) delete ST_PROFILE[k];
   for (const [name, id] of Object.entries(ids)) if (PROFILES[name]) ST_PROFILE[id] = PROFILES[name];
   // the curtain motor only moves while its switch is on
-  if (ids['aqara roller shade control'] && ids['blinds switch']) REQUIRES[ids['aqara roller shade control']] = ids['blinds switch'];
+  for (const k of Object.keys(REQUIRES)) delete REQUIRES[k];
+  if (ids['Aqara Roller Shade Controller'] && ids['Blinds Switch']) REQUIRES[ids['Aqara Roller Shade Controller']] = ids['Blinds Switch'];
   return true;
 }
 
@@ -310,18 +313,19 @@ export const REQUIRES: Record<string, string> = ((globalThis as any).__twinRequi
 export type StProfile = { kind: 'color' | 'switch' | 'shade'; group: string; where: string };
 export const ST_PROFILE: Record<string, StProfile> = ((globalThis as any).__twinStProfile ??= {});
 const PROFILES: Record<string, Omit<StProfile, 'where'> & { where: string }> = {
-  'aqara roller shade control': { kind: 'shade', group: 'Dining room', where: 'White roller curtain, beside the shelf' },
-  'blinds switch': { kind: 'switch', group: 'Living room', where: 'Powers the curtain motor' },
-  'Desk lamp': { kind: 'color', group: 'Living room', where: 'On the desk' },
-  'Left window': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, left' },
+  'Aqara Roller Shade Controller': { kind: 'shade', group: 'Living room', where: 'White roller curtain, beside the shelf' },
+  'Aqara Roller Shade Controller of dining': { kind: 'shade', group: 'Dining room', where: 'Roller shade on the dining side' },
+  'Blinds Switch': { kind: 'switch', group: 'Living room', where: 'Powers the curtain motor' },
+  'Desk Lamp': { kind: 'color', group: 'Living room', where: 'On the desk' },
+  'Left Window Light': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, left' },
   'Light 1': { kind: 'color', group: 'Living room', where: 'Behind the main TV' },
   'Light 2': { kind: 'color', group: 'Living room', where: 'Above the TV' },
   'Light 3': { kind: 'color', group: 'Living room', where: 'Left, above the shelf' },
   'Light 4': { kind: 'color', group: 'Living room', where: 'Between the curtain and the shelf' },
-  'Right window': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, right' },
-  'TV lamp': { kind: 'switch', group: 'Living room', where: 'Main ceiling lights' },
+  'Right Window Light': { kind: 'switch', group: 'Living room', where: 'Light behind the curtain, right' },
+  'TV Lamp': { kind: 'switch', group: 'Living room', where: 'Main ceiling lights' },
   'Light 5': { kind: 'color', group: 'Bedroom', where: 'Door entrance' },
-  'side lamp (dining room)': { kind: 'switch', group: 'Dining room', where: 'Big standing lamp' },
+  'side lamp': { kind: 'switch', group: 'Dining room', where: 'Big standing lamp' },
 };
 /** Commands each kind offers (the rest of a light's commands are hidden, as the app does). */
 export const ST_KIND_COMMANDS: Record<StProfile['kind'], string[]> = {
