@@ -7,6 +7,7 @@
 // Server events (docs/contracts/agent-api.md): step, text, result, sources, suggestions, offer, ui_action, select,
 // error, done.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Rich, useTyped } from './Rich';
 
 export type Step = { text: string; at: number; done: boolean };
 export type Result = { device_id: string; label: string; ok: boolean; summary?: string; error?: string; offline?: boolean };
@@ -82,13 +83,13 @@ function Timeline({ run, open, toggle }: { run: Run; open: boolean; toggle: () =
   const took = (run.endedAt ?? now) - run.startedAt;
   const running = run.status === 'running';
   return (
-    <div className={`ag-steps ${open || running ? 'open' : ''}`}>
-      <button type="button" className="ag-steps-head" onClick={toggle} aria-expanded={open || running}>
+    <div className={`ag-steps ${open ? 'open' : ''}`}>
+      <button type="button" className="ag-steps-head" onClick={toggle} aria-expanded={open}>
         <span className={`ag-pulse ${running ? 'on' : run.status}`} />
         <span>{running ? (run.steps[run.steps.length - 1]?.text ?? 'Starting') + '…' : run.status === 'stopped' ? 'Stopped' : run.status === 'error' ? 'Could not finish' : `Done in ${secs(took)}`}</span>
         {run.steps.length > 0 && <em>{run.steps.length} step{run.steps.length === 1 ? '' : 's'}</em>}
       </button>
-      {(open || running) && run.steps.length > 0 && (
+      {open && run.steps.length > 0 && (
         <ol>{run.steps.map((s, i) => <li key={i} className={s.done ? 'done' : 'now'}><i />{s.text}</li>)}</ol>
       )}
     </div>
@@ -107,9 +108,33 @@ function OfferCard({ run, onAsk, onClose }: { run: Run; onAsk: (q: string) => vo
   );
 }
 
+/** While the agent works and has nothing to show yet: what it is doing now, animated. */
+function Thinking({ run }: { run: Run }) {
+  const now = run.steps[run.steps.length - 1]?.text ?? 'Thinking';
+  return (
+    <div className="ag-thinking" role="status" aria-live="polite">
+      <div className="ag-orb"><i /><i /><i /></div>
+      <div className="ag-thinking-body"><b>{now}…</b>
+        <div className="ag-skel"><span /><span /><span /></div>
+      </div>
+    </div>
+  );
+}
+
+function Answer({ text, animate, onTyped }: { text: string; animate: boolean; onTyped: (typing: boolean) => void }) {
+  const { shown, typing } = useTyped(text, animate);
+  useEffect(() => { onTyped(typing); }, [typing, onTyped]);
+  return <div className="ag-answer"><Rich text={shown} caret={typing} /></div>;
+}
+
 /** One run: request, live steps, changes, answer, sources, offers, follow-ups. */
 export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Run; last: boolean; busy: boolean; onAsk: (q: string) => void; onFocus: (ids: string[]) => void; setOffer: (s: 'done' | 'dismissed') => void }) {
   const [open, setOpen] = useState(false);
+  // the reply is revealed word by word; what comes after it (sources, cards, follow-ups) appears once it is typed
+  const [typing, setTyping] = useState(false);
+  const animate = useRef(run.status === 'running').current || last;
+  const onTyped = useCallback((t: boolean) => setTyping(t), []);
+  const after = !typing;
   return (
     <article className={`ag-run ${run.status}`}>
       <header className="ag-ask"><span>{run.ask}</span></header>
@@ -123,10 +148,11 @@ export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Ru
           ))}
         </div>
       )}
-      {run.text && <div className="ag-answer">{run.text}</div>}
+      {run.status === 'running' && !run.text && !run.error && <Thinking run={run} />}
+      {run.text && <Answer text={run.text} animate={animate} onTyped={onTyped} />}
       {run.error && <div className="ag-error">⚠ {run.error}</div>}
       {run.shown.length > 1 && !run.results.length && <button type="button" className="ag-link" onClick={() => onFocus(run.shown)}>Show {run.shown.length} devices in 3D</button>}
-      {run.sources.length > 0 && (
+      {after && run.sources.length > 0 && (
         <div className="ag-sources"><small>Based on</small>
           {run.sources.map((s, i) => (
             <button type="button" key={s.id} className="ag-src" onClick={() => s.devices.length && onFocus(s.devices)} disabled={!s.devices.length} title={s.title}>
@@ -135,8 +161,8 @@ export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Ru
           ))}
         </div>
       )}
-      <OfferCard run={run} onAsk={onAsk} onClose={setOffer} />
-      {last && !busy && run.suggestions.length > 0 && (
+      {after && <OfferCard run={run} onAsk={onAsk} onClose={setOffer} />}
+      {after && last && !busy && run.suggestions.length > 0 && (
         <div className="ag-next">{run.suggestions.map(s => <button type="button" key={s} onClick={() => onAsk(s)}>{s}</button>)}</div>
       )}
     </article>
@@ -171,7 +197,12 @@ export function AgentPanel({ endpoint, home, placeholder, onUi, onSelect, onText
   const a = useAgent(endpoint, { onUi, onSelect, onText });
   if (agentRef) agentRef.current = { ask: a.ask };
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [a.runs]);
+  // follow the newest run while it streams and types
+  useEffect(() => {
+    const t = setInterval(() => { const f = end.current?.parentElement; if (f && f.scrollHeight - f.scrollTop - f.clientHeight < 160) end.current?.scrollIntoView({ block: 'end' }); }, 120);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [a.runs.length]);
   const focus = (ids: string[]) => { onUi?.({ type: 'highlight', ids }); if (ids.length === 1) onUi?.({ type: 'focusDevice', id: ids[0] }); };
   return (
     <div className="ag">

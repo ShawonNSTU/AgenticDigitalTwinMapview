@@ -29,7 +29,7 @@ Rules:
 2. If the facts do not contain the answer, say so plainly and say what you do know that is closest.
 3. "sources" = the numbers of the facts you used.
 4. "follow_ups" = 2 short questions or requests the user might ask next (about this building, things you can do).
-5. Be direct and short: at most 5 sentences, plain text, no markdown. Use names, not ids, unless an id helps.
+5. Be direct: lead with the answer in one sentence. Format for reading: short paragraphs; a "- " bullet list when you list 3 or more things (one per line); **bold** for the key number or name. No headings, no tables. At most about 120 words. Use names, not ids, unless an id helps.
 
 Reply with JSON only: {{"reply": "<answer>", "sources": [<fact numbers>], "follow_ups": ["...", "..."]}}"""
 

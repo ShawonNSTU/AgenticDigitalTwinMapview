@@ -51,7 +51,7 @@ Rules:
 2. Say plainly what is measured and what is inferred (parts marked "inferred" have no sensor).
 3. If there is a finding: give its title, the evidence in one sentence and the first check to do.
 4. If the device is healthy: say so and mention one or two current readings.
-5. At most 5 sentences, plain text, no markdown, times as HH:MM.
+5. Lead with the problem in one sentence, then "- " bullets for evidence and the first checks; **bold** the finding. At most about 120 words, times as HH:MM.
 """
 
 SELECT_SCHEMA_BASE: dict[str, Any] = {
