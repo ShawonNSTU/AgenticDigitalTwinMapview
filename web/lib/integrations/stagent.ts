@@ -349,7 +349,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean; pub
             signal: AbortSignal.timeout(120_000),
           });
         } catch {
-          out('error', { message: opts.guest ? 'The assistant is not available right now.' : `The assistant service is not reachable at ${ASSISTANT_URL()}. Start assistant (see its README).` });
+          out('error', { message: opts.guest ? 'The assistant is not available right now.' : `The assistant isn’t running. Start it at ${ASSISTANT_URL()} (see assistant/README).` });
           return;
         }
         if (!up.ok || !up.body) { out('error', { message: `The SmartThings agent answered HTTP ${up.status}.` }); return; }
@@ -375,7 +375,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean; pub
             else if (ev === 'final') {
               const d = data?.data ?? {};
               const text = String(d.question ?? data?.message ?? '');
-              if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model is not reachable. Check OLLAMA_BASE_URL in assistant/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
+              if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model isn’t reachable right now. Check OLLAMA_BASE_URL in assistant/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
               else if (text) {
                 // the offer to save a routine becomes a card with a name field in the UI, not a line of text
                 const offer = !!d.save_offer;
@@ -440,9 +440,9 @@ export async function agentHealth() {
     const d = await r.json();
     const llm = d?.llm ?? {};
     const problem = !r.ok ? `The assistant answered HTTP ${r.status}.`
-      : llm.reachable === false ? `Ollama is not reachable at ${llm.url}. Set OLLAMA_BASE_URL in assistant/.env.`
+      : llm.reachable === false ? `The AI model isn’t reachable right now. Ollama at ${llm.url}: set OLLAMA_BASE_URL in assistant/.env.`
       : llm.model_present === false ? `Ollama has no model "${d.model}". Run: ollama pull ${d.model}`
-      : d?.device_api?.reachable === false ? `The device API is not reachable at ${d.device_api.url}.` : null;
+      : d?.device_api?.reachable === false ? `The device service isn’t reachable. ${d.device_api.url}` : null;
     return { ok: r.ok, ready: !problem, problem, url: ASSISTANT_URL(), model: d?.model ?? null, skills: d?.skills ?? [], llm };
-  } catch { return { ok: false, ready: false, problem: `The assistant service is not running at ${ASSISTANT_URL()}. Start assistant.`, url: ASSISTANT_URL(), model: null, skills: [], llm: null }; }
+  } catch { return { ok: false, ready: false, problem: `The assistant isn’t running. Start it at ${ASSISTANT_URL()}.`, url: ASSISTANT_URL(), model: null, skills: [], llm: null }; }
 }

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { send, type ToRenderer } from '@/lib/bridge';
-import { AgentPanel } from './agent/Agent';
+import { AgentPanel, ErrorNote } from './agent/Agent';
 
 type Brief = { stats: { rooms: number; devices: number; real: number; docs: number; events: number }; title: string; empty: boolean;
   alerts: { id: string; name: string; room: string; title: string; level: string }[]; guests: number; routines: string[] };
@@ -40,7 +40,7 @@ export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void
     <div className="ag-home">
       <h3>What should I do?</h3>
       <p className="muted">Ask about the floor or tell me what to change.</p>
-      {health && !health.ready && <div className="ag-error">⚠ {health.problem}</div>}
+      {health && !health.ready && health.problem && <ErrorNote text={health.problem} />}
       {brief && brief.alerts.length > 0 && (
         <section className="ag-attn"><h4>Needs attention</h4>
           {brief.alerts.map(a => (

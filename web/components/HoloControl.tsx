@@ -85,7 +85,12 @@ export default function HoloControl({ dev, anchor, run, onClose, lockNote }: { d
   else if ((dev.type === 'purifier' || dev.type === 'fan') && cmd('power')) body = <SpeedRing dev={dev} val={val} cmd={cmd} run={run} preview={preview} />;
   else if (dev.type === 'lock') body = <LockRing val={val} cmd={cmd} run={run} note={lockNote} />;
   else if (dev.commands.length) body = <DeviceControls dev={dev} commands={dev.commands} run={run} />;
-  else body = <p className="holo-off">{Object.entries(dev.readings).filter(([k]) => ['temp', 'hum', 'motion', 'on'].includes(k)).map(([k, v]) => `${k}: ${String(v)}`).join(' · ') || 'Nothing to control.'}</p>;
+  else {
+    // sensors: their readings, as people read them
+    const r = dev.readings as Record<string, unknown>;
+    const parts = [r.temp != null && `${Number(r.temp).toFixed(1)} °C`, r.hum != null && `${Math.round(Number(r.hum))} % humidity`, r.motion != null && (r.motion ? 'Motion' : 'No motion')].filter(Boolean);
+    body = <p className="holo-reading">{parts.join(' · ') || 'Nothing to control'}</p>;
+  }
 
   return (
     <>

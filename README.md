@@ -307,7 +307,7 @@ cd assistant && TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   #
 cd web && npm run typecheck && npm run build
 # after every pull: cd web && npm install && npm run export:renderer && npm run build && npm start
 cd web && npm run test:faults                           # every fault × severity: readings, parts, diagnosis
-node tools/ui_audit.js   # every page and state at desktop, laptop, iPad (both ways), 768 px tablet and phone: wrapped controls, clipped text, overlapping or off-screen overlays (needs puppeteer-core + Chrome)
+node tools/ui_audit.js && node tools/ui_audit_deep.js   # 270 screens: every page, state, menu, fold, dialog and device control; every page and state at desktop, laptop, iPad (both ways), 768 px tablet and phone: wrapped controls, clipped text, overlapping or off-screen overlays (needs puppeteer-core + Chrome)
 cd web && npm run test:experience                       # power model, energy and eco savings, comfort, predictions, welcome scene
 cd godot-renderer && godot --path . -- --xp-shots=/tmp/xp   # comfort, energy, beacons, technician route, quality tiers, TV welcome (platform running)
 cd godot-renderer && godot --headless --path . -- --smoke   # drives every bridge command

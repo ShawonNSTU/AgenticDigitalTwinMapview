@@ -1034,3 +1034,9 @@ details.lab .fault-opt { padding:7px 9px; }
 .dev-sub .muted { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 140px; }
 details.lab > summary.lab-head { justify-content:flex-start; }
 details.lab > summary.lab-head .sim-tag { margin-left:auto; }
+.ag-error-more { margin-top:4px; font-size:11.5px; color:var(--muted); }
+.ag-error-more summary { cursor:pointer; }
+.ag-error-more code { display:block; white-space:pre-wrap; word-break:break-word; margin-top:4px; }
+.holo-reading { margin:4px 0 2px; font-size:15px; font-weight:600; }
+.furn-row { cursor:pointer; border-radius:8px; padding:4px 6px; }
+.furn-row:hover, .furn-row.on { background:var(--bg2); }

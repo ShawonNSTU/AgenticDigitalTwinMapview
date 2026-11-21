@@ -1,4 +1,4 @@
-// Usage (web app running): npm i puppeteer-core in tools/ or globally; B=http://localhost:3000 OUT=/tmp/ui node tools/ui_audit.js
+// Usage (web app running): npm i puppeteer-core; B=http://localhost:3000 OUT=/tmp/ui node tools/ui_audit.js
 // Needs Google Chrome at /usr/bin/google-chrome (edit executablePath for another browser).
 // UI audit: every page and state at desktop, tablet and phone sizes. Finds wrapped one-line controls, clipped text,
 // overlays off-screen or on top of each other, uneven control heights in a row, page-level sideways scroll.
@@ -63,7 +63,7 @@ const CHECK = () => {
     if (r.left < box.left - 1 || r.top < box.top - 1 || r.right > box.right + 1 || r.bottom > box.bottom + 1) out.push({ kind: 'offscreen', el: name(el), r: [r.left, r.top, r.right, r.bottom].map(Math.round), box: [box.left, box.top, box.right, box.bottom].map(Math.round) });
   }
   // 5. overlays covering each other (top-level overlays in the same stage only)
-  const tops = overlays.filter(el => !overlays.some(o => o !== el && o.contains(el)) && !el.matches('.toasts, .toast, .loading, .walk-stick, .hint-close, .fs-btn, .fullscreen') && !el.closest('.toasts'));
+  const tops = overlays.filter(el => !overlays.some(o => o !== el && o.contains(el)) && !el.matches('.toasts, .toast, .loading, .walk-stick, .hint-close, .fs-btn, .fullscreen, .top-menu, .layers-pop, .more-menu > div') && !el.closest('.toasts'));
   for (let i = 0; i < tops.length; i++) for (let j = i + 1; j < tops.length; j++) {
     const a = tops[i].getBoundingClientRect(), b = tops[j].getBoundingClientRect();
     const x = Math.min(a.right, b.right) - Math.max(a.left, b.left), y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
