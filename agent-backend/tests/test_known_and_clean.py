@@ -52,3 +52,16 @@ def test_floor_name_read_from_the_title():
     assert floorplan._floor_name(["GROUND FLOOR PLAN"]) == "Ground floor"
     assert floorplan._floor_name(["Level 3"]) == "Level 3"
     assert floorplan._floor_name(["Kitchen"]) is None
+
+
+def test_names_read_on_grey_paper_next_to_a_white_area():
+    """A photographed sheet: grey, unevenly lit paper, with the desk around it whitened. The text reader must still
+    see the paper as paper (it read nothing at all before the paper was evened out)."""
+    img, _ = draw("thick", 60)
+    g = img.astype(np.float32)
+    H, W = g.shape[:2]
+    paper = np.linspace(158, 185, W, dtype=np.float32)[None, :, None]   # grey paper, lit from one side
+    photo = np.clip(85 + g / 255 * (paper - 85), 0, 255).astype(np.uint8)   # ink is dark grey in a photo, not black
+    photo = cv2.copyMakeBorder(photo, 0, 0, 0, W // 3, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+    names = [r["name"].lower() for r in plan_cv.analyze(photo)["rooms"]]
+    assert sum(n.startswith(("living", "kitchen", "dining", "bedroom", "study", "bath", "hall", "master")) for n in names) >= 5, names

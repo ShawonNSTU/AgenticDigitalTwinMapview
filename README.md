@@ -63,7 +63,10 @@ Proof of concept with three features:
    host pages and APIs behind a sign-in (`?key=…` once).
 8. **3D guidance to the room.** After scanning, the guest enters the PIN and walks in 3D from an entrance (the host's
    choice; by default the lift lobby in Zone D: the guest steps out of the middle lift and walks out through the
-   lobby's open door to the corridor) to the room along a route drawn on the floor with
+   lobby's open door to the corridor; on any other floor from where a visitor really comes in: of the doors to the
+   outside, the one into a hall, corridor, lobby or living area, with the most doors and the widest opening, never
+   into a bedroom, bathroom, store or balcony, and never the room itself; else the floor's main hall) to the room
+   along a route drawn on the floor with
    tags where it enters the corridor, stairs and the room; they can pick another starting point, see the way from
    above or skip. Only rooms on the way open; other doors stay shut and show nothing.
    **Live indoor position** ("Find me" on the guest page): the view follows the guest's real position, snapped
@@ -79,7 +82,7 @@ Proof of concept with three features:
    room and where the guest is now; at the door it offers "Unlock" (with the PIN, as the policy asks). The
    renderer test `--live-check` feeds noisy fixes, and fixes pushed to the wrong side of a wall, along four routes:
    no fix is matched across a wall (plain nearest-floor snapping crossed 1 to 6 times per run).
-9. **Room tour and 3D controls.** In the room a guided tour turns to each device and says what it does. Tapping a
+9. **Room tour and 3D controls.** On entering, the view steps to where the whole room is in view (the open floor farthest from its middle that still sees it) and turns to take it in. In the room a guided tour turns to each device and says what it does. Tapping a
    device (in 3D or in the list) turns the view to it and pins its control beside it in the room, with a glowing
    ring around the device: a climate dial for the AC (drag round the ring; mode chips, fan bars), a light beam
    you drag up or down with a warm-to-daylight strip and scenes, a roller you pull for blinds and the projector
@@ -241,7 +244,9 @@ The 4th floor: an upload of the Samsung R&D 4th-floor plan looks like any other 
 with the SmartThings Experience Zone, the lift lobby and its devices. Recognition matches the drawing itself (ORB
 features and a homography against the reference images, so scans, crops, rotations and phone photos all match) when the
 private drawing is installed in `web/public/presets/` ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), and
-otherwise the room names printed on it. Story mode needs this floor.
+otherwise the room names printed on it. Phone photos of the sheet work too: the photo is straightened, and the
+paper is evened out before reading (grey, unevenly lit paper next to the whitened desk used to read as one dark
+page, so no names were found). Story mode needs this floor.
 
 Device IDs on the 3D map are off by default; "Device IDs" in the map toolbar shows them (a hovered or selected device
 always shows its ID).

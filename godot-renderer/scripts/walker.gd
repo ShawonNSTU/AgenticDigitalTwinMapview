@@ -263,6 +263,52 @@ func overview(on: bool) -> void:
 
 
 ## Turn to face a point (guided tour of the room's devices).
+## Step to where the whole room is in view and turn to face it, as you would on walking in: of the open floor
+## (clear of furniture, at least 0.45 m from the walls), the spot farthest from the room's middle that still sees
+## the middle without looking through a wall. Standing just inside the door, a small room is all close-up.
+func view_room(r: Dictionary) -> void:
+	if r.is_empty():
+		return
+	var poly := PlanGeo.room_poly(r)
+	var c := PlanGeo.interior_point(poly)
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for q in poly:
+		lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
+		hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
+	var best := Vector2.INF
+	var best_d := -1.0
+	var x := lo.x + 0.3
+	while x < hi.x:
+		var z := lo.y + 0.3
+		while z < hi.y:
+			var q := Vector2(x, z)
+			z += 0.2
+			if not Geometry2D.is_point_in_polygon(q, poly) or not nav.is_free(q) or q.distance_to(c) <= best_d:
+				continue
+			var near_wall := false
+			for i in poly.size():
+				if q.distance_to(Geometry2D.get_closest_point_to_segment(q, poly[i], poly[(i + 1) % poly.size()])) < 0.45:
+					near_wall = true
+					break
+			if near_wall:
+				continue
+			var sees := true
+			for k in range(1, 10):
+				if not Geometry2D.is_point_in_polygon(q.lerp(c, k / 10.0), poly):
+					sees = false
+					break
+			if sees:
+				best = q
+				best_d = q.distance_to(c)
+		x += 0.2
+	var at := Vector3(c.x, eye - 0.8, c.y)   # a little down: furniture and floor, not ceiling
+	if best == Vector2.INF or best.distance_to(p) < 0.5 or not go_to(best):
+		look_at_point(at)
+		return
+	arrived.connect(func(): look_at_point(at), CONNECT_ONE_SHOT)
+
+
 func look_at_point(q: Vector3) -> void:
 	var eye_pos := Vector3(p.x, eye, p.y)
 	var d := q - eye_pos

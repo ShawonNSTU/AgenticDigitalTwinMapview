@@ -28,7 +28,7 @@ PUBLIC_DIR = Path(os.getenv("KNOWN_PLANS_PUBLIC_DIR", ROOT / "web" / "lib" / "pr
 KNOWN = {
     "samsung-rnd-4f": {
         "images": ["samsung-rnd-4f.jpg", "samsung-rnd-4f-photo.jpg"],
-        "distinct": ["sajek", "saint martin", "maternity", "smartthings", "experience zone", "zone d"],
+        "distinct": ["sajek", "saint martin", "maternity", "smartthing", "smart thing", "experience zone", "zone d", "4f", "4th fl"],
     },
 }
 SIDE = 1200          # match at this size: fast (about 0.3 s) and still detailed
@@ -103,9 +103,10 @@ def text_match(texts: list[str]) -> str | None:
     blob = " " + " ".join(re.sub(r"[^a-z0-9/ ]+", " ", t.lower()) for t in texts) + " "
     blob = re.sub(r"\s+", " ", blob)
     for pid, spec in KNOWN.items():
-        distinct = sum(1 for w in spec["distinct"] if f" {w}" in blob or w.replace(" ", "") in blob.replace(" ", ""))
+        # whole words; long names may also run together ("smartthings", "experiencezone")
+        distinct = sum(1 for w in spec["distinct"] if re.search(rf"\b{re.escape(w)}\b", blob) or (len(w) > 6 and w.replace(" ", "") in blob.replace(" ", "")))
         common = sum(1 for w in _room_words(pid) if f" {w}" in blob)
         # one floor-specific word with many of its room words, or two with fewer
-        if (distinct >= 1 and common >= 8) or (distinct >= 2 and common >= 5):
+        if (distinct >= 1 and common >= 6) or (distinct >= 2 and common >= 4):
             return pid
     return None

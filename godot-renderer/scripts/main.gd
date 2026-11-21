@@ -894,6 +894,9 @@ func start_walk(room_key := "") -> void:
 			floor_builder.ceilings.visible = true)
 	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look_yaw, from)
 	walker._track_room()
+	if room_key != "" and not Store.room(room_key).is_empty():
+		var wk := walker
+		walker.landed.connect(func(): if is_instance_valid(wk): wk.view_room(Store.room(room_key)), CONNECT_ONE_SHOT)
 
 
 ## Back to the map, looking down at where the walk ended.
@@ -1084,6 +1087,23 @@ func _guest_entrance(nav: WalkNav, target_room: Dictionary) -> Vector2:
 	var goal := PlanGeo.interior_point(PlanGeo.room_poly(target_room))
 	var best := Vector2.INF
 	var best_len := INF
+	# Any other floor: where a visitor really comes in. Every door to the outside is a candidate, scored by the
+	# room it opens into (a hall, corridor, lobby or living area is how people enter; a bedroom, bathroom, store,
+	# kitchen or balcony is not), by how many doors that room has (circulation), and by its width (the main door
+	# is the wide one). A start needs a real walk to the room: never the room itself or right beside it.
+	var hub_re := RegEx.create_from_string("(?i)hall|corridor|passage|lobby|foyer|entry|entrance|reception|living|lounge|porch|vestibule|waiting")
+	var bad_re := RegEx.create_from_string("(?i)bath|toilet|\\bwc\\b|shower|bed|closet|wardrobe|store|storage|balcony|terrace|deck|patio|garage|utility|laundry|kitchen|pantry|plant|server|electrical|a/?c\\b")
+	var doors_of := {}
+	for f in Store.furniture:
+		if f.get("kind", "") != "door":
+			continue
+		var c0 := Vector2(float(f.x), float(f.z))
+		var n0 := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))
+		for side in [1.0, -1.0]:
+			var r0: Dictionary = Store.room_at(c0 + n0 * side * 0.45)
+			if not r0.is_empty():
+				doors_of[r0.key] = int(doors_of.get(r0.key, 0)) + 1
+	var best_score := -INF
 	for f in Store.furniture:
 		if f.get("kind", "") != "door":
 			continue
@@ -1091,13 +1111,42 @@ func _guest_entrance(nav: WalkNav, target_room: Dictionary) -> Vector2:
 		var rot := float(f.get("rot", 0.0))
 		var n := Vector2(sin(rot), cos(rot))
 		for side in [1.0, -1.0]:
-			if Store.room_at(c + n * side * 0.45).is_empty() and not Store.room_at(c - n * side * 0.45).is_empty():
-				var inside := nav.nearest_free(c - n * side * 0.8, 6)
-				var route := nav.path(inside, goal, false)
-				if route.size() > 0 and route.size() < best_len:
-					best_len = route.size()
-					best = inside
-	if best != Vector2.INF:
+			var r: Dictionary = Store.room_at(c - n * side * 0.45)
+			if not Store.room_at(c + n * side * 0.45).is_empty() or r.is_empty() or r.key == target_room.key:
+				continue
+			var inside := nav.nearest_free(c - n * side * 0.8, 6)
+			var L := nav.path_length(inside, goal)
+			if L == INF or L < 3.0:
+				continue
+			var nm := str(r.name) + " " + str(r.get("label", ""))
+			var score := 0.0
+			if hub_re.search(nm) != null:
+				score += 4.0
+			if bad_re.search(nm) != null:
+				score -= 4.0
+			score += minf(float(doors_of.get(r.key, 0)), 4.0)
+			score += clampf((float(f.get("w", 0.9)) - 0.85) * 5.0, 0.0, 2.0)
+			score -= 0.02 * L
+			if score > best_score:
+				best_score = score
+				best = inside
+	if best != Vector2.INF and best_score > -2.0:
+		return best
+	# no door to the outside fits: start in the floor's circulation, the hall or corridor with the most doors
+	best = Vector2.INF
+	best_score = -INF
+	for r in Store.rooms:
+		if r.key == target_room.key:
+			continue
+		var nm := str(r.name) + " " + str(r.get("label", ""))
+		var score := minf(float(doors_of.get(r.key, 0)), 5.0) + (4.0 if hub_re.search(nm) != null else 0.0) - (4.0 if bad_re.search(nm) != null else 0.0)
+		var p := nav.room_target(r, goal)
+		if p == Vector2.INF or nav.path_length(p, goal) == INF or nav.path_length(p, goal) < 3.0:
+			continue
+		if score > best_score:
+			best_score = score
+			best = p
+	if best != Vector2.INF and best_score >= 2.0:
 		return best
 	var re := RegEx.create_from_string("(?i)lift|elevator|lobby|reception|entrance|entry|foyer")
 	var stairs := RegEx.create_from_string("(?i)stair")
@@ -1122,9 +1171,8 @@ func _guest_arrived() -> void:
 	if walker == null or _guest_room == "" or walker.room_key != _guest_room:
 		return
 	walker.confine(Store.room(_guest_room))
-	# turn to take in the whole room
-	var c := PlanGeo.interior_point(PlanGeo.room_poly(Store.room(_guest_room)))
-	walker.look_at_point(Vector3(c.x, walker.eye - 0.25, c.y))
+	# step to where the whole room is in view and turn to take it in
+	walker.view_room(Store.room(_guest_room))
 	walker.hide_route()
 	Bus.walk_changed.emit({"on": true, "guest": "arrived", "room": _guest_room, "roomName": Store.room_label(Store.room(_guest_room))})
 

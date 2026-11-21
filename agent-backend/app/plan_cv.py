@@ -98,6 +98,21 @@ def clear_background(gray: np.ndarray) -> np.ndarray:
 
 # ---------------------------------------------------------------- walls
 
+def flatten_paper(gray: np.ndarray) -> np.ndarray:
+    """Even out the paper: a photographed sheet is grey and unevenly lit, and once the desk around it is whitened
+    the grey paper reads as ink to a global threshold (Tesseract sees one dark page and no text). Dividing by
+    the paper brightness (a closing larger than any stroke) makes the paper white everywhere and keeps the ink."""
+    k = int(max(15, 0.03 * max(gray.shape))) | 1
+    paper = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
+    paper = cv2.GaussianBlur(paper, (k, k), 0)
+    flat = cv2.divide(gray, np.maximum(paper, 1), scale=255)
+    # and stretch: grey ink in a photo becomes dark again (the darkest 0.5 % of pixels go to black)
+    lo = float(np.percentile(flat, 0.5))
+    if lo > 40:
+        flat = np.clip((flat.astype(np.float32) - lo) * (255.0 / max(1.0, 255.0 - lo)), 0, 255).astype(np.uint8)
+    return flat
+
+
 def ink(gray: np.ndarray, close: int = 3) -> np.ndarray:
     h, w = gray.shape
     block = max(15, (max(h, w) // 40) | 1)
@@ -786,8 +801,12 @@ def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
     corners = sheet_corners(gray)
     if corners:
         return {"rooms": [], "doors": [], "photo_corners": corners, "width_m": None, "scale_note": None, "wall_px": None}
-    gray = clear_background(gray)
+    raw_gray = gray
+    gray = clear_background(flatten_paper(gray))
     boxes, lines = ocr(gray) if use_ocr else ([], [])
+    # text read on the photo as it was too: each reading misses different words, and recognising a known floor
+    # by its names wants as many as can be had
+    extra_texts = [ln["text"] for ln in ocr(raw_gray)[1]] if use_ocr and gray.mean() - raw_gray.mean() > 25 else []
     hr = max(2.5, max(H, W) / 400)
     tries = [_attempt(gray, boxes, c) for c in (1, 7, 13)] + [_attempt(gray, boxes, 1, thin=True), _attempt(gray, boxes, 1, hatch=hr)]
     for a in tries:
@@ -799,7 +818,8 @@ def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
     best = next(a for a in tries if a["score"] >= top - 0.02)
     h, barrier, closures, rooms, n = best["h"], best["barrier"], best["closures"], best["rooms"], best["n"]
     if n == 0:
-        return {"rooms": [], "doors": [], "photo_corners": None, "width_m": None, "scale_note": None, "wall_px": 2 * h / W}
+        return {"rooms": [], "doors": [], "photo_corners": None, "width_m": None, "scale_note": None, "wall_px": 2 * h / W,
+                "_texts": [ln["text"] for ln in lines] + extra_texts}
     foot = best["foot"]
     grown = grow(rooms, barrier, h)
     ds = doors(closures, grown, foot, h) + entrances(rooms, barrier, foot, h)
@@ -827,7 +847,7 @@ def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
     out_doors = [{"kind": "door", "fx": round(d["x"] / W, 5), "fy": round(d["y"] / H, 5), "fw": round(d["w"] / W, 5),
                   "fd": round(max(2 * h, 2) / W, 5), "rot": round(-math.atan2(d["uy"], d["ux"]), 4)} for d in ds]
     return {"rooms": out_rooms, "doors": out_doors, "photo_corners": None, "width_m": width_m, "scale_note": note, "wall_px": round(2 * h / W, 5),
-            "_labels": rooms, "_barrier": barrier, "_shape": (H, W), "_texts": [ln["text"] for ln in lines],
+            "_labels": rooms, "_barrier": barrier, "_shape": (H, W), "_texts": [ln["text"] for ln in lines] + extra_texts,
             "_boxes": boxes, "_lines": lines, "_foot": foot, "_img": img, "_h": h}
 
 
