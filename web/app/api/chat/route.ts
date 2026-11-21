@@ -19,5 +19,8 @@ export async function GET() { return NextResponse.json(await agentHealth()); }
 export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const role = (req.cookies.get('twin_role')?.value ?? '').startsWith('tech:') ? 'technician' : 'admin';
-  return agentTurn({ messages: Array.isArray(b.messages) ? b.messages : [] }, { kind: 'host', role, ...(typeof b.room === 'string' && b.room ? { room: b.room } : {}) });
+  // the address this person opened the app with (https://<server-ip>:3443 from another PC): links the assistant makes use it
+  const proto = req.headers.get('x-forwarded-proto') ?? req.nextUrl.protocol.replace(':', '');
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? req.nextUrl.host;
+  return agentTurn({ messages: Array.isArray(b.messages) ? b.messages : [] }, { kind: 'host', role, ...(typeof b.room === 'string' && b.room ? { room: b.room } : {}) }, { publicUrl: `${proto}://${host}` });
 }

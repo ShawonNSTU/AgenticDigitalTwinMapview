@@ -310,3 +310,21 @@ desktop build on Forward+ (Vulkan). Rooms can be any polygon; piping routes alon
 parts where they sit in the real unit, with internal flows driven by live readings. See "Accuracy rules" in
 [docs/PROMPT.md](docs/PROMPT.md). Part shapes are still primitives; modelled parts, GI, section plane, thermal
 mode and the guided tour are phases 2–9.
+
+## Using it from other computers (HTTPS)
+
+The 3D view (Godot web export) only runs in a *secure context*: an `https://` page or `http://localhost`. On the
+server `http://localhost:3000` works, but from another PC `http://<server-ip>:3000` is not secure and the browser
+stops the 3D view with "Secure Context - Check web server configuration (use HTTPS)". Serve it over HTTPS:
+
+```bash
+cd web
+npm run dev:https                       # development, or:
+npm run build && npm run start:https    # production
+```
+
+Open `https://<server-ip>:3443` on the other PC (the old `http://<server-ip>:3000` redirects there). The first
+start makes a self-signed certificate in `web/.cert/` for this machine's name and LAN addresses; each browser
+warns once, so choose *Advanced -> Proceed* (or install `web/.cert/cert.pem` as trusted on those PCs). With a real
+certificate set `HTTPS_CERT` and `HTTPS_KEY`. Ports: `HTTPS_PORT` (3443), `HTTP_PORT` (3000, localhost only).
+Guest links and QR codes use the address you opened, so they work from other PCs and phones too.

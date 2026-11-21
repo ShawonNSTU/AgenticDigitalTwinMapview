@@ -185,3 +185,11 @@ async def test_run_a_saved_routine_needs_no_room_and_delete_only_touches_own(set
     assert r.status == "success" and r.message.startswith("Done! Cosy: Light 1") and twin.calls[-1][1] == {"routine": "c-cosy", "room": ""}
     assert (await ask_with(agent, settings, "b")).message == "Deleted your routine Cosy."
     assert "Which of your routines" in (await ask_with(agent, settings, "c")).message            # a built-in can't be deleted
+
+
+async def test_checkin_link_uses_the_address_staff_opened(settings):
+    twin = OpsTwin({"layout": LAYOUT, "passes": {"passes": []},
+                    "pass_create": lambda p: {"token": "abc", "path": "/guest/abc", "room": p["room"], "room_name": "Living room", "pin": "123456", "expires_at": 1_800_000_000_000, "label": ""}})
+    agent, _ = build(settings, {"router": [{"skill": "checkin", "request": "x"}], "checkin": [{"action": "create", "room": "living", "hours": 24, "label": "", "verify": True, "pass": ""}]}, twin)
+    r = await agent.handle(build_context(sample_request("x", extras={"role": "admin", "public_url": "https://192.168.1.20:3443"}), "tok", settings))
+    assert "https://192.168.1.20:3443/guest/abc" in r.message and r.data["card"]["link"] == "https://192.168.1.20:3443/guest/abc"

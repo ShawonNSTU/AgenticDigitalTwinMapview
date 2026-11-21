@@ -29,3 +29,4 @@ docs/plans/samsung-rnd-4f/*
 
 # The floor last built (may hold an uploaded plan)
 web/.data/
+web/.cert/
