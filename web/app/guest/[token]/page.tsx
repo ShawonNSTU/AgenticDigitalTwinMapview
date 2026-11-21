@@ -65,6 +65,13 @@ export default function GuestPage() {
   // the device whose control is pinned beside it in the 3D room, and where it is on screen
   const [holo, setHolo] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<{ id: string; x: number; y: number; visible: boolean } | null>(null);
+  // bring a device's card into view in the side panel, without scrolling the whole page (on a phone the page
+  // scrolls, and moving it would take the 3D view off the screen)
+  const reveal = useCallback((id: string) => setTimeout(() => {
+    const card = cards.current[id], panel = card?.closest('.guest-panel') as HTMLElement | null;
+    if (!card || !panel || panel.scrollHeight <= panel.clientHeight + 1) return;
+    panel.scrollTo({ top: card.offsetTop - panel.offsetTop - 64, behavior: 'smooth' });
+  }, 50), []);
   const openHolo = useCallback((id: string | null) => {
     setHolo(id); setAnchor(null);
     send({ type: 'track', id: id ?? '' });
@@ -102,9 +109,9 @@ export default function GuestPage() {
       else if (m.guest === 'arrived') { setWalk(w => ({ ...w, phase: 'arrived', here: m.roomName })); setOverview(false); journey({ action: 'arrived', via: 'walk' }); }
       else if (m.roomName) setWalk(w => ({ ...w, here: m.roomName }));
     }
-    if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); openHolo(m.id); setTimeout(() => cards.current[m.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50); }
+    if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); openHolo(m.id); reveal(m.id); }
     if (m.type === 'anchor') setAnchor(m);
-  }, [openHolo, journey]);
+  }, [openHolo, journey, reveal]);
 
   const run = (id: string) => async (command: string, args: Record<string, unknown> = {}, _c?: boolean, pin?: string) => {
     const r = await fetch(`/api/guest/${token}/devices/${id}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, args, ...(pin ? { pin } : {}) }) });
@@ -137,9 +144,13 @@ export default function GuestPage() {
   useEffect(() => {
     if (tour == null || !stops[tour]) return;
     const d = stops[tour];
-    setFocus(d.id); setTab('room'); openHolo(d.id);
-    setTimeout(() => cards.current[d.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
-  }, [tour, stops, openHolo]);
+    setFocus(d.id); setTab('room');
+    // a phone has room for the tour card or the device's control in the 3D view, not both: the tour turns to the
+    // device and highlights it there, and the control stays one tap away in the list
+    if (window.matchMedia('(min-width: 600px)').matches) openHolo(d.id);
+    else { send({ type: 'walk', action: 'look', id: d.id }); send({ type: 'highlight', ids: [d.id] }); }
+    reveal(d.id);
+  }, [tour, stops, openHolo, reveal]);
 
   if (denied) return (
     <main className="guest-denied"><div className="glass"><span className="logo" /><h2>Guest access</h2><p>{denied}</p><p className="muted">Please ask the front desk for a new QR code.</p></div></main>

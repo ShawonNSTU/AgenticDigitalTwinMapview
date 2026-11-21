@@ -62,7 +62,7 @@ export default function GuestJourney({ token, onMsg }: { token: string; onMsg: (
 
   return (
     <div className="journey">
-      <div className="stepper">{FLOW.map(([k, l], i) => <div key={k} className={`st ${i < idx ? 'done' : i === idx ? 'on' : ''}`}><i />{l}</div>)}</div>
+      <div className="stepper">{FLOW.map(([k, l], i) => <div key={k} className={`step-i ${i < idx ? 'done' : i === idx ? 'on' : ''}`}><i /><span>{l}</span></div>)}</div>
       <p className="journey-head">{head}</p>
 
       {j.state !== 'departed' && (

@@ -181,10 +181,22 @@ export default function Home() {
         <div className="stats">
           <span className="stat"><b>{devices.length}</b> devices</span>
           <span className={`stat ${bad.length ? 'warn' : 'good'}`}><b>{bad.length}</b> {bad.length === 1 ? 'needs' : 'need'} attention</span>
-          <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
-          <a href="/tech"><button className="ghost">Technician</button></a>
-          <a href="/integrations"><button className="ghost">Integrations</button></a>
-          <a href="/setup"><button className="ghost">Upload floor plan</button></a>
+          <nav className="top-links">
+            <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
+            <a href="/tech"><button className="ghost">Technician</button></a>
+            <a href="/integrations"><button className="ghost">Integrations</button></a>
+            <a href="/setup"><button className="ghost">Upload floor plan</button></a>
+          </nav>
+          {/* tablets and small laptops: the same links in a menu, so the header stays on one line */}
+          <details className="top-more" onToggle={e => { const d = e.currentTarget; if (d.open) { const close = (ev: MouseEvent) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', close); } }; document.addEventListener('pointerdown', close); } }}>
+            <summary aria-label="More">Menu</summary>
+            <div className="top-menu glass" onClick={e => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false; }}>
+              <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
+              <a href="/tech"><button className="ghost">Technician console</button></a>
+              <a href="/integrations"><button className="ghost">Integrations</button></a>
+              <a href="/setup"><button className="ghost">Upload floor plan</button></a>
+            </div>
+          </details>
         </div>
       </header>
       <section className="stage" ref={stage} data-fullscreen>

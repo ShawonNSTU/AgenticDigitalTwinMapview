@@ -23,7 +23,13 @@ export default function MapToolbar() {
   const toggle = (k: (typeof LAYERS)[number]['key']) => send({ type: 'setLayer', layer: k, on: !on[k] });
   return (
     <div className="map-toolbar glass">
-      {LAYERS.map(l => <button key={l.key} className={on[l.key] ? 'on' : ''} onClick={() => toggle(l.key)}>{l.label}</button>)}
+      <span className="layers-inline">{LAYERS.map(l => <button key={l.key} className={on[l.key] ? 'on' : ''} onClick={() => toggle(l.key)}>{l.label}</button>)}</span>
+      {/* a narrow map (tablet, small laptop): the layers in a menu so the toolbar never runs into the palette */}
+      <details className="layers-menu">
+        <summary>Layers{LAYERS.some(l => on[l.key]) ? <i>{LAYERS.filter(l => on[l.key]).length}</i> : null}</summary>
+        <div className="layers-pop glass">{LAYERS.map(l => (
+          <label key={l.key}><input type="checkbox" checked={!!on[l.key]} onChange={() => toggle(l.key)} />{l.label}</label>))}</div>
+      </details>
       <span className="sep" />
       <select className="quality" aria-label="Rendering quality" title={q ? `${q.auto ? 'Adapts to this device' : 'Fixed'} · ${q.fps} fps` : 'Rendering quality'} value={q?.auto ? 'auto' : q?.tier ?? 'auto'} onChange={e => send({ type: 'setQuality', tier: e.target.value as 'auto' })}>
         {TIERS.map(([k, l]) => <option key={k} value={k}>{k === 'auto' && q?.auto ? `Auto · ${q.tier}` : l}</option>)}

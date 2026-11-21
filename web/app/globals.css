@@ -817,10 +817,10 @@ button.small { padding:4px 9px; font-size:12px; }
 /* guest: your stay */
 .journey { display:flex; flex-direction:column; gap:12px; padding:12px 14px; overflow:auto; flex:1; }
 .stepper { display:flex; gap:4px; }
-.stepper .st { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; font-size:10.5px; color:var(--faint); text-align:center; }
-.stepper .st i { width:100%; height:4px; border-radius:4px; background:var(--line); }
-.stepper .st.done { color:var(--muted); } .stepper .st.done i { background:var(--ok); }
-.stepper .st.on { color:var(--text); font-weight:600; } .stepper .st.on i { background:linear-gradient(90deg, var(--acc), #60a5fa); animation:pulse-bar 1.6s ease-in-out infinite; }
+.stepper .step-i { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; font-size:10.5px; color:var(--faint); text-align:center; }
+.stepper .step-i i { width:100%; height:4px; border-radius:4px; background:var(--line); }
+.stepper .step-i.done { color:var(--muted); } .stepper .step-i.done i { background:var(--ok); }
+.stepper .step-i.on { color:var(--text); font-weight:600; } .stepper .step-i.on i { background:linear-gradient(90deg, var(--acc), #60a5fa); animation:pulse-bar 1.6s ease-in-out infinite; }
 @keyframes pulse-bar { 50% { opacity:.55; } }
 .journey-head { margin:0; font-size:14px; color:var(--text2); }
 .journey-comfort { display:flex; gap:12px; align-items:center; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:10px 12px; cursor:pointer; }
@@ -849,3 +849,134 @@ button.small { padding:4px 9px; font-size:12px; }
 .alert-row.predicted { border-left:3px solid #8b5cf6; }
 .badge.predicted { background:#f5f3ff; color:#6d28d9; }
 .finding.predicted { border-color:#ddd6fe; background:#faf5ff; }
+
+/* =====================================================================================================
+   Responsive pass: desktop, laptop, tablet (landscape and portrait) and phone. The map stage is a size
+   container, so its overlays adapt to the space the stage really has (the side panel takes 392 px beside
+   it on wide screens and goes below it on narrow ones), not only to the screen width.
+   ===================================================================================================== */
+.app > *, .guest > *, .setup > * { min-width:0; }
+.stage, .guest-stage { container-type:inline-size; }
+
+/* one-line controls never wrap; text that can't fit is cut with an ellipsis instead */
+.walk-bar button, .walk-bar select, .map-toolbar button, .tabs button, .seg button, .stats > *, .guest-walk button, .guest-walk select,
+.btns button, .row > button, .room-card .row button, .ops-head button, .top-menu button, .st-chip, .pin-card .seg button { white-space:nowrap; }
+.tabs button { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+
+/* ---- header: one line; the links fold into a menu when there is no room ---- */
+.top-links { display:flex; gap:4px; align-items:center; }
+.top-more { display:none; position:relative; }
+.top-more summary { list-style:none; cursor:pointer; padding:6px 12px; border-radius:8px; border:1px solid var(--line2); background:#fff; font-size:13px; font-weight:500; color:var(--text2); box-shadow:var(--shadow-sm); user-select:none; }
+.top-more summary::-webkit-details-marker { display:none; }
+.top-more summary::after { content:'▾'; margin-left:6px; font-size:10px; color:var(--faint); }
+.top-more[open] summary { background:var(--acc-bg); border-color:var(--acc-line); color:var(--acc-dark); }
+.top-menu { position:absolute; right:0; top:calc(100% + 6px); z-index:30; display:flex; flex-direction:column; padding:6px; min-width:200px; background:#fff; }
+.top-menu a, .top-menu button { width:100%; text-align:left; }
+.top-menu button { padding:9px 12px; }
+@media (max-width: 1280px) {
+  .topbar { flex-wrap:nowrap !important; }
+  .floor-chip { order:0 !important; flex:0 1 auto !important; max-width:none !important; min-width:0; justify-content:flex-start !important; }
+  .stats { flex-wrap:nowrap !important; flex:none; }
+  .top-links { display:none; }
+  .top-more { display:block; }
+}
+@media (max-width: 1000px) {
+  .topbar:has(.top-more) .brand > div { display:none; }   /* the map's header only: other pages keep their title */
+  .stat { padding:5px 8px; }
+}
+@media (max-width: 600px) { .floor-chip { display:none; } }
+
+/* ---- map toolbar: layer buttons when there is room, a Layers menu when the stage is narrow ---- */
+.layers-inline { display:flex; gap:3px; align-items:center; }
+.layers-menu { display:none; position:relative; }
+.layers-menu summary { list-style:none; cursor:pointer; padding:5px 11px; font-size:12px; font-weight:500; color:var(--text2); border-radius:8px; border:1px solid transparent; user-select:none; display:flex; align-items:center; gap:6px; }
+.layers-menu summary::-webkit-details-marker { display:none; }
+.layers-menu summary::after { content:'▾'; font-size:10px; color:var(--faint); }
+.layers-menu summary i { font-style:normal; font-size:10.5px; background:var(--acc); color:#fff; border-radius:8px; padding:0 6px; }
+.layers-menu[open] summary { background:var(--acc-bg); border-color:var(--acc-line); color:var(--acc-dark); }
+.layers-pop { position:absolute; left:0; top:calc(100% + 8px); z-index:20; display:flex; flex-direction:column; gap:2px; padding:8px; min-width:170px; background:#fff; }
+.layers-pop label { display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:7px; font-size:13px; cursor:pointer; }
+.layers-pop label:hover { background:var(--bg2); }
+.layers-pop input { width:16px; height:16px; margin:0; accent-color:var(--acc); padding:0; box-shadow:none; }
+.map-toolbar select.quality { height:30px; }
+@container (max-width: 1060px) {
+  .layers-inline { display:none; }
+  .layers-menu { display:block; }
+}
+/* the toolbar sits right of the device palette and never under it */
+@container (max-width: 760px) {
+  .map-toolbar { left:auto; max-width:calc(100% - 268px); }
+  .map-toolbar .sep { display:none; }
+}
+
+/* ---- map navigation: two columns when the stage is not tall enough for one ---- */
+.map-nav { top:72px; bottom:14px; flex-wrap:wrap-reverse; align-content:flex-start; justify-content:flex-start; pointer-events:none; flex-direction:column; }
+.map-nav > * { pointer-events:auto; }
+.map-nav .nav-help { pointer-events:auto; }
+
+/* ---- bottom-centre cards are centred in the free map area, clear of the device palette ---- */
+.stage:has(.palette:not(.closed)) :is(.room-card, .empty-hint, .stale, .move-hint) { left:calc(50% + 127px); max-width:calc(100% - 296px); }
+@container (max-width: 640px) {
+  .stage:has(.palette:not(.closed)) :is(.room-card, .empty-hint, .stale) { left:calc(50% + 97px); max-width:calc(100% - 222px); min-width:0; }
+}
+.room-card .row { flex-wrap:wrap; }
+
+/* ---- walk-through bar: compact, every control on one line, clear of the full-screen button ---- */
+.walk-bar { max-width:calc(100% - 128px); gap:8px; }
+.walk-bar > button, .walk-bar > select { height:36px; flex:none; }
+.walk-bar > select { flex:0 1 200px; min-width:110px; }
+.walk-where { min-width:0; flex:0 1 auto; max-width:240px; }
+.walk-help { top:72px; }
+@container (max-width: 760px) {
+  .walk-where small { display:none; }
+  .walk-bar { padding:6px; left:14px; transform:none; max-width:calc(100% - 84px); }
+  .walk-bar > select { flex-basis:140px; }
+  .walk-help { left:14px; right:auto; width:min(300px, calc(100% - 28px)); }
+}
+@container (max-width: 520px) { .walk-where { display:none; } .walk-help { display:none; } }
+
+/* ---- guest: the walk bar and the arrived card stay clear of the full-screen button and fit a phone ---- */
+.guest-walk { max-width:calc(100% - 128px); }
+.guest-walk > select { flex:0 1 160px; min-width:0; }
+.guest-walk > span:nth-child(2) { min-width:0; flex:1 1 auto; }
+@container (max-width: 760px) {
+  .guest-walk { left:14px; transform:none; max-width:calc(100% - 84px); flex-wrap:wrap; row-gap:6px; }
+  .guest-walk > span:nth-child(2) { flex:1 1 100%; max-width:none; }
+}
+/* the tour card goes to the top while it runs (the walk bar is gone then), so it never covers "Find me" */
+.tour { top:14px; bottom:auto; }
+@container (max-width: 760px) { .tour { left:14px; transform:none; width:calc(100% - 84px); } }
+.guest-stage:has(.tour) .holo:not(.moved) { bottom:auto; }
+@media (max-width: 760px) { .guest-stage:has(.tour) .holo:not(.moved) { top:auto !important; bottom:8px; } }
+
+/* ---- side panels and guest panel on narrow screens ---- */
+.stepper { overflow:hidden; }
+.stepper .step-i { min-width:0; }
+.pref .seg button { padding:5px 6px; font-size:12px; }
+.guest-panel .tabs button i, .side .tabs button i { flex:none; }
+.card .row, .settings-body .row { flex-wrap:wrap; }
+.pin-card .seg button { padding:6px 8px; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; }
+@media (max-width: 760px) {
+  .guest-top { padding:8px 12px; }
+  .guest-title small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+  .guest-title { min-width:0; flex:1; }
+  .guest-until { display:none; }
+}
+/* toolbar controls share one height (touch screens: 38 px targets) */
+.map-toolbar > button, .map-toolbar > select, .layers-menu summary { height:30px; display:inline-flex; align-items:center; }
+@media (pointer: coarse) { .map-toolbar > button, .map-toolbar > select, .layers-menu summary { height:38px; min-height:38px; } }
+.guest-walk > button { height:34px; display:inline-flex; align-items:center; }
+.guest-walk .hint-x { width:34px; padding:0; justify-content:center; }
+@media (pointer: coarse) { .guest-walk > button { height:38px; } .guest-walk .hint-x { width:38px; } }
+/* the tour card: bottom right, beside "Find me", when the map is wide; at the top when it is narrow */
+@container (min-width: 900px) { .tour { top:auto; bottom:14px; left:auto; right:14px; transform:none; width:min(460px, calc(100% - 422px)); } }
+/* narrow map and the tour running: the tour is at the top, the device's control docks at the bottom right */
+@container (max-width: 899px) { .guest-stage:has(.tour) .holo:not(.moved) { left:auto !important; right:8px; top:auto !important; bottom:8px; transform:none !important; max-width:calc(100% - 16px); } }
+.pin-card .seg { align-self:stretch; }
+.pin-card .seg button { flex:1; }
+/* toasts stay inside the map, never wider than it */
+.toast { max-width:min(460px, calc(100cqw - 28px)); }
+.stepper .step-i { overflow:hidden; } .stepper .step-i > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+@container (max-width: 760px) { .guest-walk .walk-dot { display:none; } .guest-walk { padding-left:12px; } }
+/* other pages' headers (technician, integrations): wrap onto a second line when narrow rather than overflow */
+@media (max-width: 1000px) { .topbar:not(:has(.top-more)) { flex-wrap:wrap !important; row-gap:6px; } .topbar:not(:has(.top-more)) .stats { flex-wrap:wrap !important; flex:1 1 auto; } .stats select { max-width:180px; } }
