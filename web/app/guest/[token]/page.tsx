@@ -8,6 +8,7 @@ import HoloControl from '@/components/HoloControl';
 import { stStatus, type StProfile } from '@/components/StZone';
 import GuestAssistant from '@/components/GuestAssistant';
 import Locator from '@/components/Locator';
+import FullscreenButton from '@/components/FullscreenButton';
 import { send, type FromRenderer } from '@/lib/bridge';
 
 type Dev = { id: string; type: string; label: string; name: string; health: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; status: { name: string; value: string; health: string }[]; finding: { title: string; lvl: string } | null; commands: Cmd[]; st?: StProfile };
@@ -46,6 +47,7 @@ export default function GuestPage() {
   const [tab, setTab] = useState<'room' | 'assistant'>('room');
   const [tour, setTour] = useState<number | null>(null);
   const [overview, setOverview] = useState(false);
+  const [hintShown, setHintShown] = useState(true);   // the "You're in …" card: closable, gone once the tour is over
   const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
   const cards = useRef<Record<string, HTMLDivElement | null>>({});
   const [route, setRoute] = useState<[number, number][]>([]);
@@ -142,7 +144,8 @@ export default function GuestPage() {
         <div className="guest-title"><small>{view?.guestName ? `Welcome, ${view.guestName}` : 'Guest access'}{view?.title ? ` · ${view.title}` : ''}</small><b>{view?.room.name ?? '…'}</b></div>
         {view && <span className="muted guest-until">until {new Date(view.expiresAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
       </header>
-      <section className="guest-stage">
+      <section className="guest-stage" data-fullscreen>
+        <FullscreenButton />
         {view && <TwinView onEvent={onEvent} ready={ready && built} src={`/godot/index.html?guest=${encodeURIComponent(token)}`} loadingText="Preparing the way to your room…" />}
         {walk.phase === 'walking' && (
           <div className="guest-walk glass">
@@ -156,14 +159,16 @@ export default function GuestPage() {
             <button onClick={() => send({ type: 'walk', action: 'skip' })}>Skip</button>
           </div>
         )}
-        {walk.phase === 'arrived' && tour == null && (
+        {walk.phase === 'arrived' && tour == null && hintShown && !holo && (
           <div className="guest-walk glass arrived">
             <span className="walk-dot" />
             <span><b>You’re in {view?.room.name}</b><small>Drag to look around · tap the floor to move · tap any device to control it right there</small></span>
             {stops.length > 0 && <button className="pri" onClick={() => setTour(0)}>Take the tour</button>}
+            <button className="hint-x" aria-label="Close" title="Close" onClick={() => setHintShown(false)}>✕</button>
           </div>
         )}
-        {view && <div className="locator-wrap"><Locator token={token} route={route} /></div>}
+        {view && <div className="locator-wrap"><Locator token={token} route={route} roomName={view.room.name}
+          onUnlock={(() => { const lock = view.devices.find(d => d.type === 'lock'); return lock && view.allowUnlock ? () => run(lock.id)('unlock') : undefined; })()} /></div>}
         {stepUp && (
           <div className="modal-back" onClick={() => setStepUp(null)}>
             <form className="modal glass pin-card" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); run(stepUp.id)(stepUp.command, {}, true, stepPin); }}>
@@ -186,8 +191,8 @@ export default function GuestPage() {
             <p>{TOUR[stops[tour].type]}</p>
             <div className="row">
               <button disabled={tour === 0} onClick={() => setTour(tour - 1)}>Back</button>
-              {tour < stops.length - 1 ? <button className="pri" onClick={() => setTour(tour + 1)}>Next</button> : <button className="pri" onClick={() => { setTour(null); send({ type: 'clearHighlight' }); }}>Done</button>}
-              <button className="ghost" onClick={() => { setTour(null); send({ type: 'clearHighlight' }); }}>End tour</button>
+              {tour < stops.length - 1 ? <button className="pri" onClick={() => setTour(tour + 1)}>Next</button> : <button className="pri" onClick={() => { setTour(null); setHintShown(false); openHolo(null); }}>Done</button>}
+              <button className="ghost" onClick={() => { setTour(null); setHintShown(false); openHolo(null); }}>End tour</button>
             </div>
           </div>
         )}

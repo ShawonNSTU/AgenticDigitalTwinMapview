@@ -25,6 +25,8 @@ export default function GuestAssistant({ token, onUi }: { token: string; onUi: (
   const [listening, setListening] = useState(false);
   const [speak, setSpeak] = useState(false);
   const rec = useRef<Rec | null>(null);
+  const [hasMic, setHasMic] = useState(false);   // Firefox has no speech input: no microphone button there
+  useEffect(() => { setHasMic(!!SpeechRec()); }, []);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ block: 'nearest' }); }, [msgs]);
 
@@ -111,9 +113,9 @@ export default function GuestAssistant({ token, onUi }: { token: string; onUi: (
       </div>
       <div className="assist-examples">{EXAMPLES[lang].map(e => <button key={e} onClick={() => send(e)} disabled={busy}>{e}</button>)}</div>
       <form className="assist-in" onSubmit={e => { e.preventDefault(); send(text); }}>
-        <button type="button" className={`mic ${listening ? 'on' : ''}`} onClick={mic} aria-label={listening ? 'Stop listening' : 'Speak'} title="Speak">
+        {hasMic && <button type="button" className={`mic ${listening ? 'on' : ''}`} onClick={mic} aria-label={listening ? 'Stop listening' : 'Speak'} title="Speak">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
-        </button>
+        </button>}
         <input value={text} onChange={e => setText(e.target.value)} placeholder={lang === 'bn-BD' ? 'যেমন: এসি ২৪ ডিগ্রি করো' : 'e.g. dim the lights'} aria-label="Ask the room assistant" />
         <button className="pri" disabled={busy || !text.trim()}>Send</button>
       </form>

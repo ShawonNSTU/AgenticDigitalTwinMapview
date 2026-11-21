@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { onRenderer, send } from '@/lib/bridge';
+import FullscreenButton from './FullscreenButton';
 
 const I = ({ d }: { d: string }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />;
 type CamAction = 'zoomIn' | 'zoomOut' | 'fit' | 'top' | 'perspective' | 'rotateLeft' | 'rotateRight' | 'tiltUp' | 'tiltDown' | 'north';
@@ -38,6 +39,9 @@ export default function MapNav() {
         <button className="walk-btn" title="Walk through the floor at eye height (enter rooms through their doors)" aria-label="Walk through" onClick={() => send({ type: 'walk', action: 'start' })}>
           <I d='<circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 3v3M7 12l3-4 4 1 3 3M11 15l1-6"/>' />
         </button>
+      </div>
+      <div className="nav-group glass">
+        <FullscreenButton className="" />
       </div>
       <div className="nav-group glass">
         <button className={keys ? 'on' : ''} title="Mouse and keyboard controls" aria-label="Controls" onClick={() => setKeys(!keys)}><b>?</b></button>

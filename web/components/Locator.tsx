@@ -1,14 +1,16 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { send } from '@/lib/bridge';
+import { onRenderer, send } from '@/lib/bridge';
 
 type Fix = { x: number; z: number; accuracy: number; source: string; at: number; checkpoint?: string };
+/** Walking time at 1.2 m/s, rounded the way people say it. */
+const eta = (m: number) => { const t = m / 1.2; return t < 60 ? `${Math.max(5, Math.round(t / 5) * 5)} s` : `${Math.round(t / 60)} min`; };
 const SRC: Record<string, string> = { rtls: 'positioning badge', 'rtls-sim': 'badge (simulated)', checkpoint: 'location code', pdr: 'step tracking' };
 
 /** "Find me": live indoor position for the guest. Fixes come from the hotel's positioning badge (RTLS), from
  *  location QR codes on the walls (scanned with this page or the phone camera), and between fixes from the
  *  phone's own step counting and compass (pedestrian dead reckoning). The 3D view follows the position. */
-export default function Locator({ token, route }: { token: string; route: [number, number][] }) {
+export default function Locator({ token, route, roomName, onUnlock }: { token: string; route: [number, number][]; roomName?: string; onUnlock?: () => void }) {
   const [live, setLive] = useState(false);
   const [fix, setFix] = useState<Fix | null>(null);
   const [pdr, setPdr] = useState(false);
@@ -20,6 +22,15 @@ export default function Locator({ token, route }: { token: string; route: [numbe
   const pos = useRef<{ x: number; z: number; acc: number } | null>(null);
   const heading = useRef<number | null>(null);
   const video = useRef<HTMLVideoElement>(null);
+  // where the 3D map put the position after matching it to the walkable floor, and the way left to the room
+  const [where, setWhere] = useState<{ room: string; toRoom?: number; atDoor?: boolean } | null>(null);
+  useEffect(() => onRenderer(m => {
+    if (m.type !== 'walk' || !m.live) return;
+    setWhere({ room: m.live.room, toRoom: m.live.toRoom, atDoor: m.live.atDoor });
+    // step tracking carries on from the matched spot, so it never drifts through a wall
+    if (pos.current) pos.current = { ...pos.current, x: m.live.x, z: m.live.z };
+  }), []);
+  useEffect(() => { if (!live) setWhere(null); }, [live]);
 
   // the latest fix from the server (any source), every second while live
   useEffect(() => {
@@ -102,7 +113,7 @@ export default function Locator({ token, route }: { token: string; route: [numbe
       t += 1.2 / L;
       if (t >= 1) { i += 1; t = 0; }
       const p = !pts[i + 1] ? pts[i] : [a[0] + (b[0] - a[0]) * Math.min(t, 1), a[1] + (b[1] - a[1]) * Math.min(t, 1)];
-      const nx = (Math.random() - 0.5) * 0.8, nz = (Math.random() - 0.5) * 0.8;
+      const nx = (Math.random() - 0.5) * 0.7, nz = (Math.random() - 0.5) * 0.7;   // a UWB badge is good to about ±0.3 m
       post({ x: p[0] + nx, z: p[1] + nz, accuracy: 0.6, source: 'rtls-sim' });
       setTimeout(tick, 1000);
     };
@@ -141,6 +152,16 @@ export default function Locator({ token, route }: { token: string; route: [numbe
         <button className={pdr ? 'on' : ''} onClick={startPdr} disabled={pdr}>{pdr ? `Step tracking · ${steps} steps` : 'Step tracking'}</button>
         <button className={sim ? 'on' : ''} disabled={route.length < 2} onClick={() => setSim(!sim)} title="For a demo without a positioning system">{sim ? 'Stop simulated badge' : 'Simulate a badge'}</button>
       </div>
+      {live && where && (
+        <div className="loc-way">
+          {where.toRoom === 0
+            ? <span><b>In {roomName ?? 'your room'}</b></span>
+            : where.toRoom != null
+              ? <span><b>{Math.max(1, Math.round(where.toRoom))} m to {roomName ?? 'your room'}</b> · about {eta(where.toRoom)} walk · now in {where.room}</span>
+              : <span>Now in {where.room}</span>}
+          {where.atDoor && onUnlock && <button className="pri" onClick={onUnlock}>You’re at your door · Unlock</button>}
+        </div>
+      )}
       {scan && <video ref={video} className="scan-video" muted playsInline />}
       {note && <span className="loc-note">{note}</span>}
     </div>

@@ -112,6 +112,10 @@ func _ready() -> void:
 			var ls := Node.new()
 			ls.set_script(load("res://tests/lift_shots.gd"))
 			add_child(ls)
+		if a == "--live-check":
+			var lc := Node.new()
+			lc.set_script(load("res://tests/live_check.gd"))
+			add_child(lc)
 		if a.begins_with("--routes="):
 			var rc := Node.new()
 			rc.set_script(load("res://tests/route_check.gd"))
@@ -822,6 +826,7 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 		"restart": _guest_restart(str(msg.get("from", "")))
 		"live":
 			_live = bool(msg.get("on", true))
+			_fix_count = 0
 			if walker:
 				walker.set_live(_live)
 				if _live:
@@ -951,6 +956,8 @@ var _guest_target := Vector2.INF
 var _live := false       # the guest's view follows their live indoor position
 var _route_at := 0       # ms of the last route re-plan from the live position
 var _last_fix := 0.0
+var _fix_count := 0      # live fixes since live tracking was turned on
+var _live_arrived := false
 var _guest_room := ""
 var _guest_from := ""
 
@@ -1159,16 +1166,35 @@ func _live_fix() -> void:
 	if at == _last_fix:
 		return
 	_last_fix = at
-	var q := walker.nav.nearest_free(Vector2(float(Store.me.x), float(Store.me.z)), 30)
-	walker.live_fix(q, float(Store.me.get("accuracy", 2.0)), str(Store.me.get("source", "")))
-	if Time.get_ticks_msec() - _route_at > 3000 and _guest_target != Vector2.INF and walker._confine.is_empty():
-		_route_at = Time.get_ticks_msec()
-		var route := walker.nav.path(q, _guest_target)
-		walker.show_route(q, route, Store.room_label(Store.room(_guest_room)))
+	var acc := float(Store.me.get("accuracy", 2.0))
+	var raw := Vector2(float(Store.me.x), float(Store.me.z))
+	# a fresh start (first fix, or a location code) is taken as given; otherwise matched to where we were
+	var fresh := _fix_count == 0 or str(Store.me.get("source", "")) == "checkpoint"
+	var q := walker.nav.match_fix(raw, walker.p, acc, not fresh)
+	_fix_count += 1
+	walker.live_fix(q, acc, str(Store.me.get("source", "")))
+	var info := {"on": true, "live": {"x": snappedf(q.x, 0.01), "z": snappedf(q.y, 0.01), "room": Store.room_label(Store.room_at(q))}}
+	if _guest_target != Vector2.INF:
+		var left := walker.nav.path_length(q, _guest_target)
+		var in_room: bool = not Store.room_at(q).is_empty() and Store.room_at(q).key == _guest_room
+		info.live["toRoom"] = 0.0 if in_room else snappedf(left, 0.1)
+		info.live["atDoor"] = not in_room and left < 3.0
+		if Time.get_ticks_msec() - _route_at > 3000 and not in_room:
+			_route_at = Time.get_ticks_msec()
+			walker.show_route(q, walker.nav.path(q, _guest_target), Store.room_label(Store.room(_guest_room)))
+		elif in_room:
+			walker.hide_route()
+	Bus.walk_changed.emit(info)
 	var r: Dictionary = Store.room_at(q)
 	if not r.is_empty() and r.key == _guest_room:
 		walker._track_room()
-		_guest_arrived()
+		# arrived by their own steps: say so once (the room is not locked in, the position may still move on)
+		if not _live_arrived:
+			_live_arrived = true
+			walker.hide_route()
+			Bus.walk_changed.emit({"on": true, "guest": "arrived", "room": _guest_room, "roomName": Store.room_label(Store.room(_guest_room))})
+	else:
+		_live_arrived = false
 
 
 ## The guest chose another starting point: plan the way again from there.
@@ -1188,6 +1214,7 @@ func _guest_restart(from_key: String) -> void:
 func _guest_skip() -> void:
 	if walker == null or _guest_target == Vector2.INF:
 		return
+	walker.finish_lift()   # skipped while the lift was still arriving
 	walker.teleport(_guest_target)
 	walker._track_room()
 	_guest_arrived()

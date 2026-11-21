@@ -91,6 +91,10 @@ func set_live(on: bool) -> void:
 	live = on
 	if on:
 		_cancel_route()
+		# a live position can be anywhere on the floor again, even after arriving in the room
+		if not _confine.is_empty():
+			nav.unrestrict()
+			_confine = PackedVector2Array()
 	if _you == null:
 		_you = Node3D.new()
 		add_child(_you)
@@ -136,7 +140,7 @@ func set_live(on: bool) -> void:
 func live_fix(q: Vector2, accuracy: float, source: String) -> void:
 	if not live:
 		return
-	_you.position = Vector3(q.x, 0, q.y)
+	# the marker is where the body is: it walks the route between fixes, never through a wall
 	_you_acc.scale = Vector3(clampf(accuracy, 0.4, 15.0), 1, clampf(accuracy, 0.4, 15.0))
 	_you_label.text = "You are here · ±%.0f m · %s" % [accuracy, {"rtls": "positioning badge", "rtls-sim": "badge (simulated)", "checkpoint": "location code", "pdr": "step tracking"}.get(source, source)]
 	if q.distance_to(p) > 8.0 or (_path.is_empty() and q.distance_to(p) > 0.35):
@@ -405,6 +409,24 @@ func lift_busy() -> bool:
 	return not _lift.is_empty()
 
 
+## Cut the lift arrival short (the guest skipped ahead): the doors shut, nothing waits for the step out.
+func finish_lift() -> void:
+	if _lift.is_empty():
+		return
+	var side: Vector2 = _lift.side
+	var door: Vector2 = _lift.door
+	var f: Vector2 = _lift.f
+	var w: float = _lift.w
+	for i in 2:
+		var sgn := -1.0 if i == 0 else 1.0
+		var c: Vector2 = door - f * 0.02 + side * (w / 4) * sgn
+		var leaf: MeshInstance3D = _lift.leaves[i]
+		leaf.position = Vector3(c.x, leaf.position.y, c.y)
+	_lift = {}
+	for c in stepped_out.get_connections():
+		stepped_out.disconnect(c.callable)
+
+
 func _lift_tick(delta: float) -> void:
 	var L := _lift
 	L.t = float(L.t) + delta
@@ -446,6 +468,8 @@ func _lift_tick(delta: float) -> void:
 func _process(delta: float) -> void:
 	delta = minf(delta, 0.25)
 	_fit_fov()
+	if live and _you:
+		_you.position = Vector3(p.x, 0, p.y)
 	if not _lift.is_empty():
 		_lift_tick(delta)
 		return

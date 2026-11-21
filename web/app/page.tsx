@@ -10,6 +10,7 @@ import MapNav from '@/components/MapNav';
 import WalkHud from '@/components/WalkHud';
 import GuestQr from '@/components/GuestQr';
 import RoomFurniture from '@/components/RoomFurniture';
+import FullscreenButton from '@/components/FullscreenButton';
 import { send, RENDERER_VERSION, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
@@ -170,8 +171,9 @@ export default function Home() {
           <a href="/setup"><button className="ghost">Upload floor plan</button></a>
         </div>
       </header>
-      <section className="stage" ref={stage}>
+      <section className="stage" ref={stage} data-fullscreen>
         <TwinView onEvent={onEvent} ready={ready && floorShown} />
+        {walk.on && <FullscreenButton />}
         {walk.on ? <WalkHud room={walk.roomName ?? ''} note={walk.note} rooms={rooms.map(r => ({ key: r.key, name: r.name }))} onQr={walk.room && walk.room !== 'out' && guestReady(walk.room) ? () => setQrFor({ room: walk.room!, roomName: walk.roomName ?? walk.room! }) : undefined} /> : (
           <>
             <DevicePalette stage={stage} hover={hover} counts={counts} />

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 
 type Link = { localId: string; stId: string; component: string; label?: string; type: string };
-type StDev = { stId: string; label: string; capabilities: string[] };
+type StDev = { stId: string; label: string; capabilities: string[]; room?: string; type?: string | null };
+type Sync = { found: number; already: number; room: string | null; linked: { localId: string; label: string; how: 'name' | 'slot' | 'added' }[]; unplaced: { label: string; type: string | null; room: string; reason: string }[]; simulated: { localId: string; name: string }[] };
 type Dev = { id: string; type: string; label: string; room: string; name: string };
 type Policy = { stepUpMinutes: number; maxUnlocksPer10Min: number; autoRelockSec: number };
 type Audit = { at: number; deviceId: string; room: string; action: string; by: string; ok: boolean; reason: string; via: string };
@@ -28,6 +29,8 @@ export default function Integrations() {
   const [qrs, setQrs] = useState<Record<string, string>>({});
   const [origin, setOrigin] = useState('');
   const [msg, setMsg] = useState('');
+  const [sync, setSync] = useState<Sync | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const i = await fetch('/api/integrations').then(json); setSt(i.smartthings); setPolicy(p => p ?? i.lockPolicy);
@@ -43,7 +46,22 @@ export default function Integrations() {
   }, [pos, origin]);
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000); };
-  const connect = async () => { const d = await post('/api/integrations', { token }); setSt(d.smartthings); setToken(''); flash(token ? 'Token saved' : 'Disconnected'); load(); };
+  // Connect checks the token with SmartThings and brings the account's devices onto the map straight away
+  const connect = async () => {
+    setBusy(true);
+    const d = await post('/api/integrations', { token }).finally(() => setBusy(false));
+    setSt(d.smartthings); setToken('');
+    if (d.error) { setSync(null); flash(d.error); }
+    else if (d.sync) { setSync(d.sync); flash(`Connected · ${d.sync.found} devices found, ${d.sync.linked.length + d.sync.already} on the map`); }
+    else { setSync(null); flash('Disconnected'); }
+    load();
+  };
+  const resync = async () => { setBusy(true); const d = await post('/api/integrations/smartthings', { sync: true }).finally(() => setBusy(false)); if (d.error) flash(d.error); else { setSync(d.sync); flash(d.sync.linked.length ? `${d.sync.linked.length} more on the map` : 'Everything is on the map already'); } load(); };
+  const dropSimulated = async () => {
+    if (!confirm('Remove the devices in the SmartThings Experience Zone that have no real SmartThings device?')) return;
+    const d = await post('/api/integrations/smartthings', { removeSimulated: true });
+    flash(`${d.removed?.length ?? 0} simulated devices removed`); setSync(x => x ? { ...x, simulated: [] } : x); load();
+  };
   const doLink = async (localId: string) => {
     const stId = pick[localId]; if (!stId) return;
     const d = await post('/api/integrations/links', { localId, stId, label: acct.find(a => a.stId === stId)?.label });
@@ -67,11 +85,19 @@ export default function Integrations() {
           <h3>SmartThings</h3>
           <p className="muted">Link devices on the twin to real SmartThings devices. Commands to a linked device (from the host, guests or the assistants) go to SmartThings; its reported status replaces the simulated values. Other devices stay simulated.</p>
           <div className="row"><span className={`badge ${st?.configured ? 'ok' : 'watch'}`}>{st?.configured ? 'Connected' : 'Not connected'}</span><span className="muted">{st?.api}</span></div>
-          <div className="row"><input type="password" placeholder="Personal access token (devices: read, execute)" value={token} onChange={e => setToken(e.target.value)} /><button className="pri" onClick={connect}>{st?.configured && !token ? 'Disconnect' : 'Connect'}</button></div>
-          <span className="muted">Or set SMARTTHINGS_TOKEN on the server. A token entered here is kept in memory only.</span>
+          <div className="row"><input type="password" placeholder="Personal access token (devices: read, execute; locations: read)" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && token) connect(); }} /><button className="pri" disabled={busy || (!token && !st?.configured)} onClick={connect}>{busy ? 'Connecting…' : st?.configured && !token ? 'Disconnect' : 'Connect'}</button></div>
+          <span className="muted">Create a token at account.smartthings.com/tokens. Connecting fetches every device in the account and puts it on the map: on the 4th floor in the SmartThings Experience Zone, taking the place of the simulated device it matches; on other floors in the room with the same name as its SmartThings room. Or set SMARTTHINGS_TOKEN on the server. A token entered here is kept in memory only.</span>
+          {sync && (
+            <div className="sync-card">
+              <b>{sync.found} devices in the account · {sync.linked.length + sync.already} on the map{sync.room ? ` (${sync.room})` : ''}{sync.already ? ` · ${sync.already} were linked already` : ''}</b>
+              {sync.linked.length > 0 && <ul>{sync.linked.map(l => <li key={l.localId}><b>{l.label}</b> → {l.localId} <span className="muted">{l.how === 'name' ? 'same name' : l.how === 'slot' ? 'took the place of a simulated device' : 'added at a free spot'}</span></li>)}</ul>}
+              {sync.unplaced.length > 0 && <><span className="muted">Not on the map:</span><ul>{sync.unplaced.map((u, i) => <li key={i}>{u.label} <span className="muted">· {u.reason}</span></li>)}</ul></>}
+              {sync.simulated.length > 0 && <div className="row"><span className="muted grow">{sync.simulated.length} devices in the zone have no real device and stay simulated: {sync.simulated.map(x => x.name).join(', ')}.</span><button onClick={dropSimulated}>Remove them</button></div>}
+            </div>
+          )}
           {st?.lastError && <div className="bad-text">Last error: {st.lastError}</div>}
           {acctErr && <div className="bad-text">{acctErr}</div>}
-          {st?.configured && <div className="row"><button onClick={byName}>Link by name</button><span className="muted">Links every twin device whose name is the name of a device in the SmartThings app (the SmartThings Experience Zone uses the app's names).</span></div>}
+          {st?.configured && <div className="row"><button disabled={busy} onClick={resync}>Fetch devices again</button><button onClick={byName}>Link by name</button><span className="muted">Links every twin device whose name is the name of a device in the SmartThings app (the SmartThings Experience Zone uses the app's names).</span></div>}
           <table className="tbl">
             <thead><tr><th>Twin device</th><th>Room</th><th>SmartThings device</th><th /></tr></thead>
             <tbody>{devs.filter(d => CONTROLLED.includes(d.type)).map(d => {
@@ -80,7 +106,7 @@ export default function Integrations() {
                 <tr key={d.id}>
                   <td><b>{d.id}</b> {d.label}</td><td>{d.name.split(' · ')[1]}</td>
                   <td>{l ? <span>{l.label ?? l.stId} <span className="muted">({l.stId.slice(0, 8)}…)</span></span> : (
-                    acct.length ? <select value={pick[d.id] ?? ''} onChange={e => setPick(p => ({ ...p, [d.id]: e.target.value }))}><option value="">Choose…</option>{acct.map(a => <option key={a.stId} value={a.stId}>{a.label}</option>)}</select>
+                    acct.length ? <select value={pick[d.id] ?? ''} onChange={e => setPick(p => ({ ...p, [d.id]: e.target.value }))}><option value="">Choose…</option>{acct.map(a => <option key={a.stId} value={a.stId}>{a.label}{a.room ? ` (${a.room})` : ''}</option>)}</select>
                       : <input placeholder="SmartThings device id" value={pick[d.id] ?? ''} onChange={e => setPick(p => ({ ...p, [d.id]: e.target.value.trim() }))} disabled={!st?.configured} />)}</td>
                   <td>{l ? <button onClick={() => unlink(d.id)}>Unlink</button> : <button disabled={!st?.configured || !pick[d.id]} onClick={() => doLink(d.id)}>Link</button>}</td>
                 </tr>);

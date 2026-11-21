@@ -71,7 +71,14 @@ Proof of concept with three features:
    bound to the pass at check-in, posted to `/api/positioning/rtls` with its key), from location QR codes on the
    walls (one beside every door and in each stair or lift; print them from `/integrations`, scan with the phone
    camera), and in between from the phone's step counting and compass. "Simulate a badge" replays the route as
-   an RTLS would, for demos without hardware.
+   an RTLS would, for demos without hardware. Every fix is map-matched with continuity
+   (`WalkNav.match_fix`): of the walkable spots near the fix, the one reachable from the last position within the
+   distance anyone could have walked since, so badge noise never puts the guest through a wall into the next room;
+   the "you are here" marker then walks the route there through the doorways. Step tracking carries on from the
+   matched spot, so it does not drift through walls either. The panel shows the metres and walking time left to the
+   room and where the guest is now; at the door it offers "Unlock" (with the PIN, as the policy asks). The
+   renderer test `--live-check` feeds noisy fixes, and fixes pushed to the wrong side of a wall, along four routes:
+   no fix is matched across a wall (plain nearest-floor snapping crossed 1 to 6 times per run).
 9. **Room tour and 3D controls.** In the room a guided tour turns to each device and says what it does. Tapping a
    device (in 3D or in the list) turns the view to it and pins its control beside it in the room, with a glowing
    ring around the device: a climate dial for the AC (drag round the ring; mode chips, fan bars), a light beam
@@ -93,10 +100,16 @@ Proof of concept with three features:
     the lights" or "Make the room comfortable for sleeping": the assistant shows the planned actions, asks first for
     broad wishes, runs them and reports each device's result, including partial failures (a device offline). It
     uses Claude when `ANTHROPIC_API_KEY` is set and a rule-based reader otherwise, always through the guest API.
-12. **Real devices and door access** (`/integrations`). Connect a SmartThings account (personal access token, or
-    `SMARTTHINGS_TOKEN`) and link twin devices to real ones: every command (host, guest, assistants, policy) then
-    goes to the SmartThings API, and the device's reported status and online state replace the simulated values;
-    unlinked devices stay simulated. Unlocking follows the hotel's access policy: only the guest's own door, only
+12. **Real devices and door access** (`/integrations`). Paste a SmartThings personal access token and press
+    Connect: the token is checked and every device in the account is fetched with its room and category
+    (`GET /v1/devices`, `/v1/locations/{id}/rooms`) and put on the map (`web/lib/integrations/stsync.ts`). On the
+    4th floor a device goes to the SmartThings Experience Zone, as the room is set up now: a twin device with the
+    same name is linked to it; otherwise a twin device of the same type that no real device is named after takes it
+    over (renamed, same spot); otherwise it is added at a free spot that suits its type (wall, ceiling or floor).
+    A device whose SmartThings room is named after another room of the floor goes there. On other floors, devices
+    go to the room with their SmartThings room's name. Hubs and phones are skipped; twin devices left without a real
+    one stay simulated and can be removed in one click. Every command (host, guest, assistants, policy) to a linked
+    device then goes to the SmartThings API, and its reported status and online state replace the simulated values. Unlocking follows the hotel's access policy: only the guest's own door, only
     if the pass allows it, after the check-in PIN, with the PIN asked again after a set time, a limit on unlocks,
     automatic relocking, and an audit log of every attempt.
 11. **Technician alerts.** `/tech` lists alerts from devices that are not healthy (with browser notifications for
@@ -155,6 +168,21 @@ Presenter mode: the Next button, → / space / Page Down (a presentation clicker
 1-5 to jump, Esc to stop. `/story?autoplay=1` plays by itself and loops (for a screen or kiosk). The guest is
 fictional; chapter 3 uses the guest assistant (with Claude when `ANTHROPIC_API_KEY` is set, else the built-in
 rules) and falls back to the same changes made directly if the assistant is not running.
+
+## Full screen, tablets and browsers
+
+The map on the host page, the technician console and the guest page has a full-screen button (in the map
+controls, or top right of the map): the map with everything floating over it fills the screen, and Esc or the
+button again goes back. It uses the Fullscreen API (Chrome, Firefox, Edge; the webkit form on iPad Safari);
+where a browser has none (iPhone) the map is stretched over the window instead.
+
+Laptop and tablet layouts: the header keeps rooms, building, floor, devices and alerts on one line on laptops and
+wraps to two lines on tablets; below 900 px the side panel moves under the map. Touch screens get bigger map
+controls. The 3D view is a single-threaded WebGL 2 export, so it needs no cross-origin isolation headers and runs
+in Firefox as in Chrome. Browser features that only some browsers have fall back: voice input (no microphone
+button in Firefox), QR scanning in the page (otherwise the phone camera opens the code's link), notifications.
+Tested here with Chromium at 1366x768, 1180x820 and 820x1180 with touch; Firefox could not be installed in the
+build environment, so check it on a real machine.
 
 ## Run locally
 

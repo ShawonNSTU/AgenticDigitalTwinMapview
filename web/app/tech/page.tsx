@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import TwinView from '@/components/TwinView';
+import FullscreenButton from '@/components/FullscreenButton';
 import { DeviceIcon } from '@/components/DevicePalette';
 import { send, type FromRenderer } from '@/lib/bridge';
 
@@ -114,8 +115,9 @@ export default function TechPage() {
           <a href="/"><button className="ghost">Floor map</button></a>
         </div>
       </header>
-      <section className="stage">
+      <section className="stage" data-fullscreen>
         <TwinView onEvent={onEvent} ready={ready && built} />
+        <FullscreenButton />
         <div className="alert-list glass">
           <div className="row between"><b>Alerts</b><div className="seg"><button className={filter === 'open' ? 'on' : ''} onClick={() => setFilter('open')}>Open</button><button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All</button></div></div>
           {shown.length === 0 && <div className="muted pad">No alerts. Devices report normally.</div>}

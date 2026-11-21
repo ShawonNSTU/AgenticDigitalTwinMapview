@@ -230,6 +230,15 @@ export function moveDevice(id: string, p: { x?: number; z?: number; y?: number; 
   return { ok: true as const, device: next };
 }
 
+/** Give a device a new name (kept with its room, "Name · Room"), e.g. the label of the real device it now stands for. */
+export function renameDevice(id: string, label: string) {
+  const cur = byId[id];
+  if (!cur) return { ok: false as const, error: `Unknown device ${id}` };
+  const room = ROOMS.find((r: any) => r.key === cur.room) as any;
+  setDevices(DEV.map(d => d.id === id ? { ...plain(d), name: `${label} · ${room?.name ?? 'Outside'}` } : plain(d)));
+  return { ok: true as const };
+}
+
 export function removeDevice(id: string) {
   if (!byId[id]) return { ok: false as const, error: `Unknown device ${id}` };
   setDevices(DEV.filter(d => d.id !== id).map(plain));

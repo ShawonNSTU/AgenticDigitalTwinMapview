@@ -126,13 +126,79 @@ func _clearance() -> void:
 			astar.set_point_weight_scale(Vector2i(k % size.x, k / size.x), 1.0 + 4.0 * (1.0 - float(d) / reach))
 
 
-## Only cells inside this outline stay walkable.
+## Only cells inside this outline stay walkable (until unrestrict()).
+var _saved := PackedByteArray()
+
+
 func restrict(poly: PackedVector2Array) -> void:
+	if _saved.is_empty():
+		_saved.resize(size.x * size.y)
+		for j in size.y:
+			for i in size.x:
+				_saved[j * size.x + i] = 1 if astar.is_point_solid(Vector2i(i, j)) else 0
 	for j in size.y:
 		for i in size.x:
 			var c := Vector2i(i, j)
 			if not astar.is_point_solid(c) and not Geometry2D.is_point_in_polygon(centre(c), poly):
 				astar.set_point_solid(c, true)
+
+
+## The whole floor walkable again, as before restrict().
+func unrestrict() -> void:
+	if _saved.is_empty():
+		return
+	for j in size.y:
+		for i in size.x:
+			astar.set_point_solid(Vector2i(i, j), _saved[j * size.x + i] == 1)
+	_saved = PackedByteArray()
+
+
+## Length of the walking route from a to b (INF when b cannot be reached).
+func path_length(a: Vector2, b: Vector2) -> float:
+	var r := path(a, b, false)
+	if r.is_empty():
+		return INF
+	var L := a.distance_to(r[0])
+	for i in range(1, r.size()):
+		L += r[i - 1].distance_to(r[i])
+	return L
+
+
+## Map matching for a live position fix: the walkable spot near the raw fix that is most plausible given where
+## the person was a moment ago. Noise must not put them through a wall into the next room: a spot that can only
+## be reached by a long way round loses to one on their side of the wall, unless the fix is far from it.
+func match_fix(raw: Vector2, prev: Vector2, accuracy: float, has_prev: bool) -> Vector2:
+	var q := nearest_free(raw, 30)
+	if not has_prev:
+		return q
+	# how far anyone can have walked since the last fix: to the fix, give or take its error on both ends
+	var acc := clampf(accuracy, 0.3, 4.0)
+	var budget := prev.distance_to(raw) + 2.0 * acc + 0.5
+	var walked := path_length(prev, q)
+	if walked <= minf(budget, prev.distance_to(q) * 1.35 + 0.8):
+		return q
+	# look around the fix for the closest spot that can be reached in that distance (their side of the wall)
+	var best := Vector2.INF
+	var fallback := q
+	var fallback_cost := walked + 2.0 * q.distance_to(raw)
+	var r := 0.15
+	while r <= acc + 0.9:
+		for k in 24:
+			var a := TAU * k / 24.0
+			var c := raw + Vector2(cos(a), sin(a)) * r
+			if not is_free(c):
+				continue
+			var w := path_length(prev, c)
+			if w <= budget and w <= prev.distance_to(c) * 1.35 + 0.8:
+				if best == Vector2.INF or c.distance_to(raw) < best.distance_to(raw):
+					best = c
+			elif w + 2.0 * c.distance_to(raw) < fallback_cost:
+				fallback_cost = w + 2.0 * c.distance_to(raw)
+				fallback = c
+		if best != Vector2.INF:
+			return best  # the nearest ring with a plausible spot
+		r += 0.15
+	return fallback
 
 
 func to_cell(p: Vector2) -> Vector2i:

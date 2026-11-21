@@ -35,7 +35,7 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .glass { background:var(--glass); backdrop-filter:blur(16px) saturate(1.4); -webkit-backdrop-filter:blur(16px) saturate(1.4); border:1px solid rgba(255,255,255,.9); outline:1px solid rgba(15,23,42,.06); border-radius:var(--radius); box-shadow:var(--shadow-lg); }
 
 /* ---------- layout ---------- */
-.app { display:grid; grid-template: 'h h' auto 'stage side' 1fr / 1fr 392px; height:100vh; }
+.app { display:grid; grid-template: 'h h' auto 'stage side' 1fr / 1fr 392px; height:100vh; height:100dvh; }
 .topbar { grid-area:h; display:flex; align-items:center; gap:18px; padding:10px 18px; background:#fff; border-bottom:1px solid var(--line); box-shadow:var(--shadow-sm); position:relative; z-index:10; }
 .brand { display:flex; gap:11px; align-items:center; }
 .brand b { display:block; font-size:15px; font-weight:700; letter-spacing:-.1px; color:var(--text); }
@@ -162,7 +162,7 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .msg.user { background:linear-gradient(180deg, #3b82f6, var(--acc)); color:#fff; align-self:flex-end; border-bottom-left-radius:12px; border-bottom-right-radius:4px; }
 .msg.tool { background:none; color:var(--muted); font-size:12px; padding:0 4px; }
 .chat form input { flex:1; }
-@media (max-width: 900px) { .app { grid-template: 'h' auto 'stage' 60vh 'side' 1fr / 1fr; } .side { border-left:0; border-top:1px solid var(--line); } .palette { width:180px; } .stats .stat, .floor-chip { display:none; } }
+@media (max-width: 900px) { .app { grid-template: 'h' auto 'stage' 60vh 'side' 1fr / 1fr; } .side { border-left:0; border-top:1px solid var(--line); } .palette { width:180px; } }
 
 /* ---------- setup (floor plan editor) ---------- */
 .setup { display:grid; grid-template-rows:auto 1fr; height:100vh; }
@@ -595,3 +595,38 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .ghost-file:hover { background:var(--bg2); }
 .ghost-file input { position:absolute; inset:0; opacity:0; cursor:pointer; }
 .story-need { display:grid; place-items:center; } .story-need > div { display:flex; flex-direction:column; gap:10px; align-items:center; text-align:center; max-width:420px; } .story-need span { color:#9aa7b6; }
+.sync-card { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg2); font-size:13px; }
+.sync-card ul { margin:0; padding-left:18px; display:flex; flex-direction:column; gap:2px; }
+.hint-x { width:30px; height:30px; padding:0; display:grid; place-items:center; border-radius:50%; background:transparent; border-color:transparent; box-shadow:none; color:var(--muted); font-size:13px; flex:none; }
+.hint-x:hover { background:var(--bg2); }
+/* full screen map: the floating button, and the stretched fallback where the browser has no Fullscreen API */
+.fs-float { position:absolute; right:14px; top:14px; z-index:7; width:38px; height:38px; padding:0; display:grid; place-items:center; border-radius:10px; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); }
+.fs-float.on { background:var(--acc-bg); color:var(--acc-dark); }
+[data-fullscreen]:fullscreen { width:100vw; height:100vh; background:#0b1220; }
+.pseudo-full { position:fixed !important; inset:0 !important; z-index:1000 !important; width:100vw !important; height:100vh !important; height:100dvh !important; }
+body.has-pseudo-full { overflow:hidden; }
+.loc-way { display:flex; flex-direction:column; gap:6px; font-size:12.5px; padding-top:6px; border-top:1px solid var(--line); }
+
+/* tablets and small laptops: the header keeps every item (rooms, location, floor, devices, attention, links),
+   compact on one line, or on two lines when the screen is narrow */
+.topbar .brand b, .topbar button { white-space:nowrap; }
+@media (max-width: 1400px) {
+  .topbar { gap:12px; padding:8px 12px; }
+  .topbar .brand small { display:none; }
+  .stats { gap:4px; }
+  .stats button.ghost { padding:6px 9px; }
+  .floor-chip { max-width:min(420px, 34vw); }
+}
+@media (max-width: 1280px) {
+  .topbar { flex-wrap:wrap; row-gap:6px; }
+  .floor-chip { order:3; max-width:100%; flex:1 1 100%; justify-content:center; }
+  .stats { margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
+}
+@media (max-width: 1000px) { .tech .alert-list { max-height:42%; } }
+/* touch screens: bigger targets on the map controls */
+@media (pointer: coarse) {
+  .map-nav button, .fs-float { min-width:42px; min-height:42px; }
+  .map-toolbar button { min-height:38px; padding:6px 12px; }
+  .hint-x { width:38px; height:38px; }
+}
+.guest-walk button { white-space:nowrap; flex:none; }

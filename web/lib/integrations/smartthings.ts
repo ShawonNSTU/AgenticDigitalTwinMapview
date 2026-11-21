@@ -56,6 +56,33 @@ export async function accountDevices() {
   return out;
 }
 
+/** Every device in the account with its room id and category (GET /devices, all pages). */
+export async function accountDevicesFull() {
+  const out: { stId: string; label: string; roomId: string; category: string; capabilities: string[] }[] = [];
+  let next: string | null = '/devices';
+  while (next && out.length < 500) {
+    const page: any = await call(next);
+    for (const d of page.items ?? []) {
+      const main = (d.components ?? []).find((c: any) => c.id === 'main') ?? d.components?.[0];
+      out.push({ stId: d.deviceId, label: d.label ?? d.name ?? d.deviceId, roomId: d.roomId ?? '', category: main?.categories?.[0]?.name ?? '', capabilities: (main?.capabilities ?? []).map((x: any) => x.id) });
+    }
+    const href: string | undefined = page._links?.next?.href;
+    next = href ? href.replace(/^https?:\/\/[^/]+\/v1/, '') : null;
+  }
+  return out;
+}
+
+/** Room names by room id, across the account's locations (GET /locations, /locations/{id}/rooms). */
+export async function accountRooms() {
+  const names: Record<string, string> = {};
+  const locs: any = await call('/locations');
+  for (const l of locs.items ?? []) {
+    const rooms: any = await call(`/locations/${encodeURIComponent(l.locationId)}/rooms`).catch(() => ({ items: [] }));
+    for (const r of rooms.items ?? []) names[r.roomId] = r.name;
+  }
+  return names;
+}
+
 const AC_FAN = (p: number) => (p <= 0 ? 'auto' : p < 45 ? 'low' : p < 75 ? 'medium' : 'high');
 
 /** The SmartThings command(s) for one of the twin's commands, by device type. Null: no equivalent. */

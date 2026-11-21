@@ -42,7 +42,7 @@ export type FromRenderer =
   | ({ type: 'dropDevice'; deviceType: string } & Placement)
   | ({ type: 'moveDevice'; id: string } & Placement)
   | { type: 'placeHover'; room: string; roomName: string; valid: boolean; mount: string }
-  | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string; guest?: 'walking' | 'arrived'; from?: string; to?: string; metres?: number; route?: [number, number][] }
+  | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string; guest?: 'walking' | 'arrived'; from?: string; to?: string; metres?: number; route?: [number, number][]; live?: { x: number; z: number; room: string; toRoom?: number; atDoor?: boolean } }
   | { type: 'roomClicked'; room: string; roomName: string }
   | { type: 'guestDenied'; code: number }
   | { type: 'anchor'; id: string; x: number; y: number; visible: boolean };

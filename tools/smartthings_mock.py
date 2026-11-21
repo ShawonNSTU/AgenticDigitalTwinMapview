@@ -15,7 +15,26 @@ DEV = {
     "st-z-shade": {"label": "aqara roller shade control", "caps": ["windowShade", "windowShadeLevel"], "state": {"windowShade": {"windowShade": {"value": "open"}}, "windowShadeLevel": {"shadeLevel": {"value": 100}}}, "health": "ONLINE"},
     "st-z-switch": {"label": "blinds switch", "caps": ["switch"], "state": {"switch": {"switch": {"value": "off"}}}, "health": "ONLINE"},
 }
+# rooms and categories as the real account reports them (GET /devices gives roomId and components[].categories)
+ROOMS = {"room-401": "Room 401", "room-403": "Training Room 403"}
+META = {
+    "st-lock-1": ("room-403", "SmartLock"), "st-ac-1": ("room-403", "AirConditioner"), "st-light-1": ("room-403", "Light"),
+    "st-z-light1": ("room-401", "Light"), "st-z-shade": ("room-401", "Blind"), "st-z-switch": ("room-401", "Switch"),
+    "st-z-hue": ("room-401", "Light"), "st-z-speaker": ("room-401", "Speaker"), "st-hub": ("room-401", "Hub"),
+}
+DEV.update({
+    # in the zone's account but not among the twin's names: it takes over a simulated light or is added
+    "st-z-hue": {"label": "Hue Go", "caps": ["switch", "switchLevel", "colorControl"], "state": {"switch": {"switch": {"value": "on"}}, "switchLevel": {"level": {"value": 40}}}, "health": "ONLINE"},
+    "st-z-speaker": {"label": "Galaxy Home Mini", "caps": ["audioVolume", "mediaPlayback"], "state": {"audioVolume": {"volume": {"value": 20}}}, "health": "ONLINE"},
+    "st-hub": {"label": "SmartThings Hub", "caps": ["bridge"], "state": {}, "health": "ONLINE"},
+})
 LOG = []
+
+
+def _item(k, v):
+    room, cat = META.get(k, ("", ""))
+    return {"deviceId": k, "label": v["label"], "roomId": room, "locationId": "loc-1",
+            "components": [{"id": "main", "capabilities": [{"id": c} for c in v["caps"]], "categories": [{"name": cat, "categoryType": "manufacturer"}]}]}
 FAIL = {"next": False}
 
 
@@ -34,11 +53,15 @@ class H(BaseHTTPRequestHandler):
             return self._send(401, {"error": {"message": "Unauthorized"}})
         p = self.path.split("?")[0].removeprefix("/v1")
         if p == "/devices":
-            return self._send(200, {"items": [{"deviceId": k, "label": v["label"], "components": [{"id": "main", "capabilities": [{"id": c} for c in v["caps"]]}]} for k, v in DEV.items()], "_links": {}})
+            return self._send(200, {"items": [_item(k, v) for k, v in DEV.items()], "_links": {}})
+        if p == "/locations":
+            return self._send(200, {"items": [{"locationId": "loc-1", "name": "Samsung R&D"}]})
+        if p == "/locations/loc-1/rooms":
+            return self._send(200, {"items": [{"roomId": k, "name": v, "locationId": "loc-1"} for k, v in ROOMS.items()]})
         parts = p.strip("/").split("/")
         if len(parts) == 2 and parts[1] in DEV:
             v = DEV[parts[1]]
-            return self._send(200, {"deviceId": parts[1], "label": v["label"], "components": [{"id": "main", "capabilities": [{"id": c} for c in v["caps"]]}]})
+            return self._send(200, _item(parts[1], v))
         if len(parts) == 3 and parts[2] == "status":
             return self._send(200, {"components": {"main": DEV[parts[1]]["state"]}})
         if len(parts) == 3 and parts[2] == "health":
