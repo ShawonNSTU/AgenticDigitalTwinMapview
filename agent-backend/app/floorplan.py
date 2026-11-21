@@ -16,7 +16,7 @@ import re
 import cv2
 import numpy as np
 
-from . import plan_cv
+from . import known_plans, plan_cv
 
 from .config import ANTHROPIC_API_KEY, AGENT_MODEL
 
@@ -196,12 +196,54 @@ def merge(cvr: dict, ai: dict | None) -> dict:
     return out
 
 
+def _crop(result: dict, crop: list[float]) -> None:
+    """Move every coordinate in a result into the cropped image (fractions of the crop)."""
+    x0, y0, x1, y1 = crop
+    sx, sy = x1 - x0, y1 - y0
+    for r in result["rooms"]:
+        r["points"] = [[round((x - x0) / sx, 4), round((y - y0) / sy, 4)] for x, y in r["points"]]
+    for f in result["doors"] + result["furniture"]:
+        f["fx"] = round((f["fx"] - x0) / sx, 5); f["fy"] = round((f["fy"] - y0) / sy, 5)
+        f["fw"] = round(f["fw"] / sx, 5); f["fd"] = round(f["fd"] / sx, 5)
+    if result.get("outdoor"):
+        result["outdoor"] = {"x": (result["outdoor"]["x"] - x0) / sx, "y": (result["outdoor"]["y"] - y0) / sy}
+    if result.get("width_m"):
+        result["width_m"] = round(result["width_m"] * sx * 2) / 2
+
+
+FLOOR = re.compile(r"\b(ground|basement|mezzanine|roof|first|second|third|fourth|fifth|sixth|\d{1,2}(?:st|nd|rd|th)?)\s+(floor|level)\b"
+                   r"|\b(level|floor)\s+(\d{1,2})\b", re.I)
+
+
+def _floor_name(texts: list[str]) -> str | None:
+    """The floor the sheet's title names ("GROUND FLOOR PLAN", "Level 3"), if any."""
+    for t in texts:
+        m = FLOOR.search(t)
+        if m:
+            return (m.group(0).strip().lower().capitalize())
+    return None
+
+
+def _jpeg(img: np.ndarray) -> str:
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode() if ok else ""
+
+
+def _known(pid: str, how: str) -> dict:
+    return {"known": pid, "method": how, "rooms": [], "doors": [], "furniture": [], "outdoor": None,
+            "photo_corners": None, "width_m": None, "scale_note": None}
+
+
 async def analyze_plan(data_url: str) -> dict:
     media_type, data = _decode(data_url)
     try:
         img = plan_cv.decode(data)
     except ValueError as e:
         raise ParseError("Could not read this image") from e
+    # a floor the platform already has a checked model of is built from that model
+    pid = await asyncio.to_thread(known_plans.image_match, img)
+    if pid:
+        return _known(pid, "recognised from the drawing")
     cv_task = asyncio.to_thread(plan_cv.analyze, img)
     if ANTHROPIC_API_KEY:
         cvr, ai = await asyncio.gather(cv_task, vision(media_type, data), return_exceptions=True)
@@ -211,9 +253,25 @@ async def analyze_plan(data_url: str) -> dict:
             cvr = {"rooms": []}
     else:
         cvr, ai = await cv_task, None
+    if not cvr.get("photo_corners"):
+        pid = known_plans.text_match(cvr.get("_texts") or [])
+        if pid:
+            return _known(pid, "recognised from the room names")
     result = merge(cvr, ai)
     if not result["rooms"] and not result["photo_corners"]:
         raise ParseError("No rooms found on this image. Draw them by hand instead.")
+    fl = _floor_name(cvr.get("_texts") or [])
+    if fl:
+        result["floor"] = fl
+    if not result["photo_corners"]:
+        # the 3D floor shows the building only: no title block, legend, notes or printed text
+        clean = await asyncio.to_thread(plan_cv.clean_sheet, cvr, [r["points"] for r in result["rooms"]])
+        if clean:
+            if clean["apart"] and len(clean["apart"]) < len(result["rooms"]):
+                result["rooms"] = [r for i, r in enumerate(result["rooms"]) if i not in set(clean["apart"])]
+            _crop(result, clean["crop"])
+            result["image"] = _jpeg(clean["image"])
+            result["crop"] = [round(v, 4) for v in clean["crop"]]
     return result
 
 

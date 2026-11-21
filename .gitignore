@@ -26,3 +26,6 @@ web/public/godot/*
 web/public/presets/
 docs/plans/samsung-rnd-4f/*
 !docs/plans/samsung-rnd-4f/README.md
+
+# The floor last built (may hold an uploaded plan)
+web/.data/

@@ -762,6 +762,7 @@ func _on_layer(layer: String, on: bool) -> void:
 			for id in devices:
 				devices[id].visible = on
 		"ids", "names":
+			Store.show_ids = on
 			for id in devices:
 				devices[id].show_label(on)
 		"temperature": floor_builder.tint_rooms(on)

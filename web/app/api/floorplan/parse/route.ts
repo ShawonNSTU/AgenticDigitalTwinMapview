@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { knownFloorPlan } from '@/lib/sim/runtime';
 
 export const dynamic = 'force-dynamic';
 
-/** POST { image: dataURL } → agent backend /floorplan/parse → { rooms: [{ name, x0, y0, x1, y1 }] } in 0..1 image coordinates. */
+/** POST { image: dataURL } → agent backend /floorplan/parse → rooms, doors, furniture and the scale, in 0..1 image
+ *  coordinates, plus a cleaned and cropped image for the 3D floor. A floor the platform already has a checked model
+ *  of comes back as { known } and is filled in here from that model, so the editor shows it like any other plan. */
 export async function POST(req: NextRequest) {
   const base = process.env.AGENT_URL ?? 'http://localhost:8000';
+  let r: Response;
   try {
-    const r = await fetch(`${base}/floorplan/parse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await req.text() });
-    return new Response(r.body, { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    r = await fetch(`${base}/floorplan/parse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await req.text() });
   } catch {
-    return NextResponse.json({ error: `Agent backend not reachable at ${base}. Draw the rooms by hand instead.` }, { status: 502 });
+    return NextResponse.json({ error: `The plan reader (agent backend at ${base}) is not reachable. Start it, or draw the rooms by hand.` }, { status: 502 });
   }
+  const j = await r.json().catch(() => ({ error: 'The plan reader sent an unreadable reply' }));
+  if (r.ok && j.known) {
+    const k = knownFloorPlan(j.known);
+    if (k) return NextResponse.json({ ...j, ...k, width_m: k.widthM });
+  }
+  return NextResponse.json(j, { status: r.status });
 }

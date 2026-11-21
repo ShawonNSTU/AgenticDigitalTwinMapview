@@ -184,27 +184,39 @@ Open http://localhost:3000. Without the Godot web export the page shows a placeh
 the device list, side panel and chat still work. `next start` only serves files that existed when it
 started, so restart it after exporting.
 
-To use your own plan: open http://localhost:3000/setup (or "Upload floor plan" in the header), upload the image and
-press "Read the plan". What the reader does (agent-backend/app/plan_cv.py, OpenCV + Tesseract):
+The app starts by asking for a floor plan (http://localhost:3000 sends you to /setup until one is built). Upload the
+image and it is read straight away; check the names, the building and floor, and the scale, then render. The floor
+last built is kept in `web/.data/floor.json` and comes back after a restart (devices placed later are not kept).
+"Upload floor plan" in the header replaces it. What the reader does (agent-backend/app/plan_cv.py, OpenCV + Tesseract):
 
-- a photo of a sheet taken at an angle is recognised from the paper outline, and the editor asks you to straighten it;
+- a photo of a sheet taken at an angle is recognised from the paper outline and straightened on its corners
+  automatically, then read again (the handles stay in "Straighten photo" for fine-tuning);
 - walls are the thickest long strokes (text, furniture, dimension lines and filled columns are set apart), with
-  several readings tried (solid, hatched, thin-line walls) and the most plausible kept;
+  several readings tried (solid, hatched, cross-hatched, thin-line walls) and the most plausible kept; hatched walls
+  are filled solid first, and OCR "letters" found inside hatching are not mistaken for text;
 - door openings are closed by casting a ray from every wall end along its wall; a closure between two spaces is a door,
   and openings in the outer wall are entrances;
 - each enclosed space is a room, grown to the wall centre lines so neighbours share walls, and squared up;
-- room names come from text printed inside each room; the scale from the door widths (about 0.85 m each).
+- room names come from text printed inside each room; the floor ("Ground floor", "Level 3") from the sheet's title;
+  the scale from the door widths (about 0.85 m each);
+- the drawing under the 3D floor is cleaned: cropped to the building, with everything outside it (title block, legend,
+  notes, dimension chains, frame) turned to plain paper and the printed text inside erased. Walls, hatching, door
+  swings and furniture outlines stay; the 3D map prints the room names itself.
 
 With `ANTHROPIC_API_KEY` set, Claude vision runs at the same time: it names rooms the text reader could not, adds rooms
 with no walls drawn around them, and lists the furniture drawn on the plan. Everything stays editable: draw, reshape,
 rename or delete rooms, add or remove doors, set the real plan width, switch the suggested furniture on or off.
-Works best on clean architectural plans; on dense CAD prints (thin double-line walls, hundreds of symbols) expect to
-fix rooms by hand or use the vision model. Devices are added afterwards by dragging them onto the 3D map.
+Devices are added afterwards by dragging them onto the 3D map.
 
-Default floor: the platform starts on the traced 4th floor (28 rooms, doors, interiors and the sheet's labels, no
-devices), stored in `web/lib/presets/samsung-rnd-4f.json` without the drawing. With the private drawing installed in
-`web/public/presets/` ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), it is also laid under the floor, and the
-editor's "4F plan (traced)" and "4F photo" samples work. "Default floor" in the editor returns to it.
+The 4th floor: an upload of the Samsung R&D 4th-floor plan looks like any other upload, but it is recognised
+(agent-backend/app/known_plans.py) and built from the hand-checked model in `web/lib/presets/samsung-rnd-4f.json`,
+with the SmartThings Experience Zone, the lift lobby and its devices. Recognition matches the drawing itself (ORB
+features and a homography against the reference images, so scans, crops, rotations and phone photos all match) when the
+private drawing is installed in `web/public/presets/` ([docs/plans/samsung-rnd-4f](docs/plans/samsung-rnd-4f)), and
+otherwise the room names printed on it. Story mode needs this floor.
+
+Device IDs on the 3D map are off by default; "Device IDs" in the map toolbar shows them (a hovered or selected device
+always shows its ID).
 
 Try in the chat: "which air conditioners have a problem?", "what's wrong with ODU-01", "set AC-01 to 24 degrees",
 "unlock the front door" (the agent asks for confirmation first).

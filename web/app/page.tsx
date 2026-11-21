@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import TwinView from '@/components/TwinView';
 import DevicePanel from '@/components/DevicePanel';
 import ChatPanel from '@/components/ChatPanel';
@@ -20,6 +21,7 @@ const json = (r: Response) => r.json();
 const post = (url: string, method: string, body?: object) => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
 
 export default function Home() {
+  const router = useRouter();
   const [sim, setSim] = useState<Sim | null>(null);
   const [devices, setDevices] = useState<Row[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -71,7 +73,8 @@ export default function Home() {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3800);
   }, []);
   const loadDevices = useCallback(() => fetch('/api/devices').then(json).then(x => setDevices(x.devices)), []);
-  const loadRooms = useCallback(() => fetch('/api/building').then(json).then(b => { setRooms(b.rooms); setFloorTitle(b.title ?? ''); }), []);
+  // no floor yet: the first step is uploading a plan
+  const loadRooms = useCallback(() => fetch('/api/building').then(json).then(b => { if (b.empty) { router.replace('/setup'); return; } setRooms(b.rooms); setFloorTitle(b.title ?? ''); }), [router]);
 
   // Clock, health and device changes come from the simulated platform over SSE.
   useEffect(() => {

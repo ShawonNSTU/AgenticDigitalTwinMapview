@@ -14,6 +14,7 @@ var types: Dictionary = {}
 var outdoor_pad: Dictionary = {}
 var wall_height := 1.15
 var walk := false
+var show_ids := false       # the Device IDs layer
 var guest_token := ""      # set when the page was opened from a guest link (?guest=<token>)
 var guest: Dictionary = {}  # {room, entrance} from the platform for that link
 var guest_allowed: Dictionary = {}

@@ -11,7 +11,7 @@ const LAYERS = [
 
 /** Floating map controls: layers and view. */
 export default function MapToolbar() {
-  const [on, setOn] = useState<Record<string, boolean>>({ piping: true, furniture: true, names: true, temperature: false });
+  const [on, setOn] = useState<Record<string, boolean>>({ piping: true, furniture: true, names: false, temperature: false });
   const toggle = (k: (typeof LAYERS)[number]['key']) => { const v = !on[k]; setOn({ ...on, [k]: v }); send({ type: 'setLayer', layer: k, on: v }); };
   return (
     <div className="map-toolbar glass">

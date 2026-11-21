@@ -590,3 +590,8 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .story-controls button:disabled { opacity:.55; cursor:default; }
 .story-controls a { color:#9fd4ff; font-size:13px; } .story-controls small { color:#7b8ba0; font-size:12px; }
 .story .live-dot { width:9px; height:9px; border-radius:50%; background:#e5533d; box-shadow:0 0 10px #e5533d; animation:holoPulse 1.4s infinite; }
+/* a file picker that looks like a ghost button */
+.ghost-file { position:relative; display:inline-flex; align-items:center; padding:7px 12px; border-radius:10px; font-size:13px; font-weight:500; color:var(--text2); cursor:pointer; }
+.ghost-file:hover { background:var(--bg2); }
+.ghost-file input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.story-need { display:grid; place-items:center; } .story-need > div { display:flex; flex-direction:column; gap:10px; align-items:center; text-align:center; max-width:420px; } .story-need span { color:#9aa7b6; }

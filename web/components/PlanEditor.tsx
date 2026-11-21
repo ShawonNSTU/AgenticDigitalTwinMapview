@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { straighten } from '@/lib/homography';
 import { useRouter } from 'next/navigation';
 import { interior, rect, roomColor, roomKey, toBuilding, type PlanFurniture, type PlanNote, type PlanRoom, type Pt } from '@/lib/layout';
@@ -39,7 +39,9 @@ export default function PlanEditor() {
   const [suggest, setSuggest] = useState(true);                      // add suggested interiors to rooms without items
   const [scaleNote, setScaleNote] = useState('');
   const [notes, setNotes] = useState<PlanNote[]>([]);
-  const [title, setTitle] = useState('Uploaded floor plan');            // plan text (zone tags, dimensions) for the traced sample
+  const [location, setLocation] = useState('');                       // building or site, shown in the map header
+  const [floorName, setFloorName] = useState('');                     // e.g. "4th floor"
+  const [known, setKnown] = useState<string | null>(null);            // a floor the platform has a checked model of
   const [mode, setMode] = useState<'rooms' | 'doors' | 'straighten'>('rooms');
   const [quad, setQuad] = useState<Pt[]>([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]); // TL TR BR BL, image fractions
   const [qdrag, setQdrag] = useState<number | null>(null);
@@ -50,6 +52,8 @@ export default function PlanEditor() {
   const [vtx, setVtx] = useState<{ room: number; i: number; at: Pt; moved: boolean } | null>(null); // corner pressed: click adds it, drag moves it
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hasFloor, setHasFloor] = useState(false);                    // a floor is built already (else this is the first step)
+  useEffect(() => { fetch('/api/building').then(r => r.json()).then(b => setHasFloor(!b.empty)).catch(() => {}); }, []);
   const ar = img ? img.h / img.w : 0.6;
   // suggested interiors depend on the real size, so they follow the plan width
   const suggested = useMemo(() => (suggest ? furnish(rooms, furniture, doors, widthM, ar) : []), [suggest, rooms, furniture, doors, widthM, ar]);
@@ -64,13 +68,16 @@ export default function PlanEditor() {
   function closeDraft() { if (draft.length >= 3) addRoom(draft); setDraft([]); }
 
   // Rooms mode: drag = rectangle; click = add a corner (click the first corner, double-click or Enter to close).
+  async function straightenImg(src: Img, q: Pt[]): Promise<Img> {
+    const im = new Image(); im.src = src.url; await im.decode();
+    const c = straighten(im, q.map(([x, y]) => [x * src.w, y * src.h] as [number, number]));
+    return { url: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height };
+  }
   async function applyStraighten() {
     if (!img) return;
-    const im = new Image(); im.src = img.url; await im.decode();
-    const c = straighten(im, quad.map(([x, y]) => [x * img.w, y * img.h] as [number, number]));
-    setImg({ url: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height });
-    setRooms([]); setDoors([]); setFurniture([]); setMode('rooms');
-    setMsg('Photo straightened. Now detect or draw the rooms.');
+    const flat = await straightenImg(img, quad);
+    setImg(flat); setMode('rooms');
+    await detect(flat, true);
   }
 
   function down(e: React.PointerEvent) {
@@ -147,72 +154,77 @@ export default function PlanEditor() {
     setDoors(ds => [...ds, { kind: 'door', fx: best!.q[0], fy: best!.q[1], fw, fd: 0.15 / widthM, rot: -Math.atan2(best!.uz, best!.ux) }]);
   }
 
-  async function detect() {
-    if (!img) return;
-    setBusy(true); setMsg('Detecting rooms…');
+  /** Read the plan: rooms, doors, scale, names. A photo at an angle is straightened first (once), then read again.
+   *  The reader sends back the drawing cropped to the building with its text removed: that is what the 3D floor shows. */
+  async function detect(src = img, straightened = false) {
+    if (!src) return;
+    setBusy(true); setMsg(straightened ? 'Reading the straightened plan…' : 'Reading the plan: walls, rooms, doors, names and the scale…');
     try {
-      const r = await fetch('/api/floorplan/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: img.url }) });
+      const r = await fetch('/api/floorplan/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: src.url }) });
       const j = await r.json();
-      if (!r.ok) { setMsg(j.error ?? j.detail ?? 'Room detection failed'); return; }
-      const taken = new Set<string>();
-      setRooms(j.rooms.map((x: { name: string; label?: string; points: Pt[] }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { name: x.name, ...(x.label ? { label: x.label } : {}), pts: x.points, key, color: roomColor(i) }; }));
-      setFurniture((j.furniture ?? []) as PlanFurniture[]);
-      setDoors((j.doors ?? []) as PlanFurniture[]);
-      if (j.width_m) setWidthM(j.width_m);
-      setScaleNote(j.width_m ? `Estimated ${j.scale_note ?? ''}.` : '');
-      if (j.photo_corners) {
-        // The AI sees a skewed photo: straighten first, then detect again on the flat image.
-        setQuad(j.photo_corners); setMode('straighten'); setRooms([]);
-        setMsg('This looks like a photo taken at an angle. Check the four corners of the drawing, press "Straighten", then detect rooms again.');
+      if (!r.ok) { setMsg(`${j.error ?? j.detail ?? 'Reading the plan failed'} You can draw the rooms by hand.`); return; }
+      if (j.photo_corners && !j.known) {
+        if (!straightened) {
+          // a photo of a sheet taken at an angle: flatten it on the corners the reader found, then read again
+          setQuad(j.photo_corners);
+          const flat = await straightenImg(src, j.photo_corners);
+          setImg(flat);
+          setBusy(false);
+          return detect(flat, true);
+        }
+        setQuad(j.photo_corners); setMode('straighten');
+        setMsg('This still looks like a photo at an angle. Move the four handles onto the corners of the drawing, press "Straighten", and it is read again.');
         return;
       }
+      let base = src;
+      if (j.known) base = j.image ? await loadUrl(j.image) : blank(j.aspect ?? src.h / src.w);
+      else if (j.image) base = await loadUrl(j.image);
+      setImg(base);
+      setKnown(j.known ?? null);
+      const taken = new Set<string>();
+      setRooms(j.rooms.map((x: { name: string; label?: string; zone?: string; points: Pt[] }, i: number) => { const key = roomKey(x.name, taken); taken.add(key); return { name: x.name, ...(x.label ? { label: x.label } : {}), ...(x.zone ? { zone: x.zone } : {}), pts: x.points, key, color: roomColor(i) }; }));
+      setFurniture((j.furniture ?? []) as PlanFurniture[]);
+      setDoors((j.doors ?? []) as PlanFurniture[]);
+      setNotes([]);
+      if (j.width_m) setWidthM(j.width_m);
+      if (j.location) setLocation(j.location);
+      if (j.floor) setFloorName(j.floor);
+      setScaleNote(j.width_m && !j.known ? `Estimated ${j.scale_note ?? ''}.` : '');
+      setMode('rooms');
       const named = j.rooms.filter((x: { name: string }) => !/^Room \d+$/.test(x.name)).length;
-      setMsg(`Read with ${j.method ?? 'image processing'}: ${j.rooms.length} rooms (${named} named from the plan), ${j.doors?.length ?? 0} doors${j.furniture?.length ? `, ${j.furniture.length} interior items` : ''}. Check them: rename, redraw or delete any that are off, and fix doors in the Doors mode.`);
-    } catch { setMsg('Room detection failed. Draw the rooms by hand.'); } finally { setBusy(false); }
+      setMsg(`Read ${j.rooms.length} rooms (${named} named from the plan), ${j.doors?.length ?? 0} doors${j.furniture?.length ? ` and ${j.furniture.length} interior items` : ''}. Check the names and the scale, then render. Anything off can be fixed below.`);
+    } catch { setMsg('Reading the plan failed. Draw the rooms by hand.'); } finally { setBusy(false); }
   }
 
   async function build() {
     if (!img || !rooms.length) return;
     setBusy(true); setMsg('Building the 3D map…');
-    // no devices: they are dragged onto the 3D map afterwards
-    const body = toBuilding(rooms, [], widthM, ar, img.url, [...furniture, ...suggested, ...doors], notes, title.trim() || 'Uploaded floor plan');
+    const title = [location.trim(), floorName.trim()].filter(Boolean).join(' · ') || 'Uploaded floor plan';
+    // a recognised floor is built from its checked model; any other plan from what was read (no devices yet:
+    // they are dragged onto the 3D map afterwards)
+    const body = known ? { known } : toBuilding(rooms, [], widthM, ar, img.url, [...furniture, ...suggested, ...doors], notes, title);
     const r = await fetch('/api/building', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     setBusy(false);
     if (r.ok) router.push('/'); else setMsg((await r.json()).error ?? 'Could not save the layout');
   }
-  async function sample() { await fetch('/api/building', { method: 'DELETE' }); router.push('/'); }
 
   const loadUrl = (url: string) => new Promise<Img>((res, rej) => { const im = new Image(); im.onload = () => res({ url: toData(im), w: im.width, h: im.height }); im.onerror = rej; im.src = url; });
-  const toData = (im: HTMLImageElement) => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d')!.drawImage(im, 0, 0); return c.toDataURL('image/jpeg', 0.9); };
+  const toData = (im: HTMLImageElement) => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d')!; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0); return c.toDataURL('image/jpeg', 0.9); };
+  /** Plain paper of a given shape, for a floor whose drawing is not stored here. */
+  const blank = (aspect: number): Img => { const c = document.createElement('canvas'); c.width = 1600; c.height = Math.round(1600 * aspect); const g = c.getContext('2d')!; g.fillStyle = '#f4f6f9'; g.fillRect(0, 0, c.width, c.height); return { url: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height }; };
 
-  /** The traced 4th-floor layout: straightened photo, room outlines, the 22 cameras from the sheet and an assumed fit-out. */
-  // The reference floor's files are private (camera positions, staff names) and are not in the public repo.
-  // Put them in web/public/presets/ to enable these two buttons (see docs/plans/samsung-rnd-4f/README.md).
-  async function loadTraced() {
-    const res = await fetch('/presets/samsung-rnd-4f.json');
-    if (!res.ok) { setMsg('Reference floor files are not installed (web/public/presets/). See docs/plans/samsung-rnd-4f/README.md.'); return; }
-    const rnd4f: { title: string; image: string; widthM: number; rooms: { name: string; pts: number[][]; label?: string; labelAt?: number[]; zone?: string }[]; notes?: PlanNote[]; devices: { id: string; type: string; fx: number; fy: number; name?: string; assumed?: boolean }[]; furniture?: PlanFurniture[] } = await res.json();
-    setImg(await loadUrl(rnd4f.image));
-    const taken = new Set<string>();
-    setRooms(rnd4f.rooms.map((r, i) => { const key = roomKey(r.name, taken); taken.add(key); return { key, name: r.name, pts: r.pts as Pt[], color: roomColor(i), ...(r.label ? { label: r.label } : {}), ...(r.labelAt ? { labelAt: r.labelAt as Pt } : {}), ...(r.zone ? { zone: r.zone } : {}) }; }));
-    setNotes(rnd4f.notes ?? []);
-    setTitle(rnd4f.title.replace(/\s*\(.*\)\s*$/, ''));
-    setFurniture((rnd4f.furniture ?? []).filter(f => f.kind !== 'door'));
-    setDoors((rnd4f.furniture ?? []).filter(f => f.kind === 'door'));
-    setScaleNote('');
-    setWidthM(rnd4f.widthM); setMode('rooms');
-    setMsg(`${rnd4f.title}: ${rnd4f.rooms.length} rooms and ${(rnd4f.furniture ?? []).length} interior items traced from the sheet. Review, then render.`);
-  }
-
-  /** The original photo, with straightening corners on four building walls, to try the straighten step. */
-  async function loadPhoto() {
-    const ok = (await fetch('/presets/samsung-rnd-4f-photo.jpg', { method: 'HEAD' })).ok;
-    if (!ok) { setMsg('Reference floor files are not installed (web/public/presets/). See docs/plans/samsung-rnd-4f/README.md.'); return; }
-    setImg(await loadUrl('/presets/samsung-rnd-4f-photo.jpg'));
-    setRooms([]); setDoors([]); setFurniture([]);
-    setQuad([[0.2005, 0.0947], [0.7773, 0.1017], [0.7837, 0.6046], [0.1868, 0.6046]]);
-    setMode('straighten');
-    setMsg('Original photo of the 4F sheet. The handles mark four wall corners that form a rectangle in the building; press Straighten.');
+  /** A new file: guess the floor from its name, then read it straight away. */
+  async function upload(f: File) {
+    try {
+      const im = await loadImage(f);
+      const base = f.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim();
+      const fl = /\b(ground|basement|mezzanine|roof|\d+(st|nd|rd|th)?)\s*(floor|fl|level)\b|\b(level|floor)\s*\d+\b/i.exec(base)?.[0] ?? '';
+      setImg(im); setKnown(null);
+      setLocation(base.replace(fl, '').replace(/\s+/g, ' ').trim().slice(0, 50) || 'My building');
+      setFloorName(fl ? fl.replace(/\b\w/, c => c.toUpperCase()) : 'Ground floor');
+      setRooms([]); setDoors([]); setFurniture([]); setNotes([]); setScaleNote('');
+      await detect(im);
+    } catch (err) { setMsg((err as Error).message); }
   }
   const rename = (i: number, name: string) => setRooms(rs => rs.map((r, j) => j === i ? { ...r, name } : r));
   const fs = 0.016;
@@ -223,11 +235,8 @@ export default function PlanEditor() {
         <a href="/" className="brand"><span className="logo" /><div><b>Agentic Digital Twin</b><small>Floor plan → 3D map</small></div></a>
         <div className="floor-chip">{img ? (rooms.length ? `${rooms.length} rooms · ${doors.length} doors` : 'Plan loaded') : 'No plan yet'}</div>
         <div className="stats">
-          <span className="muted">Samples</span>
-          <button className="ghost" onClick={loadTraced}>4F plan (traced)</button>
-          <button className="ghost" onClick={loadPhoto}>4F photo</button>
-          <button className="ghost" onClick={sample}>Default floor</button>
-          <a href="/"><button>Back to map</button></a>
+          {img && <label className="ghost-file"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />Another plan</label>}
+          {hasFloor && <a href="/"><button>Back to map</button></a>}
         </div>
       </header>
       <div className="setup-body">
@@ -237,7 +246,7 @@ export default function PlanEditor() {
               <span className="drop-ico" aria-hidden>⬆</span>
               <b>Upload a floor plan image</b><span className="muted">PNG, JPEG or WebP, a scan, an export or a phone photo of a printed sheet. Clean architectural plans read best.</span>
               <span className="drop-btn">Choose a file</span>
-              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => { const f = e.target.files?.[0]; if (f) { try { setImg(await loadImage(f)); setTitle(f.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 60) || 'Uploaded floor plan'); setRooms([]); setDoors([]); setFurniture([]); setNotes([]); setScaleNote(''); setMsg('Press "Read the plan" to find rooms, doors and the scale, or draw each room by hand.'); } catch (err) { setMsg((err as Error).message); } } }} />
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />
             </label>
           ) : (
             <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={mode}>
@@ -298,8 +307,8 @@ export default function PlanEditor() {
             </section>
             <section className={`step ${rooms.length ? 'done' : img ? 'cur' : ''}`}>
               <h4><i>2</i>Rooms<em>{rooms.length || ''}</em></h4>
-              <div className="muted">Reading finds walls, rooms, doors, the scale and printed room names. With an Anthropic key on the agent, Claude also names rooms and lists furniture.</div>
-              <div className="row"><button className="pri" disabled={!img || busy} onClick={detect}>{busy ? 'Reading…' : 'Read the plan'}</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
+              <div className="muted">The plan is read as soon as it is uploaded: walls, rooms, doors, the scale and the printed room names. Photos taken at an angle are straightened first, and the drawing is cropped to the building with its text removed for the 3D floor. With an Anthropic key on the agent, Claude also names rooms and lists furniture.</div>
+              <div className="row"><button className={rooms.length ? '' : 'pri'} disabled={!img || busy} onClick={() => detect()}>{busy ? 'Reading…' : rooms.length ? 'Read again' : 'Read the plan'}</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
               {mode === 'rooms' && img && <div className="muted">Drag for a rectangle. For any other shape click each corner, then click the first corner (or double-click, or Enter). Click an existing corner to reuse it; drag a white dot to move it (rooms sharing it move too). Backspace undoes a corner, Esc cancels.</div>}
               {rooms.length > 0 && <div className="room-list">{rooms.map((r, i) => (
                 <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input value={r.name} onChange={e => rename(i, e.target.value)} /><button className="icon" title="Delete room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
@@ -318,7 +327,8 @@ export default function PlanEditor() {
             </section>
             <section className={`step ${rooms.length ? 'cur' : ''}`}>
               <h4><i>5</i>Scale and build</h4>
-              <label className="field">Floor name <input value={title} onChange={e => setTitle(e.target.value)} /></label>
+              <label className="field">Building or site <input value={location} placeholder="e.g. Head office" onChange={e => setLocation(e.target.value)} /></label>
+              <label className="field">Floor <input value={floorName} placeholder="e.g. 4th floor" onChange={e => setFloorName(e.target.value)} /></label>
               <label className="field">Plan width <span className="row"><input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} /> m</span></label>
               {scaleNote && <div className="muted">{scaleNote} Correct it if you know a real dimension.</div>}
               <button className="pri wide" disabled={!img || !rooms.length || busy} onClick={build}>Render the 3D map</button>

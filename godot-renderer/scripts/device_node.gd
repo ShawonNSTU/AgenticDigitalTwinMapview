@@ -167,7 +167,8 @@ func _ring_visible() -> void:
 
 
 func _update_label() -> void:
-	label.visible = _labels_on and body.visible and (not dense or _health != "ok" or _highlighted)
+	# a highlighted device (hovered, selected or flagged by the story) shows its ID even with the layer off
+	label.visible = body.visible and (_highlighted or (_labels_on and (not dense or _health != "ok")))
 
 
 func set_highlight(on: bool, dim_others: bool) -> void:
@@ -189,7 +190,7 @@ func set_highlight(on: bool, dim_others: bool) -> void:
 		label.visible = false
 
 
-var _labels_on := true
+var _labels_on := Store.show_ids  # device IDs are an optional layer, off by default
 
 
 func show_label(on: bool) -> void:

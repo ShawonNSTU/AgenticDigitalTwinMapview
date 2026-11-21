@@ -692,15 +692,43 @@ def blank_text(dark: np.ndarray, boxes: list[dict]) -> np.ndarray:
         x1, y1 = min(W, int(b["x"] + b["w"] + pad) + 1), min(H, int(b["y"] + b["h"] + pad) + 1)
         r = max(3, int(0.5 * b["h"]))
         X0, Y0, X1, Y1 = max(0, x0 - r), max(0, y0 - r), min(W, x1 + r), min(H, y1 + r)
-        ring = (dark[Y0:Y1, X0:X1] > 0).sum() - (dark[y0:y1, x0:x1] > 0).sum()
+        inner = (dark[y0:y1, x0:x1] > 0).sum()
+        if inner > 0.6 * max(1, (x1 - x0) * (y1 - y0)):
+            continue   # solid: a filled (or hatched) wall or a column that OCR read as letters
+        ring = (dark[Y0:Y1, X0:X1] > 0).sum() - inner
         ring_area = (X1 - X0) * (Y1 - Y0) - (x1 - x0) * (y1 - y0)
         if ring_area > 0 and ring / ring_area < 0.3:
             out[y0:y1, x0:x1] = 0
     return out
 
 
-def _attempt(gray: np.ndarray, boxes: list[dict], close: int, thin: bool = False) -> dict:
-    dark = blank_text(ink(gray, close), boxes)
+def fill_hatching(dark: np.ndarray, r: float) -> np.ndarray:
+    """Hatched or cross-hatched walls (thin strokes between two outlines) become solid: every enclosed patch of paper
+    narrower than 2r is filled. Rooms, corridors and the space around door swings are far wider and stay open."""
+    paper = (dark == 0).astype(np.uint8)
+    n, lab = cv2.connectedComponents(paper, connectivity=4)
+    dt = cv2.distanceTransform(paper, cv2.DIST_L2, 3)
+    widest = np.zeros(n, np.float32)
+    np.maximum.at(widest, lab.ravel(), dt.ravel())
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    fill = widest <= r
+    fill[0] = False
+    fill[edge] = False
+    out = dark.copy()
+    out[fill[lab] & (paper > 0)] = 255
+    # hatching whose outline is broken leaks into the room: close it where the ink is dense
+    k = int(2 * r + 1) | 1
+    closed = cv2.morphologyEx(out, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    dense = cv2.boxFilter((out > 0).astype(np.float32), -1, (3 * k, 3 * k)) > 0.45
+    out[(closed > 0) & dense] = 255
+    return out
+
+
+def _attempt(gray: np.ndarray, boxes: list[dict], close: int, thin: bool = False, hatch: float = 0) -> dict:
+    dark = ink(gray, close)
+    if hatch:
+        dark = fill_hatching(dark, hatch)
+    dark = blank_text(dark, boxes)
     h = 1.5 if thin else wall_half_thickness(dark)
     walls = wall_mask(dark, h)
     barrier, closures = close_gaps(walls, h)
@@ -760,7 +788,8 @@ def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
         return {"rooms": [], "doors": [], "photo_corners": corners, "width_m": None, "scale_note": None, "wall_px": None}
     gray = clear_background(gray)
     boxes, lines = ocr(gray) if use_ocr else ([], [])
-    tries = [_attempt(gray, boxes, c) for c in (1, 7, 13)] + [_attempt(gray, boxes, 1, thin=True)]
+    hr = max(2.5, max(H, W) / 400)
+    tries = [_attempt(gray, boxes, c) for c in (1, 7, 13)] + [_attempt(gray, boxes, 1, thin=True), _attempt(gray, boxes, 1, hatch=hr)]
     for a in tries:
         a["rooms"], a["n"] = main_building(a["rooms"], a["n"], a["foot"])
         # plausible shapes, plus printed names landing in rooms of their own when the plan has names
@@ -798,4 +827,117 @@ def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
     out_doors = [{"kind": "door", "fx": round(d["x"] / W, 5), "fy": round(d["y"] / H, 5), "fw": round(d["w"] / W, 5),
                   "fd": round(max(2 * h, 2) / W, 5), "rot": round(-math.atan2(d["uy"], d["ux"]), 4)} for d in ds]
     return {"rooms": out_rooms, "doors": out_doors, "photo_corners": None, "width_m": width_m, "scale_note": note, "wall_px": round(2 * h / W, 5),
-            "_labels": rooms, "_barrier": barrier, "_shape": (H, W)}
+            "_labels": rooms, "_barrier": barrier, "_shape": (H, W), "_texts": [ln["text"] for ln in lines],
+            "_boxes": boxes, "_lines": lines, "_foot": foot, "_img": img, "_h": h}
+
+
+# ---------------------------------------------------------------- a clean drawing for the 3D floor
+
+def _text_boxes(gray: np.ndarray, f: float = 2.5) -> list[tuple[int, int, int, int]]:
+    """Every word tesseract finds on an enlarged copy: small print (camera tags, dimensions, notes) included."""
+    exe = shutil.which("tesseract")
+    if not exe:
+        return []
+    up = cv2.resize(gray, None, fx=f, fy=f, interpolation=cv2.INTER_CUBIC)
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        cv2.imwrite(tmp.name, up)
+        try:
+            r = subprocess.run([exe, tmp.name, "stdout", "--psm", "11", "tsv"], capture_output=True, text=True, timeout=90)
+        except (subprocess.SubprocessError, OSError):
+            return []
+    H = gray.shape[0]
+    out = []
+    for line in r.stdout.splitlines()[1:]:
+        p = line.split("\t")
+        if len(p) < 12 or not p[11].strip():
+            continue
+        try:
+            conf = float(p[10])
+        except ValueError:
+            continue
+        x, y, w, h = (int(v) / f for v in p[6:10])
+        txt = re.sub(r"[^A-Za-z0-9]", "", p[11])
+        if conf >= 40 and len(txt) >= 2 and w >= 0.6 * h and h < 0.04 * H:
+            out.append((int(x), int(y), int(w), int(h)))
+    return out
+
+
+def clean_sheet(res: dict, rooms: list[list] | None = None, margin: float = 0.025) -> dict | None:
+    """The drawing as the 3D floor shows it: cropped to the building and with the sheet's text removed.
+
+    Everything outside the rooms (title block, legend, notes, dimension chains, the frame) becomes plain paper, and
+    so does the printed text inside them; the 3D map prints the room names itself. Walls stay: text is only erased
+    where it does not overlap a wall. `rooms` are the final room polygons (image fractions).
+    Returns {crop: [x0, y0, x1, y1] as image fractions, image: BGR array} or None when there is no building."""
+    foot, img = res.get("_foot"), res.get("_img")
+    if img is None:
+        return None
+    H, W = img.shape[:2]
+    h = float(res.get("_h") or 2)
+    area = np.zeros((H, W), np.uint8)
+    for poly in rooms or []:
+        cv2.fillPoly(area, [np.array([[x * W, y * H] for x, y in poly], np.int32)], 1)
+    # the building outline too, so a room the reader missed is not blanked; unless the "outline" is the whole sheet
+    # (a photo whose margins, frame or notes enclose everything)
+    if foot is not None and (foot > 0).mean() < 0.8:
+        # only the outline pieces the rooms are in: a framed title block or legend is a closed shape too
+        near = cv2.dilate(area, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(0.04 * max(W, H)) | 1,) * 2))
+        area |= ((foot > 0) & (near > 0)).astype(np.uint8)
+    if not area.any():
+        return None
+    # outer walls and door swings sit just outside the room outlines
+    grow = int(max(9, 6 * h)) | 1
+    inside = cv2.dilate(area, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (grow, grow))).astype(np.uint8)
+    # one building: a framed title block or legend read as a "room" lies apart from it and is dropped
+    n, lab, st, _ = cv2.connectedComponentsWithStats(inside)
+    if n > 2:
+        big = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+        inside = (lab == big).astype(np.uint8)
+    inside = inside > 0
+    ys, xs = np.nonzero(inside)
+    pad = margin * max(W, H)
+    x0, x1 = max(0, int(xs.min() - pad)), min(W, int(xs.max() + pad) + 1)
+    y0, y1 = max(0, int(ys.min() - pad)), min(H, int(ys.max() + pad) + 1)
+    out = img.copy() if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    gray = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
+    otsu, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    paper = np.median(out[gray > otsu], axis=0) if (gray > otsu).any() else np.array([255, 255, 255])
+    # the paper under the ink: closing whitens strokes thinner than the kernel (text), keeps the shading
+    k = int(max(9, 0.012 * max(W, H))) | 1
+    under = cv2.morphologyEx(out, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
+    # long straight strokes are walls and lines of the drawing, never letters: text erasing leaves them alone
+    ink_u8 = (gray < otsu).astype(np.uint8)
+    L = int(max(25, 0.03 * max(W, H)))
+    wall = (cv2.morphologyEx(ink_u8, cv2.MORPH_OPEN, np.ones((1, L), np.uint8)) | cv2.morphologyEx(ink_u8, cv2.MORPH_OPEN, np.ones((L, 1), np.uint8))) > 0
+    # and so are solid or hatched walls: thick once their hatching is filled (letters are thin)
+    solid = cv2.morphologyEx(fill_hatching(ink_u8 * 255, max(2.5, max(W, H) / 400)), cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(max(7, 1.2 * h)) | 1,) * 2))
+    # a letter with closed loops (B, D, O) also fills solid: only long pieces are walls
+    n, lab, st, _ = cv2.connectedComponentsWithStats((solid > 0).astype(np.uint8))
+    longp = np.hypot(st[:, cv2.CC_STAT_WIDTH], st[:, cv2.CC_STAT_HEIGHT]) > L
+    longp[0] = False
+    solid = longp[lab].astype(np.uint8)
+    wall = cv2.dilate((wall | (solid > 0)).astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    text = np.zeros((H, W), np.uint8)
+    boxes = [(b["x"], b["y"], b["w"], b["h"]) for b in res.get("_boxes") or []]
+    boxes += [(ln["x0"], ln["cy"] - ln["h"] / 2, ln["x1"] - ln["x0"], ln["h"]) for ln in res.get("_lines") or []]
+    boxes += [(x + x0, y + y0, w, hh) for x, y, w, hh in _text_boxes(gray[y0:y1, x0:x1])]
+    ink_px = gray < otsu
+    for x, y, w, hh in boxes:
+        xi, yi, xe, ye = max(0, int(x)), max(0, int(y)), min(W, int(x + w) + 1), min(H, int(y + hh) + 1)
+        if xe <= xi or ye <= yi:
+            continue
+        inner = ink_px[yi:ye, xi:xe]
+        r_ = max(3, int(0.6 * hh))
+        X0, Y0, X1, Y1 = max(0, xi - r_), max(0, yi - r_), min(W, xe + r_), min(H, ye + r_)
+        ring_area = (X1 - X0) * (Y1 - Y0) - inner.size
+        ring = (ink_px[Y0:Y1, X0:X1].sum() - inner.sum()) / max(1, ring_area)
+        # text sits on blank paper; "letters" read in hatching, columns or filled symbols do not
+        if inner.mean() > 0.7 or ring > 0.25:
+            continue
+        p = 0.25 * hh
+        cv2.rectangle(text, (int(x - p), int(y - p)), (int(x + w + p), int(y + hh + p)), 1, -1)
+    t = (text > 0) & ~wall
+    out[t] = under[t]
+    out[~inside] = paper.astype(np.uint8)
+    apart = [i for i, poly in enumerate(rooms or []) if not inside[min(H - 1, max(0, int(np.mean([q[1] for q in poly]) * H))), min(W - 1, max(0, int(np.mean([q[0] for q in poly]) * W)))]]
+    return {"crop": [x0 / W, y0 / H, x1 / W, y1 / H], "image": out[y0:y1, x0:x1], "apart": apart}

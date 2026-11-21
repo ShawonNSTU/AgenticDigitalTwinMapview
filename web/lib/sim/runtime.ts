@@ -3,7 +3,7 @@
 import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, setDevices, scenarioName, scenarioAvailable, activeFault } from './engine';
 import building from './data/building.json';
 import sampleDevices from './data/devices.json';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom, type Pt } from '@/lib/layout';
 import { fitSmartThingsZone } from './stzone';
@@ -22,6 +22,7 @@ interface Runtime {
   notes: Note[]; // other text printed on the plan (zone tags, SCREEN, UP/DN, dimensions)
   title: string; // floor name shown in the header
   planGen?: number; // bumps when a new plan is uploaded or the sample is restored (guest links made before stop working)
+  floor?: 'none' | 'preset' | 'upload'; // none: no plan uploaded yet, the app asks for one
 }
 export type Note = { text: string; x: number; z: number; size?: number; rot?: number };
 const g = globalThis as unknown as { __twin?: Runtime };
@@ -29,6 +30,7 @@ export const rt: Runtime = (g.__twin ??= { t: 10, playing: false, speed: 0.5, la
 rt.furniture ??= [];
 rt.notes ??= [];
 rt.title ??= 'Sample home';
+rt.floor ??= 'none';
 
 /** Advance the clock if playing. Called by every request and by the event stream. */
 export function tick(): number {
@@ -250,6 +252,8 @@ export function buildingState() {
     furniture: rt.furniture,
     notes: rt.notes,
     title: rt.title,
+    empty: rt.floor === 'none',
+    known: rt.floor === 'preset' ? PRESET : null,
     plan: rt.plan ? { url: `/api/building/plan?v=${LAYOUT.version}`, x0: rt.plan.x0, x1: rt.plan.x1, z0: rt.plan.z0, z1: rt.plan.z1 } : null,
   };
 }
@@ -324,8 +328,70 @@ export function resetBuilding() {
   return buildingState();
 }
 
-// Start on the default floor (once per server process).
+/* ---------------- which floor is showing, kept across restarts ---------------- */
+// The app starts with no floor and asks for a plan. The floor last built (an upload, or the recognised 4th floor)
+// is saved in .data/floor.json and comes back after a restart. Devices placed later are not saved.
+const SAVE = path.join(process.cwd(), '.data', 'floor.json');
+function save(x: object | null) {
+  try {
+    if (!x) { rmSync(SAVE, { force: true }); return; }
+    mkdirSync(path.dirname(SAVE), { recursive: true });
+    writeFileSync(SAVE, JSON.stringify(x));
+  } catch (e) { console.warn('floor not saved:', (e as Error).message); }
+}
+
+/** Build an uploaded plan (the body of POST /api/building). */
+export function uploadBuilding(b: { rooms: any[]; devices: any[]; outdoorPad?: any; plan?: any; furniture?: any[]; notes?: Note[]; title?: string }, keep = true) {
+  const st = setBuilding(b.rooms, b.devices, b.outdoorPad, b.plan ?? null, b.furniture ?? [], b.notes ?? [], b.title);
+  rt.floor = 'upload';
+  if (keep) save({ upload: b });
+  return { ...st, empty: false, known: null };
+}
+
+/** A floor the platform has a checked model of (recognised on upload): built from that model. */
+export function loadKnownFloor(id: string, keep = true) {
+  if (id !== PRESET || !defaultPreset()) throw new Error(`unknown floor ${id}`);
+  resetBuilding();
+  rt.floor = 'preset';
+  if (keep) save({ preset: id });
+  return buildingState();
+}
+
+/** Forget the floor: the app asks for a plan again. */
+export function clearFloor() {
+  resetBuilding();
+  rt.floor = 'none';
+  save(null);
+  return buildingState();
+}
+
+/** The checked model of a recognised floor as the plan editor shows it (image fractions, like a read plan). */
+export function knownFloorPlan(id: string) {
+  if (id !== PRESET) return null;
+  const priv = path.join(process.cwd(), 'public', 'presets', `${PRESET}.json`);
+  const pub = path.join(process.cwd(), 'lib', 'presets', `${PRESET}.json`);
+  const file = existsSync(priv) ? priv : existsSync(pub) ? pub : null;
+  if (!file) return null;
+  const pre = JSON.parse(readFileSync(file, 'utf8'));
+  const img = pre.image ? path.join(process.cwd(), 'public', pre.image) : null;
+  const image = img && existsSync(img) ? `data:image/jpeg;base64,${readFileSync(img).toString('base64')}` : null;
+  const [location, floorName] = String(pre.title).replace(/\s*\(.*\)\s*$/, '').split(/\s*·\s*/);
+  return {
+    known: id, location, floor: floorName ?? '', widthM: pre.widthM, aspect: pre.aspect ?? null, image,
+    rooms: pre.rooms.map((r: any) => ({ name: r.name, points: r.pts, ...(r.label ? { label: r.label } : {}), ...(r.zone ? { zone: r.zone } : {}) })),
+    doors: (pre.furniture ?? []).filter((f: any) => f.kind === 'door'),
+    furniture: (pre.furniture ?? []).filter((f: any) => f.kind !== 'door'),
+  };
+}
+
+// Start (once per server process): the saved floor, or none yet (the reference floor is loaded underneath so every
+// API keeps working, but the pages ask for a plan).
 if (!(globalThis as { __twinBooted?: boolean }).__twinBooted) {
   (globalThis as { __twinBooted?: boolean }).__twinBooted = true;
   try { if (defaultPreset()) resetBuilding(); } catch (e) { console.warn('default floor not loaded:', (e as Error).message); }
+  try {
+    const saved = existsSync(SAVE) ? JSON.parse(readFileSync(SAVE, 'utf8')) : null;
+    if (saved?.preset) loadKnownFloor(saved.preset, false);
+    else if (saved?.upload) uploadBuilding(saved.upload, false);
+  } catch (e) { console.warn('saved floor not loaded:', (e as Error).message); }
 }

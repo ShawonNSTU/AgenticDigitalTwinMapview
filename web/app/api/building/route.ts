@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { buildingState, setBuilding, resetBuilding } from '@/lib/sim/runtime';
+import { buildingState, uploadBuilding, loadKnownFloor, clearFloor } from '@/lib/sim/runtime';
 import { TYPES } from '@/lib/sim/engine';
 
 export const dynamic = 'force-dynamic';
@@ -19,16 +19,22 @@ const Body = z.object({
   plan: z.object({ dataUrl: z.string().max(12_000_000), x0: z.number(), x1: z.number(), z0: z.number(), z1: z.number() }).nullable().optional(),
 });
 
-/** GET: current layout. POST: replace it with an uploaded floor plan, its rooms and devices. DELETE: back to the sample home. */
+/** GET: current layout (empty: true while no plan has been uploaded). POST: build an uploaded floor plan, its rooms
+ *  and devices; or { known } for a floor recognised on upload, built from its checked model. DELETE: forget the floor. */
 export async function GET() { return NextResponse.json(buildingState()); }
 
 export async function POST(req: NextRequest) {
-  const p = Body.safeParse(await req.json().catch(() => ({})));
+  const raw = await req.json().catch(() => ({}));
+  if (typeof raw?.known === 'string') {
+    try { return NextResponse.json(loadKnownFloor(raw.known)); }
+    catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
+  }
+  const p = Body.safeParse(raw);
   if (!p.success) return NextResponse.json({ error: p.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') }, { status: 400 });
   const ids = new Set<string>();
   for (const d of p.data.devices) { if (ids.has(d.id)) return NextResponse.json({ error: `duplicate device id ${d.id}` }, { status: 400 }); ids.add(d.id); }
-  try { return NextResponse.json(setBuilding(p.data.rooms, p.data.devices, p.data.outdoorPad, p.data.plan ?? null, p.data.furniture ?? [], p.data.notes ?? [], p.data.title)); }
+  try { return NextResponse.json(uploadBuilding(p.data)); }
   catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
 }
 
-export async function DELETE() { return NextResponse.json(resetBuilding()); }
+export async function DELETE() { return NextResponse.json(clearFloor()); }

@@ -34,6 +34,9 @@ export default function Story() {
     devsRef.current = (b?.devices ?? []).map((d: any) => ({ id: d.id, type: d.type, name: String(d.name).split(' · ')[0], room: d.room, readings: live[d.id] }));
   }, []);
   useEffect(() => { loadDevs(); }, [loadDevs]);
+  // the story is set on the 4th floor: it runs once that plan has been uploaded
+  const [floorOk, setFloorOk] = useState<boolean | null>(null);
+  useEffect(() => { fetch('/api/building').then(r => r.json()).then(b => setFloorOk(b.known === 'samsung-rnd-4f')).catch(() => setFloorOk(false)); }, []);
 
   const onEvent = useCallback((m: FromRenderer) => {
     if (m.type === 'ready') { setReady(true); send({ type: 'setInsets', left: 0, right: 380, top: 70, bottom: 150 }); }
@@ -123,6 +126,12 @@ export default function Story() {
   const chapter = CHAPTERS[ch];
   const total = useMemo(() => CHAPTERS.reduce((n, c) => n + c.steps.length, 0), []);
   const doneSteps = CHAPTERS.slice(0, ch).reduce((n, c) => n + c.steps.length, 0) + Math.max(0, step + (busy ? 0 : 1));
+
+  if (floorOk === false) return (
+    <div className="story story-need">
+      <div><b>Story mode runs on the Samsung R&amp;D 4th floor</b><span>Upload the 4th-floor plan first, then come back here.</span><a href="/setup"><button className="pri">Upload a floor plan</button></a></div>
+    </div>
+  );
 
   return (
     <div className="story">
