@@ -27,6 +27,7 @@ export const routineById = (id: string) => ROUTINES.find(r => r.id === id);
    on"), kept under a name for one owner: the staff, or one guest pass. Kept in memory and in .data/routines.json, so
    they survive a restart of the web app. */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { log as journal } from '@/lib/kg/journal';
 import path from 'node:path';
 
 export type SavedStep = { deviceId: string; command: string; args: Record<string, unknown> };
@@ -52,11 +53,13 @@ export function saveRoutine(owner: string, name: string, steps: SavedStep[]) {
   const r: SavedRoutine = { id, name: clean, owner, steps, createdAt: Date.now() };
   if (at >= 0) saved[at] = r; else saved.push(r);
   persist();
+  journal({ kind: 'routine', by: owner.startsWith('guest:') ? 'guest' : 'staff', devices: [...new Set(steps.map(s => s.deviceId))], text: `Routine "${clean}" saved (${steps.length} steps)` });
   return r;
 }
 export function deleteRoutine(owner: string, id: string) {
   const at = saved.findIndex(r => r.owner === owner && r.id === id);
   if (at < 0) return false;
+  journal({ kind: 'routine', text: `Routine "${saved[at].name}" deleted` });
   saved.splice(at, 1); persist();
   return true;
 }

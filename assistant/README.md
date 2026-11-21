@@ -22,13 +22,13 @@ agent; the web app sends the role and limits what each may see and do). It runs 
 |---|---|---|
 | `device_control` | all | power, brightness, colour temperature, shade, AC temperature/mode/fan, TV, fan, purifier, lock, vacuum; relative changes; many devices at once |
 | `device_status` | all | live state, read fresh from the twin |
-| `device_info`, `rooms`, `chitchat` | all | what exists, rooms, small talk |
+| `knowledge` | all | **any question**, answered from the twin's knowledge graph (RAG): rooms (how many, sizes, neighbours, furniture), devices (where, real or simulated, state, what they can do), guests, alerts, routines and the history of everything done since the floor plan was loaded (who did what, when). Cites its sources. A guest sees only their room, their stay and the floor's public facts |
+| `chitchat` | all | greetings and small talk |
 | `routines` | all | built-in routines (movie night, good night, morning, welcome, focus, away) **and your own**: after a change of several things the assistant offers "save this as a routine?"; "yes, call it Cosy" stores it, "run Cosy" repeats it, "delete Cosy" removes it. Staff routines are shared by staff; a guest's belong to that pass |
 | `diagnostics` | admin, technician | find devices by type/room/health on the whole building, show them in 3D, explain a fault from the twin's evidence |
 | `maintenance` | admin, technician | list open alerts, acknowledge, investigate, resolve with cause and action, fix (clears the fault) |
 | `scene` | admin, technician | 3D view: highlight, focus, open parts, trace piping, layers, demo scenario, simulated time |
 | `checkin` | admin, technician | guest check-in (link + PIN for a room), who is checked in, check out |
-| `building` | admin, technician | rooms, devices per room, floor plan status; it follows a new floor plan at once |
 | floor-plan reading | web app | `POST /floorplan/parse`: rooms, doors, scale and names from a plan image (OpenCV, optional Claude vision) |
 
 - **Roles**: staff see the whole building; a guest only the guest's room, with the pass's controls and
@@ -98,3 +98,20 @@ New features are new files in `app/skills/`.
 
 See **[SKILL.md](SKILL.md)** for the full guide (architecture, rules, recipes, API contract). It
 is written so any AI assistant can safely edit the project.
+
+## Knowledge graph and retrieval (RAG)
+
+The twin (`web/lib/kg/`) keeps what the assistant knows:
+- **Graph**, rebuilt from the live twin on every question: floor -> rooms (size, area, neighbours, furniture, doors,
+  printed notes) -> devices (real SmartThings or simulated, live state, health, what each can do), guests, alerts,
+  maintenance, routines, technicians. One fact sheet per node, plus a floor overview with every count.
+- **Journal** (`journal.ts`, `web/.data/journal.jsonl`): every action on the website after the floor plan is
+  loaded: device commands from anyone (with who and the result), changes real devices report on their own (the
+  SmartThings app, a wall switch), devices placed/moved/renamed/removed, floor plans uploaded, guest room setup,
+  check-in/out and PINs, faults, alerts raised and cleared, maintenance records, routines saved, simulation changes.
+  A new floor plan starts a new journal.
+
+`GET /api/st/v1/twin/kg` returns the documents for the turn's scope. `app/knowledge/retriever.py` ranks them with
+BM25, plus Ollama embeddings when `OLLAMA_EMBED_MODEL` is pulled (`ollama pull nomic-embed-text`; vectors cached by
+text hash; keyword-only if it is missing), merged by reciprocal rank fusion; the overview is always included. The
+model answers only from the numbered facts and cites them; the UI shows them as "Based on".

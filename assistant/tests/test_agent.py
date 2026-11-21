@@ -317,7 +317,7 @@ def test_http_contract_matches_frontend(settings):
     r = client.post("/control", json=sample_request("hi").model_dump()).json()
     # ChatBot.tsx: data.data?.status === "clarify" ? data.data.question : data.message
     assert r["data"]["status"] == "clarify" and r["data"]["question"] == "Hello!" == r["message"]
-    assert {s["name"] for s in client.get("/skills").json()} == {"device_control", "device_info", "device_status", "chitchat", "location", "rooms", "diagnostics", "scene", "building", "checkin", "maintenance", "routines"}
+    assert {s["name"] for s in client.get("/skills").json()} == {"device_control", "device_info", "device_status", "chitchat", "location", "rooms", "diagnostics", "scene", "knowledge", "checkin", "maintenance", "routines"}
 
 
 def _parse_sse(body: str) -> list[tuple[str, dict]]:

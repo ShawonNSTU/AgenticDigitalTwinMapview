@@ -6,6 +6,7 @@ import { runCommand, rt, COMMANDS, device } from './runtime';
 import { REQUIRES } from './stzone';
 import * as ST from '@/lib/integrations/smartthings';
 import { audit, scheduleRelock } from './access';
+import { log as journal } from '@/lib/kg/journal';
 
 export type Result = { ok: boolean; error?: string; offline?: boolean; needsConfirmation?: boolean; via?: 'smartthings' | 'simulator'; device?: unknown; note?: string };
 
@@ -43,5 +44,9 @@ export async function dispatch(id: string, command: string, args: Record<string,
     audit({ deviceId: id, room: d.room, action: by === 'auto-relock' ? 'relock' : command, by, ok: res.ok, reason: res.ok ? '' : res.error ?? 'refused', via: res.via ?? 'simulator' });
     if (res.ok && command === 'unlock') scheduleRelock(id, async () => (await dispatch(id, 'lock', {}, false, 'auto-relock')).ok);
   }
+  const label = String(d.name).split(' · ')[0];
+  const shown = Object.entries(args).map(([k, v]) => `${k} ${v}`).join(', ');
+  journal({ kind: 'command', by, devices: [id], room: d.room,
+    text: `${label} (${id}): ${command}${shown ? ` (${shown})` : ''} ${res.ok ? `done${res.via === 'smartthings' ? ' on the real SmartThings device' : ''}` : `FAILED: ${res.error}`}${note ? `; ${note}` : ''}` });
   return note && res.ok ? { ...res, note } : res;
 }

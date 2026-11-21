@@ -6,6 +6,8 @@
 // Configure with SMARTTHINGS_TOKEN (and SMARTTHINGS_API for a different base URL, e.g. a test double), or enter a
 // token on /integrations (kept in memory only).
 
+import { log as journal } from '@/lib/kg/journal';
+
 export type Link = { localId: string; stId: string; component: string; label?: string; type: string; capabilities?: string[]; acModes?: string[] };
 type StCommand = { component: string; capability: string; command: string; arguments: unknown[] };
 
@@ -239,6 +241,13 @@ export function readingsFrom(type: string, status: any, component = 'main'): Rec
 function store(localId: string, readings: Record<string, unknown>, online: boolean, healthAt?: number) {
   const prev = st.status[localId];
   const l = st.links[localId];
+  // a change the real device reports that the twin did not command (someone used the SmartThings app, a switch, a
+  // schedule): into the journal, so the assistant knows what happened
+  if (prev && l && !st.holds[localId]) {
+    const changed = Object.keys(readings).filter(k => JSON.stringify(prev.readings[k]) !== JSON.stringify(readings[k]));
+    if (changed.length || prev.online !== online)
+      journal({ kind: 'reported', devices: [localId], text: `${l.label ?? localId} (${localId}) reported by SmartThings: ${prev.online !== online ? (online ? 'back online' : 'went OFFLINE') : changed.map(k => `${k} ${JSON.stringify(prev.readings[k] ?? null)} -> ${JSON.stringify(readings[k])}`).join(', ')}` });
+  }
   st.status[localId] = { at: Date.now(), readings, online, healthAt: healthAt ?? prev?.healthAt };
   if (!prev || prev.online !== online || JSON.stringify(prev.readings) !== JSON.stringify(readings)) st.version++;
   // a hold ends as soon as the device reports a change on what the command touched

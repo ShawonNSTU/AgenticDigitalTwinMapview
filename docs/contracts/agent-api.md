@@ -17,9 +17,9 @@ Image processing needs no LLM; `ANTHROPIC_API_KEY` adds a vision step. The web a
 One assistant (assistant) for the administrator, the technician and the guest. Body
 `{ messages: [{role, content}], room? }` (staff `room`: limit to one room, default the whole building; a guest always
 gets their pass's room). The role comes from the sign-in cookie (`tech:` = technician, else administrator).
-Events: `tool` (staff only: progress), `text` (the reply), `ui_action` (`highlight` devices it changed, read or
-found; `focusDevice`; `openDevice {id, part?}` with `select`; `clearHighlight`), `result` (guest only:
-`{results: [{device_id, label, ok, error?}]}`), `error`, `done`.
+Events: `step` `{stage, text}` (every step the agent takes, live; `tool` is the same for older clients, staff only), `text` `{text, skill}` (the reply), `result` `{results: [{device_id, label, ok, summary, error?}]}` (each device changed), `sources` `{items: [{id, kind, title, devices}]}` (knowledge-graph facts the answer used), `suggestions` `{items}` (follow-ups), `offer` `{kind: 'save_routine', text}` (shown as a card), `ui_action` (`highlight` devices it changed, read or
+found; `focusDevice`; `openDevice {id, part?}` with `select`; `clearHighlight`), `error`, `done`.
+`GET /api/kg` (staff): counts and open alerts for the panel's home (`?graph=1`: nodes, edges, documents).
 `GET /api/chat`: `{ ok, ready, problem, model, skills, llm }`; `problem` says what to fix (Ollama URL, model not
 pulled, device API down).
 
@@ -39,7 +39,9 @@ token (401 otherwise); `{id}` must be in the session's scope (404 otherwise).
 - `GET health`: `{deviceId, state: "ONLINE" | "OFFLINE"}`.
 Commands that need confirmation (unlock, stop a wash) are never offered or accepted.
 
-## /api/st/v1/twin/{floor | insight/{id} | ops/{op}} (staff sessions; a guest only `ops/routines`, `ops/routine_run`)
+## /api/st/v1/twin/{kg | floor | insight/{id} | ops/{op}}
+`kg` (every scope): the knowledge graph's documents for the session's scope (`?graph=1` adds nodes and edges).
+ (staff sessions; a guest only `ops/routines`, `ops/routine_run`)
 `floor` -> `{time, scenario, rooms, devices: [{id, name, type, room, health, finding?}]}`; `insight/{id}` -> the
 device's parts with health and the finding (evidence, confidence, guided steps). Read by the agent's `diagnostics` skill.
 `POST ops/{op}`: `layout`, `alerts`, `alert_update`, `faults`, `clear_fault`, `simulate_fault`, `sim`, `passes`,

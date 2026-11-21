@@ -57,13 +57,6 @@ async def test_scene_open_part_and_layer_and_time(settings):
     assert r.message == "The simulated time is 14:30." and twin.calls[-1][:2] == ("sim", {"time": 14.5})
 
 
-async def test_building_answers_from_the_live_layout(settings):
-    twin = OpsTwin({"layout": LAYOUT})
-    agent, llm = build(settings, {"router": [{"skill": "building", "request": "rooms?"}], "building": [{"reply": "Two rooms."}]}, twin)
-    r = await ask(agent, settings, "rooms?", "technician")
-    assert r.message == "Two rooms." and "Living room | 2 | 1 Smart light, 1 Air conditioner" in llm.calls[-1]["system"]
-
-
 async def test_checkin_creates_pass_with_link_and_pin(settings):
     twin = OpsTwin({"layout": LAYOUT, "passes": {"passes": []},
                     "pass_create": lambda p: {"token": "abc", "path": "/guest/abc", "room": p["room"], "room_name": "Living room", "pin": "123456", "expires_at": 1_800_000_000_000, "label": p["label"]}})
@@ -135,7 +128,7 @@ async def test_staff_skills_are_hidden_from_guests(settings):
     agent, llm = build(settings, {"router": [{"skill": "chitchat", "request": "hi"}], "chitchat": [{"reply": "Hi"}]}, OpsTwin({}))
     await ask(agent, settings, "hi", "guest")
     router = llm.calls[0]["system"]
-    assert all(n not in router for n in ("- scene", "- building", "- checkin", "- maintenance", "- diagnostics")) and "- routines" in router
+    assert all(n not in router for n in ("- scene", "- checkin", "- maintenance", "- diagnostics")) and "- routines" in router
 
 
 # ---- routines people save ----

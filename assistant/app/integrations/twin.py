@@ -70,5 +70,9 @@ class TwinClient:
     async def floor(self, token: str | None) -> TwinResult:
         return await self._get("floor", token)
 
+    async def kg(self, token: str | None) -> TwinResult:
+        """The knowledge graph's documents for this session's scope."""
+        return await self._get("kg", token)
+
     async def insight(self, device_id: str, token: str | None) -> TwinResult:
         return await self._get(f"insight/{device_id}", token)

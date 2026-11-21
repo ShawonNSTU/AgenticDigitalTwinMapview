@@ -27,7 +27,8 @@ Rules:
 1. Use the conversation only to understand short follow-ups like "it", "that one", "the blinds one", "yes", "22".
 2. "request" is one short English sentence that keeps every device name, number and detail the user gave. Never invent details.
 3. If the latest message answers a question the assistant just asked, merge both into one full request (e.g. assistant asked "Which lamp?", user said "Light 1" -> "turn on the Light 1").
-4. If no skill fits, choose "{fallback}".
+4. Questions (how many, which, where, who, when, what happened, is there) go to "knowledge" when it is listed; requests to change devices go to the control skills.
+5. If no skill fits, choose "{fallback}".
 
 Reply with JSON only: {{"skill": "<skill name>", "request": "<standalone request>"}}"""
 
@@ -56,7 +57,8 @@ class Router:
         if len(skills) == 1:
             return Route(skill=names[0], request=ctx.message)
 
-        fallback = FALLBACK_SKILL if FALLBACK_SKILL in names else names[0]
+        # with the twin's knowledge graph, an unclear question is best answered from what the assistant knows
+        fallback = "knowledge" if "knowledge" in names else FALLBACK_SKILL if FALLBACK_SKILL in names else names[0]
         system = SYSTEM.format(bot=self.bot_name, skills=_skill_lines(skills), fallback=fallback)
         convo = ctx.history_text() or "(no previous messages)"
         user = f"Conversation so far:\n{convo}\n\nLatest user message: {ctx.message}"

@@ -30,7 +30,7 @@ class DeviceInfoSkill(ReplySkill):
     capability = "tell you about the devices and what they can do"
 
     def is_available(self, ctx: TurnContext) -> bool:
-        return bool(ctx.devices)
+        return not ctx.extras.get('role') and bool(ctx.devices)
 
     def build_prompt(self, ctx: TurnContext, request: str) -> tuple[str, str]:
         listed = shortlist(request, ctx.devices, self.settings.max_device_candidates)

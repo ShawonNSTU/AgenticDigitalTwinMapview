@@ -52,7 +52,7 @@ class RoomsSkill(ReplySkill):
         self.activity = activity or get_room_activity_client(settings)
 
     def is_available(self, ctx: TurnContext) -> bool:
-        return bool(rooms_for(ctx, self.settings))
+        return not ctx.extras.get('role') and bool(rooms_for(ctx, self.settings))
 
     def build_prompt(self, ctx: TurnContext, request: str) -> tuple[str, str]:
         rooms = rooms_for(ctx, self.settings)

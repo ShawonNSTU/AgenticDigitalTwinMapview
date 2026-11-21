@@ -105,6 +105,12 @@ class Settings:
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
     vision_model: str = field(default_factory=lambda: _env("VISION_MODEL", "claude-sonnet-5-5"))
 
+    # --- Knowledge (RAG over the twin's knowledge graph) ---
+    # Ollama embedding model for meaning-based retrieval (ollama pull nomic-embed-text). Empty = keywords only.
+    ollama_embed_model: str = field(default_factory=lambda: _env("OLLAMA_EMBED_MODEL", "nomic-embed-text"))
+    rag_top_k: int = field(default_factory=lambda: _env_int("RAG_TOP_K", 8))
+    rag_max_chars: int = field(default_factory=lambda: _env_int("RAG_MAX_CHARS", 7000))
+
     # --- Robustness ---
     # Turns running at once. A local Ollama serves one model call at a time, so extra turns wait their turn.
     max_concurrent_turns: int = field(default_factory=lambda: _env_int("MAX_CONCURRENT_TURNS", 4))

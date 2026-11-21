@@ -115,11 +115,12 @@ def test_control_goes_through_the_twin(llm):
 
 def test_device_list_comes_from_the_twin(llm):
     sent = llm.calls[-1]["system"] if llm.calls else ""
-    llm.script = {"router": [route("device_info", "which devices are there?")], "device_info": [{"reply": "ok"}]}
-    chat("/api/chat", "which devices are there?", room="smartthings-experience-zone")
-    prompt = llm.calls[-1]["system"]
+    llm.script = {"router": [route("knowledge", "which devices are there?")], "knowledge": [{"reply": "ok", "sources": [], "follow_ups": []}]}
+    chat("/api/chat", "which devices are there in the SmartThings Experience Zone?", room="smartthings-experience-zone")
+    kg = " ".join(d["text"] for d in httpx.get(f"{TWIN}/api/kg?graph=1", timeout=10).json()["docs"])
     for name in ("Light 1", "Desk Lamp", "Aqara Roller Shade Controller", "Blinds Switch", "TV Lamp", "Ceiling AC"):
-        assert name in prompt, name
+        assert name in kg, name
+    prompt = kg
     assert "of dining" not in prompt                                                   # the dining shade is not in the room
     assert sent is not None
 
@@ -167,13 +168,13 @@ def test_guest_agent_is_limited_by_the_pass(llm):
     # a pass for the zone that lets the guest control lights only
     p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False, "controls": ["light"]}, timeout=10).json()
     path = f"/api/guest/{p['token']}/chat"
-    llm.script = {"router": [route("device_info", "what can I control?")], "device_info": [{"reply": "ok"}]}
-    chat(path, "what can I control?")
+    llm.script = {"router": [route("knowledge", "what can I control?")], "knowledge": [{"reply": "ok", "sources": [], "follow_ups": []}]}
+    chat(path, "what can I control? lights shade roller")
     prompt = llm.calls[-1]["system"]
     assert "Light 1" in prompt
     # devices the pass doesn't let the guest control are there to ask about, with nothing to run
-    shade_line = next((l for l in prompt.splitlines() if "Aqara Roller Shade Controller" in l), "")
-    assert "windowShade" not in shade_line and "shade position" not in shade_line.lower(), shade_line
+    shade_line = next((l for l in prompt.splitlines() if "Aqara Roller Shade Controller" in l and "It can" in l), "")
+    assert not shade_line or "not by you" in shade_line, shade_line
     d = zone_device("Light 2")
     llm.script = {"router": [route("device_control", "set Light 2 to 25%")], "action_select": [act("switchLevel.setLevel", "25")]}
     events = chat(path, "set Light 2 to 25%")
@@ -234,10 +235,10 @@ def test_diagnostics_find_and_explain_through_the_twin(llm):
 
 def test_guest_gets_no_diagnostics_and_no_other_rooms(llm):
     p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False, "controls": ["light"]}, timeout=10).json()
-    llm.script = {"router": [route("device_info", "which devices are there?")], "device_info": [{"reply": "ok"}]}
+    llm.script = {"router": [route("knowledge", "which devices are there?")], "knowledge": [{"reply": "ok", "sources": [], "follow_ups": []}]}
     chat(f"/api/guest/{p['token']}/chat", "which devices are there?")
     prompt = llm.calls[-1]["system"]
-    assert "Gym Room" not in prompt and "Water leak" not in prompt
+    assert "Water leak" not in prompt and "Treadmill" not in prompt.title()
     assert "diagnostics" not in llm.calls[-2]["system"]                              # not even offered to the router
 
 
@@ -309,13 +310,13 @@ def test_fault_is_listed_and_fixed_by_the_assistant(llm):
     assert rec and rec[-1]["status"] == "resolved" and "assistant" in rec[-1]["by"]
 
 
-def test_scene_and_building_through_the_assistant(llm):
+def test_scene_and_room_questions_through_the_assistant(llm):
     llm.script = {"router": [route("scene", "hide the piping")], "scene": [{"action": "layer", "device_ids": [], "part": "", "layer": "piping", "on": False, "scenario": "", "time": 0}]}
     events = chat("/api/chat", "hide the piping")
     assert ("ui_action", {"type": "setLayer", "layer": "piping", "on": False}) in events, events
-    llm.script = {"router": [route("building", "how many rooms?")], "building": [lambda s, u: {"reply": s.split("\n")[2]}]}
-    events = chat("/api/chat", "how many rooms?")
-    assert "rooms" in next(d["text"] for e, d in events if e == "text") and "gym room" in llm.calls[-1]["system"].lower()
+    llm.script = {"router": [route("knowledge", "what is in the gym room?")], "knowledge": [kg_reply(r"Furniture: [^.]+")]}
+    events = chat("/api/chat", "what is in the gym room?")
+    assert "treadmill" in next(d["text"] for e, d in events if e == "text").lower(), events
 
 
 def test_assistant_ops_are_limited_by_role():
@@ -334,7 +335,8 @@ def test_save_a_routine_then_run_it_later(llm):
                   "action_select": [act("switchLevel.setLevel", "30"), act("switch.on", "")]}
     events = chat("/api/chat", "dim the Smart light to 30% and turn on the TV")
     text = next(d["text"] for e, d in events if e == "text")
-    assert "save this as a routine" in text, events
+    assert ("offer", {"kind": "save_routine", "text": "Save this as a routine to run again later?"}) in events, events
+    assert "save this as a routine" not in text                                       # a card in the UI, not a line of text
     assert readings(light["id"])["lv"] == 30
     # 2. the user says yes and gives a name: the twin sent the last commands back, the routine is stored
     llm.script = {"router": [route("routines", f"save this as a routine called {name}")], "routines": [{"action": "save", "routine": "", "room": "", "name": name}]}
@@ -357,3 +359,49 @@ def test_save_a_routine_then_run_it_later(llm):
                   "routines": [lambda s, u: {"action": "delete", "routine": next(l.split(":")[0].strip("- ") for l in s.splitlines() if "your routine" in l and name in l), "room": "", "name": ""}]}
     events = chat("/api/chat", f"delete {name}")
     assert f"Deleted your routine {name}" in next(d["text"] for e, d in events if e == "text"), events
+
+
+# ---- the knowledge graph (RAG): built from the floor plan, enriched by every action ----
+
+def kg_reply(pattern):
+    """A scripted model that answers with the first fact line matching `pattern` and cites it."""
+    import re as _re
+
+    def answer(system, user):
+        facts = [l for l in system.splitlines() if l.startswith("[")]
+        hit = next((l for l in facts if _re.search(pattern, l)), "")
+        m = _re.search(pattern, hit)
+        return {"reply": m.group(0) if m else "I don't know", "sources": [int(hit[1:hit.index("]")])] if hit else [], "follow_ups": ["Which rooms have devices?"]}
+    return answer
+
+
+def test_how_many_rooms_on_the_current_floor(llm):
+    rooms = len(httpx.get(f"{TWIN}/api/floor", timeout=10).json()["rooms"])
+    llm.script = {"router": [route("knowledge", "how many rooms are on the current floor?")], "knowledge": [kg_reply(r"It has \d+ rooms")]}
+    events = chat("/api/chat", "How many rooms in current floor")
+    assert next(d["text"] for e, d in events if e == "text") == f"It has {rooms} rooms", events
+    kinds = [e for e, _ in events]
+    assert "step" in kinds and "sources" in kinds and "suggestions" in kinds         # the agentic UI's events
+    assert next(d for e, d in events if e == "sources")["items"][0]["id"] == "floor:summary"
+
+
+def test_every_action_enriches_what_the_assistant_knows(llm):
+    light = gym_device("light")
+    httpx.post(f"{TWIN}/api/devices/{light['id']}/commands", json={"command": "setLevel", "args": {"percent": 37}}, timeout=10)
+    llm.script = {"router": [route("knowledge", "what happened to the gym light?")], "knowledge": [kg_reply(rf"{light['id']}\): setLevel \(percent 37\) done")]}
+    events = chat("/api/chat", "what happened to the gym light?")
+    assert "setLevel (percent 37) done" in next(d["text"] for e, d in events if e == "text"), events
+    # a guest check-in is known at once, with the room
+    httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False, "label": "Karim"}, timeout=10)
+    llm.script = {"router": [route("knowledge", "who is checked in?")], "knowledge": [kg_reply(r"Guest Karim is checked in to [^.]+")]}
+    events = chat("/api/chat", "who is checked in?")
+    assert "Karim is checked in to Smart Things Experience Zone" in next(d["text"] for e, d in events if e == "text"), events
+
+
+def test_guest_knowledge_is_only_their_room_and_stay(llm):
+    p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False}, timeout=10).json()
+    llm.script = {"router": [route("knowledge", "how many rooms are there?")], "knowledge": [kg_reply(r"The floor has \d+ rooms")]}
+    events = chat(f"/api/guest/{p['token']}/chat", "how many rooms are there?")
+    assert "rooms" in next(d["text"] for e, d in events if e == "text"), events
+    prompt = llm.calls[-1]["system"]
+    assert "Karim" not in prompt and "Treadmill" not in prompt and "Gym Room Air conditioner" not in prompt   # no other guests or rooms' details

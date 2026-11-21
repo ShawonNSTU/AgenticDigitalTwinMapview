@@ -340,13 +340,22 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
             const ev = /^event: (.*)$/m.exec(block)?.[1]?.trim();
             let data: any = {};
             try { data = JSON.parse(/^data: (.*)$/ms.exec(block)?.[1] ?? '{}'); } catch { /* ignore a broken line */ }
-            if (ev === 'status') { if (!opts.guest) out('tool', { name: 'SmartThings agent', summary: String(data.text ?? data.stage ?? '') }); }
+            // each step the agent takes, live: the UI shows them as a timeline (`tool` kept for older clients)
+            if (ev === 'status') { const t = String(data.text ?? data.stage ?? ''); out('step', { stage: String(data.stage ?? ''), text: t }); if (!opts.guest) out('tool', { name: 'Assistant', summary: t }); }
             else if (ev === 'error') out('error', { message: String(data.detail ?? 'The SmartThings agent failed.') });
             else if (ev === 'final') {
               const d = data?.data ?? {};
               const text = String(d.question ?? data?.message ?? '');
               if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model is not reachable. Check OLLAMA_BASE_URL in assistant/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
-              else if (text) out(data?.status === 'error' ? 'error' : 'text', data?.status === 'error' ? { message: text } : { text });
+              else if (text) {
+                // the offer to save a routine becomes a card with a name field in the UI, not a line of text
+                const offer = !!d.save_offer;
+                const shown = offer ? text.replace(/\n?Would you like to save this as a routine[^]*$/, '').trim() : text;
+                out(data?.status === 'error' ? 'error' : 'text', data?.status === 'error' ? { message: shown } : { text: shown, skill: d.skill ?? '' });
+                if (offer) out('offer', { kind: 'save_routine', text: 'Save this as a routine to run again later?' });
+              }
+              if (Array.isArray(d.sources) && d.sources.length) out('sources', { items: d.sources.map((x: any) => ({ id: String(x.id), kind: String(x.kind ?? ''), title: String(x.title ?? ''), devices: (x.devices ?? []).map((i: unknown) => resolveDevice(String(i), scope)?.id).filter(Boolean) })) });
+              if (Array.isArray(d.suggestions) && d.suggestions.length) out('suggestions', { items: d.suggestions.slice(0, 3).map(String) });
               const results: any[] = d.results ?? [];
               // what was just done, for "save this as a routine": kept for the owner's next turn (a saved routine clears it)
               const done = results.filter(r => r.status === 'success' && r.command_generated?.commands?.length).map(r => ({ device_id: r.device_id, device_name: r.device_name, commands: r.command_generated.commands }));
@@ -360,8 +369,9 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
                 if (ids.length === 1) out('ui_action', { type: 'focusDevice', id: ids[0] });
               }
               // the diagnostics skill (staff): highlight / focus / open a device and its part, with ids checked against the scope
-              if (scope.kind === 'host') for (const u of Array.isArray(d.ui) ? d.ui : []) {
+              for (const u of Array.isArray(d.ui) ? d.ui : []) {
                 if (!u || !ALLOWED_UI.has(u.type)) continue;
+                if (scope.kind === 'guest' && u.type !== 'highlight' && u.type !== 'focusDevice') continue;   // a guest's view only points at their own devices
                 if (u.type === 'clearHighlight' || u.type === 'resetView') { out('ui_action', { type: u.type }); continue; }
                 if (u.type === 'setLayer') { if (typeof u.layer === 'string') out('ui_action', { type: 'setLayer', layer: u.layer, on: u.on !== false }); continue; }
                 if (u.type === 'trace') { const t = resolveDevice(String(u.from), scope)?.id; if (t) out('ui_action', { type: 'trace', from: t }); continue; }
@@ -371,9 +381,9 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
                 else if (u.type === 'focusDevice') out('ui_action', { type: 'focusDevice', id: ok[0] });
                 else if (u.type === 'openDevice') { out('ui_action', { type: 'openDevice', id: ok[0], ...(typeof u.part === 'string' ? { part: u.part } : {}) }); out('select', { id: ok[0] }); }
               }
-              if (opts.guest && results.length) out('result', { results: results.map(r => {
+              if (results.length) out('result', { results: results.map(r => {
                 const dv = resolveDevice(String(r.device_id), scope);
-                return { device_id: dv?.id ?? r.device_id, label: r.device_name, type: dv?.type ?? '', command: '', args: {}, summary: 'done', ok: r.status === 'success', error: r.status === 'success' ? undefined : String(r.api_result?.response?.error?.message ?? r.api_result?.error ?? 'did not respond') };
+                return { device_id: dv?.id ?? r.device_id, label: r.device_name, type: dv?.type ?? '', command: '', args: {}, summary: (r.command_generated?.commands ?? []).map((c: any) => `${c.command}${c.arguments?.length ? ' ' + c.arguments.map((x: unknown) => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(' ') : ''}`).join(' · ') || 'done', ok: r.status === 'success', error: r.status === 'success' ? undefined : String(r.api_result?.response?.error?.message ?? r.api_result?.error ?? 'did not respond') };
               }) });
             }
           }

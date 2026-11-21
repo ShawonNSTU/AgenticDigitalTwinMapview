@@ -16,7 +16,7 @@ const guestApi = (path: string, method: string) =>
   || path === '/api/positioning/rtls' && method === 'POST'; // checked by its own key
 
 const techAllowed = (path: string, method: string) =>
-  path === '/tech' || path.startsWith('/api/alerts') || path.startsWith('/api/maintenance') || path.startsWith('/api/events') || path.startsWith('/api/chat')
+  path === '/tech' || path.startsWith('/api/alerts') || path.startsWith('/api/maintenance') || path.startsWith('/api/events') || path.startsWith('/api/chat') || path.startsWith('/api/kg')
   || (path.startsWith('/api/technicians') && method === 'GET')
   || (/^\/api\/(floor|building|devices|layout)/.test(path) && (method === 'GET' || /\/commands$/.test(path)));
 

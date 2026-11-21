@@ -9,6 +9,8 @@ import { roomColor, roomKey, toBuilding, MOUNT, PREFIX, insideXZ, type PlanRoom,
 import { fitSmartThingsZone } from './stzone';
 import { realState, link as stLink, hsvHex } from '@/lib/integrations/smartthings';
 import { ensureLive } from '@/lib/integrations/stlive';
+import { log as journal, resetJournal } from '@/lib/kg/journal';
+
 
 type Override = Record<string, unknown>;
 interface Runtime {
@@ -54,6 +56,7 @@ export function setSim(p: { scenario?: string; t?: number; playing?: boolean; sp
   if (typeof p.playing === 'boolean') rt.playing = p.playing;
   if (typeof p.speed === 'number') rt.speed = Math.max(0.05, Math.min(5, p.speed));
   if (p.fix) engineState.fixT = rt.t;
+  if (p.scenario || typeof p.t === 'number') journal({ kind: 'sim', text: `Simulation: scenario ${scenarioName(engineState.scen)}, time ${String(Math.floor(rt.t)).padStart(2, '0')}:${String(Math.round((rt.t % 1) * 60)).padStart(2, '0')}` });
   rt.lastTick = Date.now();
   return simState();
 }
@@ -222,6 +225,7 @@ export function addDevice(p: { type: string; x: number; z: number; y?: number; r
   const label = TYPES[p.type].label;
   const d = { id, type: p.type, room: room?.key ?? 'out', name: `${p.name ?? label} · ${room?.name ?? 'Outside'}`, position: [+p.x.toFixed(3), +(p.y ?? MOUNT[p.type] ?? 1).toFixed(3), +p.z.toFixed(3)], rotationY: +(p.rotationY ?? 0).toFixed(4), ...(p.fixture ? { fixture: p.fixture } : {}) };
   setDevices([...DEV.map(plain), d]);
+  journal({ kind: 'device', devices: [id], room: d.room, text: `${label} ${id} placed in ${room?.name ?? 'Outside'}` });
   return { ok: true as const, device: d };
 }
 
@@ -233,6 +237,7 @@ export function moveDevice(id: string, p: { x?: number; z?: number; y?: number; 
   const label = TYPES[cur.type].label;
   const next = { ...plain(cur), room: room?.key ?? 'out', name: room?.key === cur.room ? cur.name : `${label} · ${room?.name ?? 'Outside'}`, position: [x, p.y ?? cur.p[1], z], rotationY: p.rotationY ?? cur.rotationY ?? 0 };
   setDevices(DEV.map(d => d.id === id ? next : plain(d)));
+  if (room?.key !== cur.room) journal({ kind: 'device', devices: [id], room: room?.key ?? 'out', text: `${String(cur.name).split(' · ')[0]} ${id} moved to ${room?.name ?? 'Outside'}` });
   return { ok: true as const, device: next };
 }
 
@@ -241,12 +246,14 @@ export function renameDevice(id: string, label: string) {
   const cur = byId[id];
   if (!cur) return { ok: false as const, error: `Unknown device ${id}` };
   const room = ROOMS.find((r: any) => r.key === cur.room) as any;
+  journal({ kind: 'device', devices: [id], room: cur.room, text: `${String(cur.name).split(' · ')[0]} ${id} renamed to ${label}` });
   setDevices(DEV.map(d => d.id === id ? { ...plain(d), name: `${label} · ${room?.name ?? 'Outside'}` } : plain(d)));
   return { ok: true as const };
 }
 
 export function removeDevice(id: string) {
   if (!byId[id]) return { ok: false as const, error: `Unknown device ${id}` };
+  journal({ kind: 'device', devices: [id], room: byId[id].room, text: `${String(byId[id].name).split(' · ')[0]} ${id} removed` });
   setDevices(DEV.filter(d => d.id !== id).map(plain));
   delete rt.overrides[id];
   return { ok: true as const };
@@ -288,6 +295,8 @@ export function setBuilding(rooms: any[], devices: any[], outdoorPad: any, plan:
   } else rt.plan = null;
   rt.overrides = {};
   engineState.fixT = null;
+  resetJournal();
+  journal({ kind: 'floor', text: `Floor plan "${title}" loaded: ${rooms.length} rooms, ${devices.length} devices, ${furniture.length} furniture items${plan ? ', from an uploaded image' : ''}` });
   return buildingState();
 }
 
