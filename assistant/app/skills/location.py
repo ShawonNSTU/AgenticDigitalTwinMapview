@@ -77,6 +77,8 @@ class LocationSkill(ReplySkill):
     def is_available(self, ctx: TurnContext) -> bool:
         if not self.settings.location_skill_enabled:  # off for now: location questions go to the room API later
             return False
+        if ctx.extras.get("role"):  # in the digital twin, the knowledge graph (live floor) answers places and rooms
+            return False
         d = self.data(ctx)
         return bool(d.get("places") or d.get("faq") or d.get("summary"))
 

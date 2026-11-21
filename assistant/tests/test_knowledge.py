@@ -113,3 +113,12 @@ async def test_room_question_turns_the_view_to_the_room(settings):
     res, _ = await ask(settings, {"router": [{"skill": "knowledge", "request": "show me the gym room"}],
                                   "knowledge": [lambda s, u: {"reply": "Here it is.", "sources": [next(int(l[1]) for l in s.splitlines() if l.startswith("[") and "Gym Room:" in l)], "follow_ups": []}]}, "show me the gym room")
     assert {"type": "selectRoom", "room": "gym-room"} in res.data["ui"]
+
+
+async def test_sample_venue_data_never_answers_in_the_twin(settings):
+    """data/*.example.json ("Ground floor", sample places) are for the standalone agent's tests only: with the twin
+    (role set), even an enabled location skill steps aside and the live knowledge graph answers."""
+    res, llm = await ask(settings, {"router": [{"skill": "knowledge", "request": "which floor is this?"}],
+                                    "knowledge": [{"reply": "4th floor.", "sources": [1], "follow_ups": []}]}, "which floor is this?")
+    router = llm.calls[0]["system"]
+    assert "- location:" not in router and "- rooms:" not in router and "Ground floor" not in router
