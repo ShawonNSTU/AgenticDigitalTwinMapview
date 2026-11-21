@@ -1040,3 +1040,14 @@ details.lab > summary.lab-head .sim-tag { margin-left:auto; }
 .holo-reading { margin:4px 0 2px; font-size:15px; font-weight:600; }
 .furn-row { cursor:pointer; border-radius:8px; padding:4px 6px; }
 .furn-row:hover, .furn-row.on { background:var(--bg2); }
+/* fault options: equal-height cards, one line each, text centred vertically; the running fault is marked with a
+   red dot and a red outline instead of a wrapped "· running" suffix */
+details.lab .fault-list { grid-auto-rows:1fr; align-items:stretch; margin-top:4px; }
+details.lab .fault-opt { flex-direction:row; align-items:center; justify-content:flex-start; gap:8px; min-height:40px; padding:6px 10px; }
+details.lab .fault-opt b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; line-height:1.3; }
+.fault-opt.running b::after { content:none; }
+.fault-opt.running::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--fault); flex:none; box-shadow:0 0 0 3px rgba(220,38,38,.15); }
+.fault-opt.running { border-color:#fca5a5; }
+.fault-opt.running.on { border-color:var(--fault); box-shadow:0 0 0 3px rgba(220,38,38,.12); }
+details.lab .sev { gap:8px; margin-bottom:6px; }
+details.lab[open] { gap:12px; }

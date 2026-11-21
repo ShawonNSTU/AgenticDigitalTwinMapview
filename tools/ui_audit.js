@@ -35,7 +35,7 @@ const CHECK = () => {
   for (const el of document.querySelectorAll('button, select, .stat, .state-chip, .eta-chip, .badge, .chip, .ready-chip, .floor-chip, .tabs button, .seg button, .eco-tag, .st-tag, .sim-tag, em.st')) {
     if (!vis(el)) continue;
     const t = (el.innerText || '').trim();
-    if (!t || t.length < 3 || el.matches('.fault-opt') || el.closest('.ag-tasks, .ag-sugg, .story-rail, .stepper, .part, .alert-row, .dev-row, .comfort-row, .ops-row')) continue;
+    if (!t || t.length < 3 || el.closest('.ag-tasks, .ag-sugg, .story-rail, .stepper, .part, .alert-row, .dev-row, .comfort-row, .ops-row')) continue;
     if (el.tagName === 'SELECT') { if (el.scrollWidth > el.clientWidth + 2) out.push({ kind: 'select-clipped', el: name(el) }); continue; }
     if (lines(el) > 1) out.push({ kind: 'wrapped', el: name(el), h: Math.round(el.getBoundingClientRect().height) });
   }
@@ -78,6 +78,13 @@ const CHECK = () => {
     if (sameLine.length < 2) continue;
     const hs = sameLine.map(c => c.getBoundingClientRect().height);
     if (Math.max(...hs) - Math.min(...hs) > 6) out.push({ kind: 'uneven', el: name(row), heights: hs.map(Math.round) });
+  }
+  // 6b. cards in a grid: every card in one row has the same height, and its text is vertically centred
+  for (const grid of document.querySelectorAll('.fault-list, .pal-grid, .kpis, .perm-list')) {
+    if (!vis(grid) || !getComputedStyle(grid).display.includes('grid')) continue;
+    const rows = {};
+    for (const c of grid.children) { if (!vis(c)) continue; const r = c.getBoundingClientRect(); (rows[Math.round(r.top)] ??= []).push(r.height); }
+    for (const hs of Object.values(rows)) if (hs.length > 1 && Math.max(...hs) - Math.min(...hs) > 2) out.push({ kind: 'uneven-cards', el: name(grid), heights: hs.map(Math.round) });
   }
   // 7. sideways scroll of the page, and squashed controls
   if (document.scrollingElement.scrollWidth > W + 1) out.push({ kind: 'page-hscroll', by: document.scrollingElement.scrollWidth - W });
