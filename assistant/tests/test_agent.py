@@ -259,7 +259,7 @@ async def test_prompts_are_small_and_never_contain_device_ids(make_agent, settin
     await run(agent, settings, "how many devices are there?")
     for call in llm.calls:
         text = call["system"] + call["user"]
-        assert len(text) < 3400, (call["label"], len(text))
+        assert len(text) < 4200, (call["label"], len(text))
         assert not any(d.id in text for d in devices), call["label"]
     # "Right Window Light" appears in no skill example, so it proves the device list is not sent to the router
     assert "router" == llm.calls[0]["label"] and "Right Window Light" not in llm.calls[0]["system"]

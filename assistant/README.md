@@ -126,3 +126,11 @@ an action) stay fast. Skills add their own rationale with `ctx.reason()`.
 The twin sends each device's `about` (what it is, where, other names) and a room guide (`extras.room_guide`, e.g. "to
 see the outside view: open the curtain fully and turn on both window lights"). Edit them in
 `web/lib/sim/stzone.ts` (`ST_MEANING`, `ZONE_GUIDE`); other devices get their kind, room and common names.
+
+## Several tasks in one message (plans)
+"Dim Light 2 and Light 3, save that as Reading, and tell me how many rooms there are": the router returns a plan
+(`tasks`, one per kind of work, and `parallel` when no task depends on another) in the same call it already makes,
+so a single request costs nothing extra. The agent posts the to-do list (`plan` event), runs the tasks one by one
+(or at the same time when independent), reports each (`task` events: running, done, needs_input, failed), hands
+each task's device changes to the next (so "save that as a routine" saves exactly them) and answers with one
+combined summary. A failing task does not stop the others. Several device changes of the same kind stay ONE task.

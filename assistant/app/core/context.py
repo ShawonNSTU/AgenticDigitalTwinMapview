@@ -32,6 +32,8 @@ class TurnContext:
     on_progress: Callable[[str, str], None] | None = field(default=None, repr=False)
     # Optional reasoning sink (label, text delta): the model's thinking and the skills' rationale, shown live.
     on_reasoning: Callable[[str, str], None] | None = field(default=None, repr=False)
+    # Optional event sink for plans: ("plan", {...}) and ("task", {...}) events for the UI's to-do list.
+    on_event: Callable[[str, dict], None] | None = field(default=None, repr=False)
 
     def progress(self, stage: str, text: str) -> None:
         """Report what the agent is doing now (shown live in the chat). Never raises."""
@@ -50,6 +52,13 @@ class TurnContext:
     @property
     def is_staff(self) -> bool:
         return self.role in {"admin", "technician"}
+
+    def emit(self, event: str, data: dict) -> None:
+        if self.on_event is not None:
+            try:
+                self.on_event(event, data)
+            except Exception:
+                pass
 
     def reason(self, text: str, label: str = "agent") -> None:
         """Say why the agent does what it does (shown under "Reasoning" in the chat). Never raises."""

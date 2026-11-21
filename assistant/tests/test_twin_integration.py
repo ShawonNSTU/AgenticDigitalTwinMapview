@@ -434,3 +434,31 @@ def test_window_view_by_purpose_through_the_twin(llm):
     assert readings(shade["id"])["pos"] == 100
     res = next(d for e, d in events if e == "result")["results"]
     assert {r["label"] for r in res} == {"Left Window Light", "Right Window Light", "Aqara Roller Shade Controller"} and all(r["ok"] for r in res)
+
+
+def test_multi_task_message_plans_and_works_through_it(llm):
+    """'Dim Light 2 to 20% and Light 3 to 40%, save that as Reading, and tell me how many rooms there are':
+    a to-do list of three, done one by one, each ticked off; the routine saves what task 1 changed."""
+    l2, l3 = zone_device("Light 2"), zone_device("Light 3")
+    name = f"Reading {int(time.time()) % 10000}"
+    llm.script = {
+        "router": [{"skill": "device_control", "request": "set Light 2 to 20% and Light 3 to 40%", "parallel": False, "tasks": [
+            {"skill": "device_control", "request": "set Light 2 to 20% and Light 3 to 40%"},
+            {"skill": "routines", "request": f"save this as a routine called {name}"},
+            {"skill": "knowledge", "request": "how many rooms are on this floor?"}]}],
+        "device_plan": [{"result": "OK", "steps": [{"devices": ["Light 2"], "request": "set to 20%"}, {"devices": ["Light 3"], "request": "set to 40%"}], "options": []}],
+        "action_select": [act("switchLevel.setLevel", "20"), act("switchLevel.setLevel", "40")],
+        "routines": [{"action": "save", "routine": "", "room": "", "name": name}],
+        "knowledge": [kg_reply(r"It has \d+ rooms")],
+    }
+    events = chat("/api/chat", f"Dim Light 2 to 20% and Light 3 to 40%, save that as {name}, and tell me how many rooms there are", room="smartthings-experience-zone")
+    plan = next(d for e, d in events if e == "plan")
+    assert len(plan["tasks"]) == 3 and plan["parallel"] is False
+    ticks = [(d["id"], d["status"]) for e, d in events if e == "task"]
+    assert ticks == [(1, "running"), (1, "done"), (2, "running"), (2, "done"), (3, "running"), (3, "done")], ticks
+    text = next(d["text"] for e, d in events if e == "text")
+    assert text.startswith("Done 3 of 3 tasks.") and f'Saved "{name}"' in text and "It has" in text, text
+    assert readings(l2["id"])["lv"] == 20 and readings(l3["id"])["lv"] == 40
+    routines = httpx.get(f"{TWIN}/api/kg?graph=1", timeout=10).json()["docs"]
+    saved = next(d for d in routines if d["kind"] == "routine" and name in d["title"])
+    assert "Light 2" in saved["text"] and "20" in saved["text"] and "Light 3" in saved["text"]

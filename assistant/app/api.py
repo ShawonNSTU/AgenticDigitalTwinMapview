@@ -121,6 +121,7 @@ def create_app(settings: Settings = default_settings, llm: LLM | None = None) ->
         queue: asyncio.Queue[tuple[str, dict[str, str]]] = asyncio.Queue()
         ctx.on_progress = lambda stage, text: queue.put_nowait(("status", {"stage": stage, "text": text}))
         ctx.on_reasoning = lambda label, text: queue.put_nowait(("reasoning", {"label": label, "text": text}))
+        ctx.on_event = lambda event, data: queue.put_nowait((event, data))
 
         async def events() -> AsyncIterator[str]:
             task = asyncio.create_task(turn(ctx))

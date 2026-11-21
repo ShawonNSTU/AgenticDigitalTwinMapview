@@ -18,7 +18,9 @@ export type Run = {
   steps: Step[]; text: string; error?: string; results: Result[]; sources: Source[]; suggestions: string[];
   offer?: { kind: string; text: string; state: 'open' | 'done' | 'dismissed' }; shown: string[];
   reasoning: string; choices: string[]; cards: Card[];
+  todo: Todo[]; parallel: boolean;
 };
+export type Todo = { id: number; title: string; skill: string; status: 'pending' | 'running' | 'done' | 'needs_input' | 'failed'; summary?: string; at?: number; took?: number };
 export type Card = { kind: string; title?: string; link?: string; pin?: string | null; room?: string; until?: string; label?: string };
 export type UiAction = { type: string; [k: string]: unknown };
 
@@ -37,7 +39,7 @@ export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void;
     const id = ++seq.current;
     const history = runs.flatMap(r => [{ role: 'user', content: r.ask }, ...(r.text ? [{ role: 'assistant', content: r.text }] : [])]).slice(-12);
     setRuns(rs => [...rs.map(r => (r.offer?.state === 'open' ? { ...r, offer: { ...r.offer, state: 'dismissed' as const } } : r)),
-      { id, ask: q, startedAt: Date.now(), status: 'running', steps: [], text: '', results: [], sources: [], suggestions: [], shown: [], reasoning: '', choices: [], cards: [] }]);
+      { id, ask: q, startedAt: Date.now(), status: 'running', steps: [], text: '', results: [], sources: [], suggestions: [], shown: [], reasoning: '', choices: [], cards: [], todo: [], parallel: false }]);
     setBusy(true);
     const ac = new AbortController(); abort.current = ac;
     try {
@@ -56,6 +58,9 @@ export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void;
           if (ev === 'step') patch(id, r => ({ ...r, steps: [...r.steps.map(s => ({ ...s, done: true })), { text: String(data.text || data.stage), at: Date.now(), done: false }] }));
           else if (ev === 'text') { patch(id, r => ({ ...r, text: r.text ? `${r.text}\n${data.text}` : String(data.text) })); cb.current.onText?.(String(data.text)); }
           else if (ev === 'result') patch(id, r => ({ ...r, results: data.results ?? [] }));
+          else if (ev === 'plan') patch(id, r => ({ ...r, todo: data.tasks ?? [], parallel: !!data.parallel }));
+          else if (ev === 'task') patch(id, r => ({ ...r, todo: r.todo.map(t => t.id !== data.id ? t : { ...t, status: data.status, summary: data.summary ?? t.summary,
+            at: data.status === 'running' ? Date.now() : t.at, took: data.status !== 'running' && t.at ? Date.now() - t.at : t.took }) }));
           else if (ev === 'reasoning') patch(id, r => ({ ...r, reasoning: (r.reasoning + String(data.text ?? '')).slice(-6000) }));
           else if (ev === 'choices') patch(id, r => ({ ...r, choices: data.items ?? [] }));
           else if (ev === 'card') patch(id, r => ({ ...r, cards: [...r.cards, data as Card] }));
@@ -172,6 +177,25 @@ function Answer({ text, animate, onTyped, onAsk }: { text: string; animate: bool
   return <div className="ag-answer"><Rich text={shown} caret={typing} onAsk={onAsk} /></div>;
 }
 
+/** The agent's plan for a message with several tasks: a to-do list it works through, live. */
+function TodoList({ run }: { run: Run }) {
+  const done = run.todo.filter(t => t.status === 'done').length;
+  const icon = (s: Todo['status']) => s === 'done' ? '✓' : s === 'failed' ? '✕' : s === 'needs_input' ? '?' : s === 'running' ? '' : '';
+  return (
+    <div className="ag-todo">
+      <div className="ag-todo-head"><b>Plan</b><span>{done}/{run.todo.length} done · {run.parallel ? 'in parallel' : 'one by one'}</span>
+        <i className="ag-todo-bar"><i style={{ width: `${(100 * run.todo.filter(t => t.status !== 'pending' && t.status !== 'running').length) / Math.max(1, run.todo.length)}%` }} /></i></div>
+      <ol>{run.todo.map(t => (
+        <li key={t.id} className={t.status}>
+          <span className="ag-todo-ico">{icon(t.status)}</span>
+          <div><b>{t.title}</b>{t.summary && t.status !== 'running' && <small>{t.summary.replace(/\*\*/g, '')}</small>}{t.status === 'running' && <small>Working…</small>}</div>
+          {t.took != null && t.status !== 'running' && <em>{secs(t.took)}</em>}
+        </li>
+      ))}</ol>
+    </div>
+  );
+}
+
 /** One run: request, live steps, changes, answer, sources, offers, follow-ups. */
 export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Run; last: boolean; busy: boolean; onAsk: (q: string) => void; onFocus: (ids: string[]) => void; setOffer: (s: 'done' | 'dismissed') => void }) {
   const [open, setOpen] = useState(false);
@@ -194,7 +218,8 @@ export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Ru
         </div>
       )}
       <Reasoning run={run} />
-      {run.status === 'running' && !run.text && !run.error && <Thinking run={run} />}
+      {run.todo.length > 0 && <TodoList run={run} />}
+      {run.status === 'running' && !run.text && !run.error && !run.todo.length && <Thinking run={run} />}
       {run.text && <Answer text={run.text} animate={animate} onTyped={onTyped} onAsk={q => !busy && onAsk(q)} />}
       {after && run.cards.map((c, i) => c.kind === 'guest_pass' ? <PassCard key={i} c={c} /> : null)}
       {after && last && !busy && run.choices.length > 0 && (

@@ -365,6 +365,9 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
             try { data = JSON.parse(/^data: (.*)$/ms.exec(block)?.[1] ?? '{}'); } catch { /* ignore a broken line */ }
             // each step the agent takes, live: the UI shows them as a timeline (`tool` kept for older clients)
             if (ev === 'status') { const t = String(data.text ?? data.stage ?? ''); out('step', { stage: String(data.stage ?? ''), text: t }); if (!opts.guest) out('tool', { name: 'Assistant', summary: t }); }
+            // a plan (several tasks in one message): the to-do list, then each task's progress
+            else if (ev === 'plan') out('plan', { tasks: (data.tasks ?? []).map((t: any) => ({ id: Number(t.id), title: String(t.title ?? ''), skill: String(t.skill ?? ''), status: 'pending' })), parallel: !!data.parallel });
+            else if (ev === 'task') out('task', { id: Number(data.id), status: String(data.status ?? ''), ...(data.summary ? { summary: String(data.summary) } : {}) });
             else if (ev === 'reasoning') out('reasoning', { label: String(data.label ?? ''), text: String(data.text ?? '') });
             else if (ev === 'error') out('error', { message: String(data.detail ?? 'The SmartThings agent failed.') });
             else if (ev === 'final') {

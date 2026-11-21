@@ -7,7 +7,7 @@ so they normally do not need the history at all (small, precise prompts).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.core.context import TurnContext
 from app.core.llm import LLM
@@ -30,14 +30,24 @@ Rules:
 4. Feelings, goals, a stated purpose ("because I want to see outside", "so I can read"), things named by what they are instead of a device name ("the window", "the curtain", "the ceiling light"), "except" and "if" requests about devices ("I'm cold", "too bright", "make it cosy") go to "smart_control" when listed; one explicit command ("turn on Light 1") goes to "device_control".
 5. Questions (how many, which, where, who, when, what happened, is there) go to "knowledge" when it is listed; requests to change devices go to the control skills.
 6. If no skill fits, choose "{fallback}".
+7. SEVERAL TASKS: if the message asks for different kinds of work (e.g. "check the guest in, run movie night and tell me how many rooms there are"), also return "tasks": one item per task, in the order to do them, each with its skill and a standalone request; "skill"/"request" = the first task. Several device changes of the same kind ("turn on Light 1 and dim Light 2") are ONE device_control task, not several. Set "parallel": true only if no task needs the result or the change of another (e.g. two questions); otherwise false. At most 6 tasks.
 
-Reply with JSON only: {{"skill": "<skill name>", "request": "<standalone request>"}}"""
+Reply with JSON only: {{"skill": "<skill name>", "request": "<standalone request>", "tasks": [{{"skill": "...", "request": "..."}}], "parallel": false}}
+("tasks" may be left out or empty when there is one task.)"""
+
+
+@dataclass
+class Task:
+    skill: str
+    request: str
 
 
 @dataclass
 class Route:
     skill: str
     request: str
+    tasks: list[Task] = field(default_factory=list)   # 2+ = a plan the agent works through
+    parallel: bool = False
 
 
 def _skill_lines(skills: list[Skill]) -> str:
@@ -68,10 +78,17 @@ class Router:
             "properties": {
                 "skill": {"type": "string", "enum": names},
                 "request": {"type": "string"},
+                "tasks": {"type": "array", "items": {"type": "object", "properties": {
+                    "skill": {"type": "string", "enum": names}, "request": {"type": "string"}}, "required": ["skill", "request"]}},
+                "parallel": {"type": "boolean"},
             },
             "required": ["skill", "request"],
         }
         out = await self.llm.complete_json(system=system, user=user, schema=schema, label="router")
         request = (out.get("request") or "").strip() or ctx.message
-        log.info("route -> %s | %s", out["skill"], request)
-        return Route(skill=out["skill"], request=request)
+        tasks = [Task(t["skill"], (t.get("request") or "").strip()) for t in out.get("tasks") or [] if (t.get("request") or "").strip()][:6]
+        # a "plan" of one is just the single route
+        if len(tasks) < 2:
+            tasks = []
+        log.info("route -> %s | %s%s", out["skill"], request, f" | plan of {len(tasks)}" if tasks else "")
+        return Route(skill=out["skill"], request=request, tasks=tasks, parallel=bool(out.get("parallel")) and bool(tasks))
