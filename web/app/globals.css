@@ -727,3 +727,34 @@ body.has-pseudo-full { overflow:hidden; }
 .rich code { font:12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--bg2); border:1px solid var(--line); border-radius:5px; padding:1px 5px; }
 .caret { display:inline-block; width:2px; height:1.05em; margin-left:2px; vertical-align:-2px; background:var(--acc); animation:ag-blink .9s step-end infinite; }
 @keyframes ag-blink { 50% { opacity:0; } }
+.ag-reason { border-left:2px solid var(--acc-line); padding:2px 0 2px 10px; }
+.ag-reason > button { display:inline-flex; align-items:center; gap:6px; padding:2px 0; border:0; background:none; box-shadow:none; font-size:12px; color:var(--muted); font-weight:600; }
+.ag-reason > button i { font-style:normal; color:var(--acc); } .ag-reason > button em { font-style:normal; color:var(--faint); }
+.ag-reason.live > button { color:var(--acc-dark); } .ag-reason.live > button i { animation:ag-pulse 1s infinite; border-radius:50%; }
+.ag-reason-text { margin-top:4px; max-height:160px; overflow:auto; font-size:12.5px; line-height:1.5; color:var(--muted); white-space:pre-wrap; font-style:italic; }
+.rich table { border-collapse:collapse; font-size:12.5px; width:100%; }
+.rc-table { overflow-x:auto; margin:4px 0 8px; border:1px solid var(--line); border-radius:8px; }
+.rich th, .rich td { padding:5px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+.rich th { background:var(--panel2); font-weight:600; color:var(--text2); } .rich tr:last-child td { border-bottom:0; }
+.rc-link { color:var(--acc); text-decoration:underline; text-underline-offset:2px; text-decoration-color:var(--acc-line); word-break:break-all; }
+.rc-link i { font-style:normal; font-size:.8em; margin-left:2px; } .rc-link:hover { text-decoration-color:var(--acc); }
+.rc-code { display:inline-flex; align-items:center; gap:6px; padding:1px 7px; margin:0 1px; border-radius:6px; font:600 12.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  background:var(--bg2); border:1px solid var(--line2); box-shadow:none; color:var(--text); vertical-align:baseline; }
+.rc-code i { font-style:normal; font-weight:400; color:var(--faint); font-size:11px; }
+.rc-code.big { font-size:16px; letter-spacing:.18em; padding:3px 10px; background:var(--acc-bg); border-color:var(--acc-line); color:var(--acc-dark); }
+.rc-code.copied { border-color:#a7f3d0; background:var(--ok-bg); } .rc-code.copied i { color:var(--ok); }
+.rc-act { display:inline-flex; align-items:center; gap:4px; margin:2px 2px; padding:3px 10px; border-radius:999px; font-size:12.5px; border-color:var(--acc-line); background:var(--acc-bg); color:var(--acc-dark); box-shadow:none; vertical-align:baseline; }
+.rc-act i { font-style:normal; } .rc-act:hover { background:#dbeafe; color:var(--acc-dark); }
+.ag-choices { display:flex; flex-wrap:wrap; gap:6px; }
+.ag-choices button { padding:6px 12px; border-radius:10px; font-size:13px; border-color:var(--acc-line); }
+.ag-card { display:flex; gap:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--panel2); align-items:flex-start; }
+.ag-card img { border-radius:8px; background:#fff; border:1px solid var(--line); flex:none; }
+.ag-card-body { display:flex; flex-direction:column; gap:4px; min-width:0; } .ag-card-body small { color:var(--muted); }
+.ag-card-body .rc-code { align-self:flex-start; margin:4px 0; } .ag-card-body .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ph-pin { font-size:13px; color:#374151; } .ph-pin b { font:700 20px ui-monospace, monospace; letter-spacing:.2em; color:#1d4ed8; margin-left:6px; }
+.ph-think, .ph-reason { display:block; font-size:12px; line-height:1.4; color:#9fb3c8; margin-bottom:6px; }
+.ph-msg.thinking { background:#16202c; border:1px dashed rgba(159,212,255,.35); }
+.ph-msg.thinking .ph-think { margin:0; animation:ag-pulse-text 1.4s ease-in-out infinite; }
+@keyframes ag-pulse-text { 50% { opacity:.55; } }
+.ph-msg li i { font-style:normal; color:#7ee2a8; } .ph-msg li.bad i, .ph-msg li.bad { color:#ffb3a6; }
+.ph-tech .ph-chat { height:auto; max-height:46%; }

@@ -10,9 +10,9 @@
 // Each chat turn opens a short-lived session: its random token is what the agent sends as "Authorization: Bearer"
 // to the twin's API, and it carries the scope (host, or one guest pass).
 import { randomBytes } from 'node:crypto';
-import { DEV, ROOMS, byId } from '@/lib/sim/engine';
+import { DEV, ROOMS, TYPES, byId } from '@/lib/sim/engine';
 import { COMMANDS, device, floor as floorSnapshot } from '@/lib/sim/runtime';
-import { GUEST_HIDDEN } from '@/lib/sim/stzone';
+import { GUEST_HIDDEN, ST_MEANING, ZONE_GUIDE, zoneRoom } from '@/lib/sim/stzone';
 import { guestCommands, guestCommand, type GuestPass } from '@/lib/sim/guests';
 import { dispatch } from '@/lib/sim/dispatch';
 import * as ST from './smartthings';
@@ -137,12 +137,35 @@ export function agentNames(devs: any[]): Record<string, string> {
   return out;
 }
 
-/** The agent's `devices` (id, name, room, actions) and `rooms_context` for a scope. */
+/** What a device is, for the assistant's reasoning: the zone devices' own meaning, else its kind, where it is and the
+ *  words people use for that kind. */
+const ALIASES: Record<string, string> = {
+  ac: 'air conditioner, AC, aircon, cooling, heating, temperature', light: 'light, lamp, lights', blinds: 'curtain, blind, shade, window covering',
+  tv: 'TV, television, screen', fan: 'fan', purifier: 'air purifier, air cleaner', plug: 'smart plug, socket, switch', lock: 'door lock, door',
+  vacuum: 'robot vacuum, cleaner', temphum: 'temperature and humidity sensor', motion: 'motion sensor', leak: 'water leak sensor',
+  speaker: 'speaker, music', fridge: 'fridge, refrigerator, minibar', washer: 'washing machine', dryer: 'dryer', oven: 'oven', camera: 'camera', doorbell: 'doorbell',
+};
+export function aboutDevice(d: any): string {
+  const real = ST.link(d.id) ? 'Real SmartThings device. ' : 'Simulated device. ';
+  const label = String(d.name).split(' · ')[0];
+  const zone = d.room === zoneKey() ? ST_MEANING[label] : undefined;
+  return real + (zone ?? `A ${TYPES_LABEL(d.type)} in ${roomName(d.room)}. Also called: ${ALIASES[d.type] ?? d.type}.`);
+}
+const TYPES_LABEL = (t: string) => String((TYPES as any)[t]?.label ?? t).toLowerCase();
+const zoneKey = () => zoneRoom()?.key ?? 'smartthings-experience-zone';
+
+/** How the rooms in scope work (the zone's guide), for reasoning about goals like "I want to see outside". */
+export function roomGuide(scope: Scope): string[] {
+  const rooms = new Set(devicesInScope(scope).map(d => d.room));
+  return rooms.has(zoneKey()) ? ZONE_GUIDE.map(g => `${roomName(zoneKey())}: ${g}`) : [];
+}
+
+/** The agent's `devices` (id, name, room, about, actions) and `rooms_context` for a scope. */
 export function agentContext(scope: Scope) {
   const devs = devicesInScope(scope);
   const names = agentNames(devs);
   const devices = devs.map(d => ({
-    id: d.id, name: names[d.id], room: roomName(d.room),
+    id: d.id, name: names[d.id], room: roomName(d.room), about: aboutDevice(d),
     actions: allowedCommands(d, scope).flatMap(n => actionsFor(d, n, scope)),
   })).filter(d => d.actions.length || READ_ONLY.includes(byId[d.id].type));
   const rooms = [...new Set(devs.map(d => d.room))].map(k => ({ id: k, name: roomName(k), devices: devices.filter(x => byId[x.id].room === k).map(x => x.name) }));
@@ -296,7 +319,7 @@ export function twinInsight(d: any, scope: Scope) {
 /* ---------------- one chat turn: the PoC's chat events from the agent's stream ---------------- */
 
 export type Turn = { messages: { role: string; content: string }[] };
-const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHighlight', 'resetView', 'setLayer', 'trace']);
+const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHighlight', 'resetView', 'setLayer', 'trace', 'selectRoom']);
 const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 /**
@@ -320,7 +343,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
           up = await fetch(`${ASSISTANT_URL()}/control/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${session}` },
-            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope), last_actions: takeLastActions(scope) } }),
+            body: JSON.stringify({ message: last.content, messages: msgs.map(m => ({ role: m.role, text: m.content })), devices, extras: { rooms_context, role: roleOf(scope), last_actions: takeLastActions(scope), room_guide: roomGuide(scope) } }),
             signal: AbortSignal.timeout(120_000),
           });
         } catch {
@@ -342,6 +365,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
             try { data = JSON.parse(/^data: (.*)$/ms.exec(block)?.[1] ?? '{}'); } catch { /* ignore a broken line */ }
             // each step the agent takes, live: the UI shows them as a timeline (`tool` kept for older clients)
             if (ev === 'status') { const t = String(data.text ?? data.stage ?? ''); out('step', { stage: String(data.stage ?? ''), text: t }); if (!opts.guest) out('tool', { name: 'Assistant', summary: t }); }
+            else if (ev === 'reasoning') out('reasoning', { label: String(data.label ?? ''), text: String(data.text ?? '') });
             else if (ev === 'error') out('error', { message: String(data.detail ?? 'The SmartThings agent failed.') });
             else if (ev === 'final') {
               const d = data?.data ?? {};
@@ -355,6 +379,9 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
                 if (offer) out('offer', { kind: 'save_routine', text: 'Save this as a routine to run again later?' });
               }
               if (Array.isArray(d.sources) && d.sources.length) out('sources', { items: d.sources.map((x: any) => ({ id: String(x.id), kind: String(x.kind ?? ''), title: String(x.title ?? ''), devices: (x.devices ?? []).map((i: unknown) => resolveDevice(String(i), scope)?.id).filter(Boolean) })) });
+              // a question with fixed answers (which device?) -> buttons; a guest pass just made -> a card with link, QR and PIN
+              if (data?.status === 'clarify' && Array.isArray(d.options) && d.options.length > 1) out('choices', { items: d.options.slice(0, 8).map(String) });
+              if (scope.kind === 'host' && d.card && typeof d.card === 'object') out('card', d.card);
               if (Array.isArray(d.suggestions) && d.suggestions.length) out('suggestions', { items: d.suggestions.slice(0, 3).map(String) });
               const results: any[] = d.results ?? [];
               // what was just done, for "save this as a routine": kept for the owner's next turn (a saved routine clears it)
@@ -371,9 +398,10 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean } = 
               // the diagnostics skill (staff): highlight / focus / open a device and its part, with ids checked against the scope
               for (const u of Array.isArray(d.ui) ? d.ui : []) {
                 if (!u || !ALLOWED_UI.has(u.type)) continue;
-                if (scope.kind === 'guest' && u.type !== 'highlight' && u.type !== 'focusDevice') continue;   // a guest's view only points at their own devices
+                if (scope.kind === 'guest' && !['highlight', 'focusDevice', 'selectRoom'].includes(u.type)) continue;   // a guest's view only points at their own devices
                 if (u.type === 'clearHighlight' || u.type === 'resetView') { out('ui_action', { type: u.type }); continue; }
                 if (u.type === 'setLayer') { if (typeof u.layer === 'string') out('ui_action', { type: 'setLayer', layer: u.layer, on: u.on !== false }); continue; }
+                if (u.type === 'selectRoom') { const k = String(u.room ?? ''); if ((ROOMS as any[]).some(r => r.key === k) && (scope.kind === 'host' || k === scope.pass.room)) out('ui_action', { type: 'selectRoom', room: k }); continue; }
                 if (u.type === 'trace') { const t = resolveDevice(String(u.from), scope)?.id; if (t) out('ui_action', { type: 'trace', from: t }); continue; }
                 const ok = (Array.isArray(u.ids) ? u.ids : [u.id]).map((i: unknown) => resolveDevice(String(i), scope)?.id).filter(Boolean) as string[];
                 if (!ok.length) continue;

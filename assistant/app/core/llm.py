@@ -14,6 +14,7 @@ import ollama
 
 from app.config import Settings
 from app.core.jsonutil import extract_json, validate
+from app.core.trace import emit
 
 log = logging.getLogger("agent.llm")
 
@@ -48,6 +49,27 @@ class OllamaLLM:
         self._client = ollama.AsyncClient(host=settings.ollama_base_url, timeout=settings.llm_timeout_s, headers=headers)
         self._think = _think_value(settings.ollama_think)
 
+    def _think_for(self, label: str) -> bool | str | None:
+        """Reasoning steps think (at the configured level, or "medium" for gpt-oss); the rest use OLLAMA_THINK."""
+        if self.s.reasoning and label in self.s.reasoning_labels:
+            if isinstance(self._think, str):
+                return self._think if self._think != "low" else "medium"
+            return "medium" if self.s.ollama_model.startswith("gpt-oss") else True
+        return self._think
+
+    async def _stream(self, kwargs: dict[str, Any], label: str, show: bool) -> str:
+        """One streamed chat call: thinking goes to the UI as it arrives, the reply is collected."""
+        parts: list[str] = []
+        async for chunk in await self._client.chat(**kwargs, stream=True):
+            msg = getattr(chunk, "message", None)
+            if msg is None:
+                continue
+            if show and getattr(msg, "thinking", None):
+                emit(label, msg.thinking)
+            if msg.content:
+                parts.append(msg.content)
+        return "".join(parts).strip()
+
     async def check(self) -> dict[str, Any]:
         """Is the Ollama server reachable and is the configured model pulled? Never raises."""
         try:
@@ -77,12 +99,13 @@ class OllamaLLM:
             }
             if self.s.llm_structured_output:
                 kwargs["format"] = schema
-            if self._think is not None:
-                kwargs["think"] = self._think
+            think = self._think_for(label)
+            if think is not None:
+                kwargs["think"] = think
 
             log.debug("[%s] attempt %d prompt:\n--- system ---\n%s\n--- user ---\n%s", label, attempt, system, user)
             try:
-                resp = await asyncio.wait_for(self._client.chat(**kwargs), timeout=self.s.llm_timeout_s)
+                content = await asyncio.wait_for(self._stream(kwargs, label, show=bool(think)), timeout=self.s.llm_timeout_s)
             except Exception as exc:  # network / server errors: retry without feedback
                 last_error = f"LLM call failed: {str(exc) or type(exc).__name__}"
                 log.warning("[%s] attempt %d: %s", label, attempt, last_error)
@@ -90,7 +113,6 @@ class OllamaLLM:
                 continue
             unreachable = 0
 
-            content = (resp.message.content or "").strip()
             log.info("[%s] attempt %d raw: %s", label, attempt, content)
             try:
                 obj = extract_json(content)

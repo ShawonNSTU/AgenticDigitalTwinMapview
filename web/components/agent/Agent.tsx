@@ -7,6 +7,7 @@
 // Server events (docs/contracts/agent-api.md): step, text, result, sources, suggestions, offer, ui_action, select,
 // error, done.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import QRCode from 'qrcode';
 import { Rich, useTyped } from './Rich';
 
 export type Step = { text: string; at: number; done: boolean };
@@ -16,7 +17,9 @@ export type Run = {
   id: number; ask: string; startedAt: number; endedAt?: number; status: 'running' | 'done' | 'error' | 'stopped';
   steps: Step[]; text: string; error?: string; results: Result[]; sources: Source[]; suggestions: string[];
   offer?: { kind: string; text: string; state: 'open' | 'done' | 'dismissed' }; shown: string[];
+  reasoning: string; choices: string[]; cards: Card[];
 };
+export type Card = { kind: string; title?: string; link?: string; pin?: string | null; room?: string; until?: string; label?: string };
 export type UiAction = { type: string; [k: string]: unknown };
 
 /** Runs one request after another against a streaming endpoint; keeps the conversation for follow-ups. */
@@ -34,7 +37,7 @@ export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void;
     const id = ++seq.current;
     const history = runs.flatMap(r => [{ role: 'user', content: r.ask }, ...(r.text ? [{ role: 'assistant', content: r.text }] : [])]).slice(-12);
     setRuns(rs => [...rs.map(r => (r.offer?.state === 'open' ? { ...r, offer: { ...r.offer, state: 'dismissed' as const } } : r)),
-      { id, ask: q, startedAt: Date.now(), status: 'running', steps: [], text: '', results: [], sources: [], suggestions: [], shown: [] }]);
+      { id, ask: q, startedAt: Date.now(), status: 'running', steps: [], text: '', results: [], sources: [], suggestions: [], shown: [], reasoning: '', choices: [], cards: [] }]);
     setBusy(true);
     const ac = new AbortController(); abort.current = ac;
     try {
@@ -53,6 +56,9 @@ export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void;
           if (ev === 'step') patch(id, r => ({ ...r, steps: [...r.steps.map(s => ({ ...s, done: true })), { text: String(data.text || data.stage), at: Date.now(), done: false }] }));
           else if (ev === 'text') { patch(id, r => ({ ...r, text: r.text ? `${r.text}\n${data.text}` : String(data.text) })); cb.current.onText?.(String(data.text)); }
           else if (ev === 'result') patch(id, r => ({ ...r, results: data.results ?? [] }));
+          else if (ev === 'reasoning') patch(id, r => ({ ...r, reasoning: (r.reasoning + String(data.text ?? '')).slice(-6000) }));
+          else if (ev === 'choices') patch(id, r => ({ ...r, choices: data.items ?? [] }));
+          else if (ev === 'card') patch(id, r => ({ ...r, cards: [...r.cards, data as Card] }));
           else if (ev === 'sources') patch(id, r => ({ ...r, sources: data.items ?? [] }));
           else if (ev === 'suggestions') patch(id, r => ({ ...r, suggestions: data.items ?? [] }));
           else if (ev === 'offer') patch(id, r => ({ ...r, offer: { kind: data.kind, text: data.text, state: 'open' } }));
@@ -121,10 +127,49 @@ function Thinking({ run }: { run: Run }) {
   );
 }
 
-function Answer({ text, animate, onTyped }: { text: string; animate: boolean; onTyped: (typing: boolean) => void }) {
+/** The model's reasoning, streamed live while it thinks; folded once the answer is there. */
+function Reasoning({ run }: { run: Run }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const live = run.status === 'running' && !run.text;
+  useEffect(() => { if (live && box.current) box.current.scrollTop = box.current.scrollHeight; }, [run.reasoning, live]);
+  if (!run.reasoning.trim()) return null;
+  const show = live || open;
+  return (
+    <div className={`ag-reason ${live ? 'live' : ''}`}>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={show}><i>✦</i>{live ? 'Reasoning…' : 'Reasoning'}<em>{show ? '▾' : '▸'}</em></button>
+      {show && <div ref={box} className="ag-reason-text">{run.reasoning.trim()}</div>}
+    </div>
+  );
+}
+
+function PassCard({ c }: { c: Card }) {
+  const [qr, setQr] = useState('');
+  const url = c.link ?? '';
+  useEffect(() => { if (url) QRCode.toDataURL(url, { margin: 1, width: 132 }).then(setQr).catch(() => {}); }, [url]);
+  const [copied, setCopied] = useState('');
+  const copy = (v: string, what: string) => navigator.clipboard?.writeText(v).then(() => { setCopied(what); setTimeout(() => setCopied(''), 1200); }).catch(() => {});
+  return (
+    <div className="ag-card">
+      {qr && <img src={qr} alt="Guest pass QR code" width={96} height={96} />}
+      <div className="ag-card-body">
+        <b>{c.title}</b>
+        {c.label && <small>{c.label}</small>}
+        {c.until && <small>Until {c.until}</small>}
+        {c.pin && <button type="button" className="rc-code big" onClick={() => copy(c.pin!, 'pin')} title="Copy PIN"><span>{c.pin}</span><i>{copied === 'pin' ? '✓' : '⧉'}</i></button>}
+        <div className="row">
+          <a className="rc-link" href={url} target="_blank" rel="noopener noreferrer">Open guest page<i>↗</i></a>
+          <button type="button" className="ghost" onClick={() => copy(url, 'link')}>{copied === 'link' ? 'Copied ✓' : 'Copy link'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Answer({ text, animate, onTyped, onAsk }: { text: string; animate: boolean; onTyped: (typing: boolean) => void; onAsk: (q: string) => void }) {
   const { shown, typing } = useTyped(text, animate);
   useEffect(() => { onTyped(typing); }, [typing, onTyped]);
-  return <div className="ag-answer"><Rich text={shown} caret={typing} /></div>;
+  return <div className="ag-answer"><Rich text={shown} caret={typing} onAsk={onAsk} /></div>;
 }
 
 /** One run: request, live steps, changes, answer, sources, offers, follow-ups. */
@@ -148,8 +193,13 @@ export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Ru
           ))}
         </div>
       )}
+      <Reasoning run={run} />
       {run.status === 'running' && !run.text && !run.error && <Thinking run={run} />}
-      {run.text && <Answer text={run.text} animate={animate} onTyped={onTyped} />}
+      {run.text && <Answer text={run.text} animate={animate} onTyped={onTyped} onAsk={q => !busy && onAsk(q)} />}
+      {after && run.cards.map((c, i) => c.kind === 'guest_pass' ? <PassCard key={i} c={c} /> : null)}
+      {after && last && !busy && run.choices.length > 0 && (
+        <div className="ag-choices">{run.choices.map(c => <button type="button" key={c} onClick={() => onAsk(c)}>{c}</button>)}</div>
+      )}
       {run.error && <div className="ag-error">⚠ {run.error}</div>}
       {run.shown.length > 1 && !run.results.length && <button type="button" className="ag-link" onClick={() => onFocus(run.shown)}>Show {run.shown.length} devices in 3D</button>}
       {after && run.sources.length > 0 && (

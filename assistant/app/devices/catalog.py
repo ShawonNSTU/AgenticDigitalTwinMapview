@@ -353,4 +353,5 @@ def capability_summary(device: Device) -> str:
 
 def device_line(device: Device) -> str:
     room = f" (room: {device.room})" if device.room else ""
-    return f"- {device.name}{room}: {capability_summary(device)}"
+    about = f" [{device.about[:170]}]" if device.about else ""
+    return f"- {device.name}{room}: {capability_summary(device)}{about}"

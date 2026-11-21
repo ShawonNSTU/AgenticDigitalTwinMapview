@@ -190,9 +190,10 @@ class DeviceControlSkill(Skill):
         if out["result"] != NONE and steps:
             return steps
 
+        # not a plain command on a named device: let the reasoning skill work out what the person wants
         all_names = [d.name for d in ctx.devices]
-        q = f"I couldn't find that device in this experience. The available devices are: {', '.join(all_names)}. Which one would you like to control?"
-        return SkillResult("clarify", q, {"options": []})
+        q = f"I couldn't tell which device you mean. For example: {', '.join(all_names[:8])}. Which one would you like to control?"
+        return SkillResult("clarify", q, {"options": [], "delegate": "smart_control"})
 
     # ---------- step 2 + 3: actions and values for a group of identical devices ----------
     async def choose_actions(self, devices: list[Device], request: str) -> Choice:
@@ -351,7 +352,7 @@ class DeviceControlSkill(Skill):
 
         notes = list(dict.fromkeys(c.problem for c in choices if c.problem))
         if any(c.blocking for c in choices) or not any(c.picks for c in choices):
-            return SkillResult("clarify", " ".join(notes), dict(single))
+            return SkillResult("clarify", " ".join(notes), {**dict(single), "delegate": "smart_control"})
 
         # Merge every pick per device so each device gets ONE SmartThings call with all its commands.
         per_device, change_notes = await self.resolve_changes(ctx, choices)

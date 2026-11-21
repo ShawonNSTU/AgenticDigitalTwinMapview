@@ -20,6 +20,7 @@ agent; the web app sends the role and limits what each may see and do). It runs 
 
 | Skill | Who | What |
 |---|---|---|
+| `smart_control` | all | **goals and feelings**: "I'm cold", "too bright", "open the window, I want to see outside", "everything off except the desk lamp". Reads the devices' live state and what each one IS (from the twin: "the left window: a back-lit pane behind the curtain") plus the room guide, reasons (streamed as reasoning), follows the purpose when the words conflict, and sends only validated commands. `device_control` hands over to it when a request does not map to a named device |
 | `device_control` | all | power, brightness, colour temperature, shade, AC temperature/mode/fan, TV, fan, purifier, lock, vacuum; relative changes; many devices at once |
 | `device_status` | all | live state, read fresh from the twin |
 | `knowledge` | all | **any question**, answered from the twin's knowledge graph (RAG): rooms (how many, sizes, neighbours, furniture), devices (where, real or simulated, state, what they can do), guests, alerts, routines and the history of everything done since the floor plan was loaded (who did what, when). Cites its sources. A guest sees only their room, their stay and the floor's public facts |
@@ -115,3 +116,13 @@ The twin (`web/lib/kg/`) keeps what the assistant knows:
 BM25, plus Ollama embeddings when `OLLAMA_EMBED_MODEL` is pulled (`ollama pull nomic-embed-text`; vectors cached by
 text hash; keyword-only if it is missing), merged by reciprocal rank fusion; the overview is always included. The
 model answers only from the numbered facts and cites them; the UI shows them as "Based on".
+
+## Reasoning
+For `knowledge`, `smart_control` and `diagnostics_explain` the model thinks before it answers (Ollama `think`), and
+the thinking streams to the chat as **Reasoning** (`REASONING`, `REASONING_LABELS`). Other steps (routing, picking
+an action) stay fast. Skills add their own rationale with `ctx.reason()`.
+
+## Device meanings
+The twin sends each device's `about` (what it is, where, other names) and a room guide (`extras.room_guide`, e.g. "to
+see the outside view: open the curtain fully and turn on both window lights"). Edit them in
+`web/lib/sim/stzone.ts` (`ST_MEANING`, `ZONE_GUIDE`); other devices get their kind, room and common names.

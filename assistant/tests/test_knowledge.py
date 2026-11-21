@@ -100,3 +100,16 @@ async def test_questions_fall_back_to_knowledge_and_old_skills_step_aside(settin
     router = llm.calls[0]["system"]
     assert "- knowledge" in router and "- rooms:" not in router and "- device_info" not in router
     assert 'choose "knowledge"' in router
+
+
+async def test_where_is_a_device_focuses_it_in_3d(settings):
+    res, _ = await ask(settings, {"router": [{"skill": "knowledge", "request": "where is the Desk Lamp?"}],
+                                  "knowledge": [{"reply": "On the desk in the SmartThings Experience Zone.", "sources": [1], "follow_ups": []}]}, "where is the Desk Lamp?")
+    ui = res.data["ui"]
+    assert ui[0]["type"] == "highlight" and ui[1]["type"] == "focusDevice" and ui[1]["id"] == ui[0]["ids"][0]
+
+
+async def test_room_question_turns_the_view_to_the_room(settings):
+    res, _ = await ask(settings, {"router": [{"skill": "knowledge", "request": "show me the gym room"}],
+                                  "knowledge": [lambda s, u: {"reply": "Here it is.", "sources": [next(int(l[1]) for l in s.splitlines() if l.startswith("[") and "Gym Room:" in l)], "follow_ups": []}]}, "show me the gym room")
+    assert {"type": "selectRoom", "room": "gym-room"} in res.data["ui"]

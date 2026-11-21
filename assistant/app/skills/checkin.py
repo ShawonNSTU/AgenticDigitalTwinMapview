@@ -79,4 +79,6 @@ class CheckinSkill(Skill):
         d = r.data
         link = f"{self.settings.web_public_url}{d['path']}"
         msg = f"Checked in{' ' + d['label'] if d.get('label') else ''} to {d['room_name']} until {_until(d['expires_at'])}. Guest link: {link}" + (f" · PIN: {d['pin']}" if d.get("pin") else " (no PIN)") + ". Give the guest the link (a QR code works) and the PIN."
-        return SkillResult("success", msg, {"pass_room": d["room"]})
+        card = {"kind": "guest_pass", "title": f"Guest pass · {d['room_name']}", "link": link, "pin": d.get("pin"), "room": d["room_name"],
+                "until": _until(d["expires_at"]), "label": d.get("label") or ""}
+        return SkillResult("success", msg, {"pass_room": d["room"], "card": card})

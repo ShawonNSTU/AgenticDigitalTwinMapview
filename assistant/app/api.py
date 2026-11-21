@@ -118,8 +118,9 @@ def create_app(settings: Settings = default_settings, llm: LLM | None = None) ->
         `status` {stage, text} events as each step starts, then one `final` event with the ApiResponse
         (or an `error` event). Progress is pushed from the running turn, so it adds no extra work or wait."""
         ctx = build_context(request, _bearer(authorization), settings)
-        queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
-        ctx.on_progress = lambda stage, text: queue.put_nowait((stage, text))
+        queue: asyncio.Queue[tuple[str, dict[str, str]]] = asyncio.Queue()
+        ctx.on_progress = lambda stage, text: queue.put_nowait(("status", {"stage": stage, "text": text}))
+        ctx.on_reasoning = lambda label, text: queue.put_nowait(("reasoning", {"label": label, "text": text}))
 
         async def events() -> AsyncIterator[str]:
             task = asyncio.create_task(turn(ctx))
@@ -128,14 +129,14 @@ def create_app(settings: Settings = default_settings, llm: LLM | None = None) ->
                     getter = asyncio.create_task(queue.get())
                     done, _ = await asyncio.wait({getter, task}, return_when=asyncio.FIRST_COMPLETED)
                     if getter in done:
-                        stage, text = getter.result()
-                        yield sse("status", {"stage": stage, "text": text})
+                        event, payload = getter.result()
+                        yield sse(event, payload)
                         continue
                     getter.cancel()
                     break
                 while not queue.empty():  # flush anything reported right before the turn ended
-                    stage, text = queue.get_nowait()
-                    yield sse("status", {"stage": stage, "text": text})
+                    event, payload = queue.get_nowait()
+                    yield sse(event, payload)
                 try:
                     result = task.result()
                 except Exception as exc:  # never leak a stack trace to the chat UI

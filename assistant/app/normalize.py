@@ -26,7 +26,7 @@ def flatten_commands(items: Any) -> list[dict[str, Any]]:
 def build_devices(req: ControlRequest) -> list[Device]:
     if req.devices:
         return [
-            Device(id=d.id, name=d.name, room=d.room, commands=flatten_commands(d.commands) + flatten_commands(d.actions))
+            Device(id=d.id, name=d.name, room=d.room, about=d.about or "", commands=flatten_commands(d.commands) + flatten_commands(d.actions))
             for d in req.devices
         ]
     return [

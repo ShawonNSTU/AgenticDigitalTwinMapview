@@ -10,6 +10,8 @@ class DeviceIn(BaseModel):
     id: str
     name: str
     room: Optional[str] = None
+    # What the device is, in people's words ("the left window: a back-lit pane behind the curtain"); used to reason
+    about: Optional[str] = None
     # Either a flat list of SmartThings commands or the "actions" format [{"commands": [...]}, ...]
     commands: list[Any] = Field(default_factory=list)
     actions: list[Any] = Field(default_factory=list)

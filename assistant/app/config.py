@@ -50,6 +50,11 @@ class Settings:
     ollama_keep_alive: str = field(default_factory=lambda: _env("OLLAMA_KEEP_ALIVE", "30m"))
     # gpt-oss accepts "low" | "medium" | "high"; other thinking models accept "true"/"false"; empty = model default.
     ollama_think: str = field(default_factory=lambda: _env("OLLAMA_THINK", "low"))
+    # Reasoning: for these steps the model thinks before answering (Ollama "think"), and the thinking streams to the
+    # UI. The other steps (routing, picking an action) stay fast. REASONING=false turns it off everywhere.
+    reasoning: bool = field(default_factory=lambda: _env_bool("REASONING", True))
+    reasoning_labels: list[str] = field(default_factory=lambda: _env_list("REASONING_LABELS") or
+        ["knowledge", "smart_control", "diagnostics_explain"])
     llm_timeout_s: float = field(default_factory=lambda: _env_float("LLM_TIMEOUT_S", 60.0))
     llm_temperature: float = field(default_factory=lambda: _env_float("LLM_TEMPERATURE", 0.0))
     # Use Ollama's JSON-schema constrained decoding. Turn off only if the model misbehaves with it.

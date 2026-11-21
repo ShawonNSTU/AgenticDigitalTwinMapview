@@ -372,6 +372,30 @@ const PROFILES: Record<string, Omit<StProfile, 'where'> & { where: string }> = {
   'Light 5': { kind: 'color', group: 'Bedroom', where: 'Spot by the door' },
   'side lamp': { kind: 'switch', group: 'Dining room', where: 'Standing lamp by the bookcase' },
 };
+/** What each real zone device IS, in the words people use for it: the assistant reasons with these (a guest says
+ *  "the window" or "the curtain", not "Left Window Light"). */
+export const ST_MEANING: Record<string, string> = {
+  'Left Window Light': 'The LEFT WINDOW of the room: a back-lit window pane behind the roller shade. On = the window glows and shows the outside view; off = dark glass. Also called: window, left window, window view.',
+  'Right Window Light': 'The RIGHT WINDOW of the room: a back-lit window pane behind the roller shade. On = the window glows and shows the outside view; off = dark glass. Also called: window, right window, window view.',
+  'Aqara Roller Shade Controller': 'The CURTAIN / roller shade in front of both windows. Shade level 100 % = fully open (rolled up, windows visible); 0 % = fully closed (down, windows hidden). Also called: curtain, blind, shade, blackout.',
+  'Blinds Switch': 'Power switch for the roller shade motor. It is switched on automatically before the shade moves; rarely needs a request of its own.',
+  'TV Lamp': "The room's MAIN CEILING LIGHTS (LED panels). Also called: ceiling light, main light, room light.",
+  'Light 1': 'Colour light on the wall behind the main TV (TV backlight / ambient glow).',
+  'Light 2': 'Colour spot light above the TV.',
+  'Light 3': 'Colour spot light above the bookcase.',
+  'Light 4': 'Colour spot light between the shade and the bookcase.',
+  'Light 5': 'Colour spot light by the door (entrance light).',
+  'Desk Lamp': 'Colour lamp on the desk (reading / work light).',
+  'side lamp': 'Standing floor lamp by the bookcase.',
+};
+/** How the SmartThings Experience Zone works, for the assistant's reasoning. */
+export const ZONE_GUIDE = [
+  'To see the outside view: open the curtain fully (Aqara Roller Shade Controller to 100 %) AND turn on both window lights (Left Window Light, Right Window Light). The windows are back-lit panels, so they only show the view when on.',
+  'For privacy or a dark room: close the curtain (0 %) and turn the window lights off.',
+  'Main room light = TV Lamp (ceiling panels). Accent lights = Light 1-5. Reading = Desk Lamp. Cosy = side lamp plus dim warm accent lights.',
+  'Movie: TV on, ceiling lights (TV Lamp) off, accent lights 10-25 % warm, curtain closed.',
+];
+
 /** Commands each kind offers (the rest of a light's commands are hidden, as the app does). */
 export const ST_KIND_COMMANDS: Record<StProfile['kind'], string[]> = {
   color: ['power', 'setLevel', 'setColorTemperature', 'setColor'],

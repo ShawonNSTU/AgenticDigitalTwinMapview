@@ -7,6 +7,7 @@ from app.config import Settings
 from app.core.context import TurnContext
 from app.core.llm import LLM, LLMError, LLMUnavailable
 from app.core.router import Router
+from app.core.trace import reasoning_sink
 from app.core.skill import Skill, SkillResult, load_skills
 
 log = logging.getLogger("agent")
@@ -26,6 +27,13 @@ class Agent:
         return [s for s in self.skills if s.is_available(ctx)]
 
     async def handle(self, ctx: TurnContext) -> SkillResult:
+        token = reasoning_sink.set(ctx.on_reasoning)
+        try:
+            return await self._handle(ctx)
+        finally:
+            reasoning_sink.reset(token)
+
+    async def _handle(self, ctx: TurnContext) -> SkillResult:
         skills = self.available_skills(ctx)
         if not skills:
             return SkillResult("error", "No skills are enabled on this server.")
@@ -53,8 +61,21 @@ class Agent:
             log.error("skill %s failed: %s", skill.name, exc)
             result = SkillResult("error", BUSY_MESSAGE, {"error": str(exc)})
 
+        # a skill that could not do it hands over to a better one (a literal command that maps to no device ->
+        # the reasoning skill, which knows what each device is and its current state)
+        target = result.data.pop("delegate", None)
+        if target and target in by_name and target != skill.name and result.status != "success":
+            log.info("delegate %s -> %s", skill.name, target)
+            ctx.progress(target, by_name[target].progress_text)
+            ctx.reason(f"'{skill.name}' could not map this to a device command, so I'm reasoning about what you want instead.", "agent")
+            try:
+                result = await by_name[target].run(ctx, route.request)
+                skill = by_name[target]
+            except LLMError as exc:
+                log.error("skill %s failed: %s", target, exc)
+
         # after a change of several things at once, offer to keep it as a routine (the routines skill saves it next turn)
-        if skill.name == "device_control" and result.status == "success" and "routines" in by_name:
+        if skill.name in {"device_control", "smart_control"} and result.status == "success" and "routines" in by_name:
             steps = sum(len((r.get("command_generated") or {}).get("commands", [])) for r in result.data.get("results", []) if r.get("status") == "success")
             if steps >= 2:
                 result.message += SAVE_OFFER

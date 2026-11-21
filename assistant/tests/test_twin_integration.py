@@ -405,3 +405,32 @@ def test_guest_knowledge_is_only_their_room_and_stay(llm):
     assert "rooms" in next(d["text"] for e, d in events if e == "text"), events
     prompt = llm.calls[-1]["system"]
     assert "Karim" not in prompt and "Treadmill" not in prompt and "Gym Room Air conditioner" not in prompt   # no other guests or rooms' details
+
+
+def test_window_view_by_purpose_through_the_twin(llm):
+    """The photo case: 'open the window and close the curtain because I want to see outside' -> window lights on,
+    curtain fully open. The device meanings and the zone guide come from the twin."""
+    p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False}, timeout=10).json()
+    left, right, shade = zone_device("Left Window Light"), zone_device("Right Window Light"), zone_device("Aqara Roller Shade Controller")
+    for d in (left, right):
+        httpx.post(f"{TWIN}/api/devices/{d['id']}/commands", json={"command": "power", "args": {"on": "false"}}, timeout=10)
+    httpx.post(f"{TWIN}/api/devices/{shade['id']}/commands", json={"command": "setPosition", "args": {"percent": 0}}, timeout=10)
+    seen = {}
+
+    def decide(system, user):
+        seen["prompt"] = system
+        ok = "back-lit window" in system and "To see the outside view" in system and "CURTAIN" in system
+        return {"reasoning": "To see outside the curtain must be open and the window panes lit." if ok else "unsure",
+                "steps": [{"device": "Left Window Light", "action": "switch.on", "value": "", "why": "show the view"},
+                          {"device": "Right Window Light", "action": "switch.on", "value": "", "why": "show the view"},
+                          {"device": "Aqara Roller Shade Controller", "action": "windowShadeLevel.setShadeLevel", "value": "100", "why": "curtain up"}] if ok else [],
+                "question": "" if ok else "?"}
+    llm.script = {"router": [route("device_control", "open the window and close the curtain because I want to see the outside view")],
+                  "device_plan": [{"result": "NONE", "steps": [], "options": []}], "smart_control": [decide]}
+    events = chat(f"/api/guest/{p['token']}/chat", "open the window and close the curtain becuase i want to see outside view.")
+    assert any(e == "reasoning" and "curtain must be open" in d["text"] for e, d in events), events
+    time.sleep(0.5)
+    assert readings(left["id"])["lv"] > 0 and readings(right["id"])["lv"] > 0
+    assert readings(shade["id"])["pos"] == 100
+    res = next(d for e, d in events if e == "result")["results"]
+    assert {r["label"] for r in res} == {"Left Window Light", "Right Window Light", "Aqara Roller Shade Controller"} and all(r["ok"] for r in res)

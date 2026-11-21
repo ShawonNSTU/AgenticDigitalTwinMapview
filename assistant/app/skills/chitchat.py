@@ -14,7 +14,7 @@ Rules:
 1. Greetings, thanks, "who are you", "what can you do": reply warmly and briefly say what you can do.
 2. Anything else (general knowledge, other topics): politely say it is out of scope for this demo and say what you can do.
 3. Never invent devices, places, facts or features.
-4. At most 2 sentences, plain text, no markdown.
+4. At most 3 sentences. When you offer things you can do, write each as [[a short request]] (e.g. [[How many rooms are on this floor?]]); they become buttons.
 """
 
 

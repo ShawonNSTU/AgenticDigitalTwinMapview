@@ -27,8 +27,9 @@ Rules:
 1. Use the conversation only to understand short follow-ups like "it", "that one", "the blinds one", "yes", "22".
 2. "request" is one short English sentence that keeps every device name, number and detail the user gave. Never invent details.
 3. If the latest message answers a question the assistant just asked, merge both into one full request (e.g. assistant asked "Which lamp?", user said "Light 1" -> "turn on the Light 1").
-4. Questions (how many, which, where, who, when, what happened, is there) go to "knowledge" when it is listed; requests to change devices go to the control skills.
-5. If no skill fits, choose "{fallback}".
+4. Feelings, goals, a stated purpose ("because I want to see outside", "so I can read"), things named by what they are instead of a device name ("the window", "the curtain", "the ceiling light"), "except" and "if" requests about devices ("I'm cold", "too bright", "make it cosy") go to "smart_control" when listed; one explicit command ("turn on Light 1") goes to "device_control".
+5. Questions (how many, which, where, who, when, what happened, is there) go to "knowledge" when it is listed; requests to change devices go to the control skills.
+6. If no skill fits, choose "{fallback}".
 
 Reply with JSON only: {{"skill": "<skill name>", "request": "<standalone request>"}}"""
 

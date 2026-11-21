@@ -10,12 +10,16 @@ from the numbered facts it got, cites them, and suggests follow-ups. Counts come
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from app.core.context import TurnContext
 from app.core.skill import Skill, SkillResult, register
 from app.integrations.twin import TwinClient
+from app.devices.matching import exact_matches
 from app.knowledge.retriever import Embedder, retrieve
+
+LOCATE = re.compile(r"\b(where|find|locate|show|point|which room|take me|go to|look at)\b", re.I)
 
 log = logging.getLogger("agent.knowledge")
 
@@ -27,7 +31,7 @@ Facts:
 Rules:
 1. Use only the facts above. Quote numbers exactly as stated. For "how many", use the counts the facts give; when you list items, list all of them.
 2. If the facts do not contain the answer, say so plainly and say what you do know that is closest.
-3. "sources" = the numbers of the facts you used.
+3. "sources" = the numbers of the facts you used. When you suggest something the user could ask you to do, write it as [[the exact request]] (e.g. [[Dim Light 3 to 40%]]); it becomes a button.
 4. "follow_ups" = 2 short questions or requests the user might ask next (about this building, things you can do).
 5. Be direct: lead with the answer in one sentence. Format for reading: short paragraphs; a "- " bullet list when you list 3 or more things (one per line); **bold** for the key number or name. No headings, no tables. At most about 120 words. Use names, not ids, unless an id helps.
 
@@ -74,7 +78,19 @@ class KnowledgeSkill(Skill):
         dev_ids = [x for d in cited if d.get("kind") in {"device", "alert"} for x in (d.get("devices") or [])]
         data: dict[str, Any] = {"sources": sources, "suggestions": [s.strip() for s in (out.get("follow_ups") or []) if s.strip()][:3],
                                 "retrieved": [{"id": h.doc["id"], "why": h.why} for h in hits], "kg_version": kg.data.get("version")}
-        if dev_ids:
+        # show it in 3D: a device the person named ("where is the Desk Lamp?") gets the camera; otherwise the devices
+        # the answer is about are highlighted, and a room question turns the view to that room
+        locate = bool(LOCATE.search(f"{request} {ctx.message}"))
+        named = [d.id for d in exact_matches(f"{request} {ctx.message}", ctx.devices)]
+        rooms = [r for d in cited if d.get("kind") == "room" for r in (d.get("rooms") or [])]
+        ui: list[dict[str, Any]] = []
+        if named:
+            ui = [{"type": "highlight", "ids": named[:30]}, {"type": "focusDevice", "id": named[0]}]
+        elif dev_ids:
             dev_ids = list(dict.fromkeys(dev_ids))[:30]
-            data["ui"] = [{"type": "highlight", "ids": dev_ids}] + ([{"type": "focusDevice", "id": dev_ids[0]}] if len(dev_ids) == 1 else [])
+            ui = [{"type": "highlight", "ids": dev_ids}] + ([{"type": "focusDevice", "id": dev_ids[0]}] if len(dev_ids) == 1 or locate else [])
+        if rooms and not named and (locate or not dev_ids):
+            ui.append({"type": "selectRoom", "room": rooms[0]})
+        if ui:
+            data["ui"] = ui
         return SkillResult("clarify", out["reply"].strip() or "I don't have that information.", data)
