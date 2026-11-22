@@ -14,6 +14,8 @@ extends Node3D
 ## handful of draw calls (Forward+ and the web build alike).
 
 const PALETTE := {
+	"seat_blue": [Color("35598f"), 0.0, 0.85], "shell_dark": [Color("33373d"), 0.05, 0.42], "laminate": [Color("f1eee8"), 0.0, 0.32],
+	"edge": [Color("3d4249"), 0.1, 0.4], "seat_grey": [Color("66707e"), 0.0, 0.85],
 	"col_paint": [Color("efede8"), 0.0, 0.9], "col_skirt": [Color("4b5058"), 0.1, 0.55], "col_guard": [Color("d5d9de"), 0.25, 0.38],
 	"col_gap": [Color("8c9096"), 0.0, 0.8],
 	"concrete": [Color("9aa0a6"), 0.0, 0.85], "chair": [Color("5f7d8c"), 0.0, 0.6], "metal": [Color("b7bcc2"), 0.8, 0.3],
@@ -48,7 +50,7 @@ const RECOLOUR := {
 	"_defaultMat": "porcelain", "glass": "glass", "paper": "white", "darkWood": "wood_dark",
 }
 const GLOW := ["led", "console", "display", "slide", "drinks", "shade_glow", "exit_green"]
-const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6, "maple": 0.6}
+const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "seat_blue": 0.25, "seat_grey": 0.25, "stair": 0.8, "desk_top": 0.6, "maple": 0.6}
 
 var counts := {}         # kind -> number of items built (for the HUD / tests)
 
@@ -193,6 +195,8 @@ func _mesh(k: String) -> Mesh:
 			s.radial_segments = 24
 			s.rings = 12
 			m = s
+		"soft":
+			m = bevel_box(0.2)   # cushions and upholstery: well-rounded edges
 		_:
 			m = bevel_box(0.045)
 	_meshes[k] = m
@@ -202,10 +206,16 @@ func _mesh(k: String) -> Mesh:
 ## A unit box with its edges rounded off (chamfer c, normals blended across it), so furniture edges catch the
 ## light the way real furniture does instead of meeting at knife-sharp corners. 26 faces; shared by every box part.
 static func bevel_box(c: float) -> ArrayMesh:
+	return bevel_box_v(Vector3(c, c, c))
+
+
+## The same with a chamfer per axis (in unit-box terms), so a box scaled to a real size can keep a round edge of
+## the same real radius on every side.
+static func bevel_box_v(c: Vector3) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var h := 0.5
-	var e := h - c
+	var e := Vector3(h, h, h) - c
 	var fp := func(axis: int, sg: Vector3) -> Vector3:
 		var q := sg * e
 		q[axis] = sg[axis] * h
@@ -386,6 +396,138 @@ func _bm(mat: String, c: Vector3, s: Vector3, mesh := "box") -> void:
 	_emit(mesh, mat, _ir * Transform3D(Basis.from_scale(s), c))
 
 
+## A rounded (upholstered) part in metres, tilted back by tilt radians about its own x axis, its edges rounded to
+## radius r whatever its size (one mesh per size, shared by every part that size).
+func _soft(mat: String, c: Vector3, s: Vector3, tilt := 0.0, r := 0.03) -> void:
+	var k := "rb:%d:%d:%d:%d" % [roundi(s.x * 100), roundi(s.y * 100), roundi(s.z * 100), roundi(r * 1000)]
+	if not _meshes.has(k):
+		_meshes[k] = bevel_box_v(Vector3(minf(r / maxf(s.x, 0.001), 0.45), minf(r / maxf(s.y, 0.001), 0.45), minf(r / maxf(s.z, 0.001), 0.45)))
+	_emit(k, mat, _ir * Transform3D(Basis(Vector3.RIGHT, tilt) * Basis.from_scale(s), c))
+
+
+## A round tube of radius r from a to b, in metres in the item frame.
+func _tube(mat: String, a: Vector3, b: Vector3, r: float) -> void:
+	var v := b - a
+	var len := v.length()
+	if len < 0.001:
+		return
+	var y := v / len
+	var x := y.cross(Vector3.FORWARD if absf(y.z) < 0.9 else Vector3.RIGHT).normalized()
+	var z := x.cross(y)
+	_emit("cyl", mat, _ir * Transform3D(Basis(x * 2 * r, y * len, z * 2 * r), (a + b) / 2))
+
+
+# ---- furniture built in code: real proportions and parts, so it holds up at eye level ----
+# Every item faces +z: a chair's seat front is +z and its back -z; a desk's user sits on -z.
+
+## Stacking chair (cafeteria, training): chrome tube legs, padded seat on a moulded shell, a padded back on two
+## uprights leaning back.
+func _stack_chair(w: float, d: float) -> void:
+	var sw := clampf(w * 0.95, 0.4, 0.52)
+	var sd := clampf(d * 0.95, 0.4, 0.52)
+	var hx := sw / 2 - 0.03
+	var hz := sd / 2 - 0.03
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_tube("chrome", Vector3(sx * hx, 0.44, sz * hz), Vector3(sx * (hx + 0.015), 0.0, sz * (hz + 0.02)), 0.011)
+		_tube("chrome", Vector3(sx * hx, 0.02, -hz - 0.02), Vector3(sx * hx, 0.02, hz + 0.02), 0.009)   # floor runner
+		_tube("chrome", Vector3(sx * hx, 0.44, -hz), Vector3(sx * (hx - 0.005), 0.88, -hz - 0.06), 0.01)
+	_bm("shell_dark", Vector3(0, 0.448, 0), Vector3(sw, 0.022, sd))
+	_soft("seat_blue", Vector3(0, 0.478, 0.008), Vector3(sw - 0.02, 0.05, sd - 0.03))
+	_soft("shell_dark", Vector3(0, 0.72, -hz - 0.045), Vector3(sw - 0.02, 0.33, 0.03), -0.14)
+	_soft("seat_blue", Vector3(0, 0.72, -hz - 0.025), Vector3(sw - 0.04, 0.29, 0.04), -0.14)
+
+
+## Office chair: five-star base on casters, gas lift, padded seat, a back on its support bar, armrests.
+func _task_chair(w: float, d: float, fabric: String) -> void:
+	var r := clampf(minf(w, d) * 0.52, 0.26, 0.33)
+	for i in 5:
+		var a: float = TAU * i / 5.0 + 0.3
+		var dir := Vector3(sin(a), 0, cos(a))
+		_emit("box", "shell_dark", _ir * Transform3D(Basis(Vector3.UP, a) * Basis.from_scale(Vector3(0.045, 0.035, r)), dir * r / 2 + Vector3(0, 0.085, 0)))
+		_bm("dark", dir * (r - 0.01) + Vector3(0, 0.03, 0), Vector3(0.05, 0.05, 0.05), "sphere")
+	_bm("shell_dark", Vector3(0, 0.09, 0), Vector3(0.1, 0.06, 0.1), "cyl")
+	_tube("chrome", Vector3(0, 0.1, 0), Vector3(0, 0.42, 0), 0.024)
+	_bm("shell_dark", Vector3(0, 0.44, 0), Vector3(0.22, 0.05, 0.22))
+	_bm("shell_dark", Vector3(0, 0.468, 0), Vector3(0.48, 0.025, 0.46))
+	_soft(fabric, Vector3(0, 0.505, 0.01), Vector3(0.5, 0.075, 0.48))
+	_tube("shell_dark", Vector3(0, 0.45, -0.18), Vector3(0, 0.66, -0.27), 0.022)
+	_soft("shell_dark", Vector3(0, 0.88, -0.29), Vector3(0.46, 0.52, 0.035), -0.12)
+	_soft(fabric, Vector3(0, 0.88, -0.27), Vector3(0.43, 0.48, 0.05), -0.12)
+	for sx in [-1.0, 1.0]:
+		_bm("shell_dark", Vector3(sx * 0.27, 0.57, -0.02), Vector3(0.03, 0.2, 0.05))
+		_soft("shell_dark", Vector3(sx * 0.27, 0.68, 0.0), Vector3(0.065, 0.028, 0.26))
+
+
+## Table: laminate top on a dark edge band, square steel legs in pairs with a foot rail, aprons under the top;
+## a long (cafeteria) table gets a pair of legs every 1.8 m.
+func _table(w: float, d: float) -> void:
+	var long := w >= d
+	var L := w if long else d
+	var D := d if long else w
+	var ax := func(along: float, across: float, y: float) -> Vector3:
+		return Vector3(along, y, across) if long else Vector3(across, y, along)
+	var sz := func(along: float, y: float, across: float) -> Vector3:
+		return Vector3(along, y, across) if long else Vector3(across, y, along)
+	_bm("edge", Vector3(0, 0.736, 0), sz.call(L, 0.028, D))
+	_bm("laminate", Vector3(0, 0.751, 0), sz.call(L - 0.012, 0.004, D - 0.012))
+	var n := maxi(2, ceili(L / 1.8) + 1)
+	for i in n:
+		var at: float = -L / 2 + 0.08 + (L - 0.16) * i / float(n - 1)
+		for s in [-1.0, 1.0]:
+			_bm("desk_frame", ax.call(at, s * (D / 2 - 0.07), 0.36), Vector3(0.045, 0.72, 0.045))
+		_bm("desk_frame", ax.call(at, 0.0, 0.02), sz.call(0.045, 0.03, D - 0.1))
+	for s in [-1.0, 1.0]:
+		_bm("desk_frame", ax.call(0.0, s * (D / 2 - 0.07), 0.69), sz.call(L - 0.12, 0.06, 0.025))
+
+
+## Round table: top on a pedestal column with a cross foot.
+func _round_table(w: float, d: float) -> void:
+	_bm("edge", Vector3(0, 0.736, 0), Vector3(w, 0.028, d), "cyl")
+	_bm("laminate", Vector3(0, 0.751, 0), Vector3(w - 0.014, 0.004, d - 0.014), "cyl")
+	_tube("chrome", Vector3(0, 0.03, 0), Vector3(0, 0.72, 0), 0.04)
+	var f := minf(w, d) * 0.62
+	_bm("shell_dark", Vector3(0, 0.02, 0), Vector3(f, 0.03, 0.07))
+	_bm("shell_dark", Vector3(0, 0.02, 0), Vector3(0.07, 0.03, f))
+
+
+## Office desk: top with an edge band on steel end frames, a modesty panel on the far side and a drawer pedestal.
+func _desk(w: float, d: float) -> void:
+	_bm("edge", Vector3(0, 0.735, 0), Vector3(w, 0.03, d))
+	_bm("desk_top", Vector3(0, 0.752, 0), Vector3(w - 0.012, 0.004, d - 0.012))
+	for sx in [-1.0, 1.0]:
+		var x: float = sx * (w / 2 - 0.05)
+		for sz in [-1.0, 1.0]:
+			_bm("desk_frame", Vector3(x, 0.36, sz * (d / 2 - 0.06)), Vector3(0.05, 0.72, 0.05))
+		_bm("desk_frame", Vector3(x, 0.025, 0), Vector3(0.05, 0.05, d - 0.06))
+		_bm("desk_frame", Vector3(x, 0.7, 0), Vector3(0.05, 0.04, d - 0.08))
+	_bm("partition", Vector3(0, 0.48, d / 2 - 0.05), Vector3(w - 0.14, 0.36, 0.018))
+	if w >= 1.1:
+		var px := w / 2 - 0.3
+		_bm("laminate", Vector3(px, 0.33, 0.02), Vector3(0.4, 0.6, d * 0.72))
+		for k in 3:
+			var y: float = 0.13 + k * 0.19
+			_bm("edge", Vector3(px, y + 0.09, -d * 0.36 + 0.02 - 0.001), Vector3(0.38, 0.004, 0.004))
+			_bm("chrome", Vector3(px, y + 0.03, -d * 0.36 + 0.005), Vector3(0.12, 0.012, 0.012))
+
+
+## Sofa or armchair: upholstered base, arms, separate seat and back cushions, short dark legs.
+func _sofa(w: float, d: float, seats: int) -> void:
+	var arm := clampf(w * 0.09, 0.14, 0.2)
+	_soft("sofa", Vector3(0, 0.22, 0.02), Vector3(w, 0.2, d - 0.04))
+	_soft("sofa", Vector3(0, 0.47, -d / 2 + 0.1), Vector3(w, 0.62, 0.2), -0.04)
+	for sx in [-1.0, 1.0]:
+		_soft("sofa", Vector3(sx * (w / 2 - arm / 2), 0.4, 0.02), Vector3(arm, 0.42, d - 0.04))
+		for sz in [-1.0, 1.0]:
+			_bm("wood_dark", Vector3(sx * (w / 2 - 0.06), 0.05, sz * (d / 2 - 0.08)), Vector3(0.045, 0.1, 0.045), "cyl")
+	var inner := w - 2 * arm
+	var cw := inner / seats
+	for i in seats:
+		var x: float = -inner / 2 + cw * (i + 0.5)
+		_soft("cushion", Vector3(x, 0.395, 0.06), Vector3(cw - 0.012, 0.15, d - 0.3))
+		_soft("cushion", Vector3(x, 0.66, -d / 2 + 0.24), Vector3(cw - 0.02, 0.42, 0.17), -0.16)
+
+
 ## A monitor on a stand and a keyboard for one seat, in the current item frame (_ir); the user sits on the -z side.
 func _setup(x: float, dd: float) -> void:
 	# glTF monitor, keyboard and mouse; the kit's models face +z, so they are turned to face the seat
@@ -411,31 +553,22 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			# walls', brushed-steel corner guards to waist height (they take the knocks), a shadow gap at the ceiling
 			_bm("col_paint", Vector3(0, h / 2, 0), Vector3(w, h, d))
 			_bm("col_skirt", Vector3(0, 0.05, 0), Vector3(w + 0.024, 0.1, d + 0.024))
-			_bm("col_gap", Vector3(0, h - 0.025, 0), Vector3(w - 0.02, 0.05, d - 0.02))
-			for sx in [-1.0, 1.0]:
-				for sz in [-1.0, 1.0]:
-					_bm("col_guard", Vector3(sx * (w / 2 - 0.016), 0.75, sz * (d / 2 - 0.016)), Vector3(0.05, 1.3, 0.05))
+			# the map view cuts walls (and columns with them) low: the ceiling gap and guards belong to full height only
+			if h > 2.0:
+				_bm("col_gap", Vector3(0, h - 0.025, 0), Vector3(w - 0.02, 0.05, d - 0.02))
+				for sx in [-1.0, 1.0]:
+					for sz in [-1.0, 1.0]:
+						_bm("col_guard", Vector3(sx * (w / 2 - 0.016), 0.75, sz * (d / 2 - 0.016)), Vector3(0.05, 1.3, 0.05))
 		"chair":
-			# meeting / training chair: cushioned seat and back on a wooden frame
-			_swap = {"carpet": "chair"}
-			_model("chairCushion", Vector3.ZERO, w * 0.95, d * 0.95)
-			_swap = {}
+			_stack_chair(w, d)
 		"task_chair":
-			# office chair on a five-star base with casters and armrests
-			_swap = {"carpet": "fabric", "metalMedium": "dark"}
-			_model("chairDesk", Vector3.ZERO, w, d)
-			_swap = {}
+			_task_chair(w, d, "seat_grey")
 		"table":
-			_swap = {"wood": "desk_top"}
-			_model("table", Vector3.ZERO, w, d, 0.75)
-			_swap = {}
+			_table(w, d)
 		"round_table":
-			_model("tableRound", Vector3.ZERO, w, d, 0.75)
+			_round_table(w, d)
 		"desk":
-			# the kit's desk has its drawers and knee space on +z; ours seats the user on -z
-			_swap = {"wood": "desk_top", "metal": "desk_frame"}
-			_model("desk", Vector3.ZERO, w, d, 0.75, PI)
-			_swap = {}
+			_desk(w, d)
 			var seats := maxi(1, roundi(w / 0.66))
 			for i in seats:
 				_setup(-w / 2 + w * (i + 0.5) / seats, d)
@@ -489,12 +622,7 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_it = it
 			_ir = ir
 		"sofa", "armchair":
-			_swap = {"carpet": "sofa", "wood": "wood_dark"}
-			if kind == "armchair" or w < 1.2:
-				_model("loungeChair", Vector3.ZERO, w, d, minf(w, d) * 0.95)
-			else:
-				_model("loungeSofaLong" if w > 2.6 else "loungeSofa", Vector3.ZERO, w, d, 0.82)
-			_swap = {}
+			_sofa(w, d, 1 if kind == "armchair" or w < 1.2 else (3 if w > 1.7 else 2))
 		"bed":
 			_swap = {"carpet": "linen", "carpetWhite": "white", "wood": "wood"}
 			# the model's length runs along its z; turn it when the plan's bed is longer across than deep

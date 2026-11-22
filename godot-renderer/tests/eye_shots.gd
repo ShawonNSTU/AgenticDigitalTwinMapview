@@ -59,4 +59,33 @@ func _run() -> void:
 		n += 1
 		get_viewport().get_texture().get_image().save_png("%s/column_%d.png" % [out, n])
 		print("shot ", n, " ", Store.room_label(Store.room_at(c)))
+	# close-ups of each kind of furniture, from where someone walking by would see it
+	for kind in ["chair", "table", "task_chair", "desk", "workstation", "sofa", "round_table"]:
+		var f = null
+		for it in Store.furniture:
+			if it.kind == kind:
+				f = it
+				break
+		if f == null:
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		var spot := Vector2.INF
+		for k in 24:
+			var a := TAU * k / 24.0
+			for r in [2.0, 2.4, 1.7, 2.8]:
+				var q: Vector2 = c + Vector2(cos(a), sin(a)) * r
+				if w.nav.is_free(q):
+					spot = q
+					break
+			if spot != Vector2.INF:
+				break
+		if spot == Vector2.INF:
+			continue
+		w.teleport(spot)
+		await _wait(1.6)
+		w.look_at_point(Vector3(c.x, 0.55, c.y))
+		await _wait(1.4)
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("%s/near_%s.png" % [out, kind])
+		print("near ", kind, " in ", Store.room_label(Store.room_at(c)))
 	get_tree().quit()
