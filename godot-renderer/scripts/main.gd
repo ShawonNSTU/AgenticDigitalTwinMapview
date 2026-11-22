@@ -132,6 +132,14 @@ func _ready() -> void:
 			var gt := Node.new()
 			gt.set_script(load("res://tests/guest_test.gd"))
 			add_child(gt)
+		if a.begins_with("--live-shot"):
+			var ls := Node.new()
+			ls.set_script(load("res://tests/live_shot.gd"))
+			add_child(ls)
+		if a.begins_with("--tour-trace"):
+			var tt := Node.new()
+			tt.set_script(load("res://tests/tour_trace.gd"))
+			add_child(tt)
 		if a.begins_with("--guest-stress="):
 			var gs := Node.new()
 			gs.set_script(load("res://tests/guest_stress.gd"))
@@ -1029,7 +1037,7 @@ func start_walk(room_key := "") -> void:
 	walker.name = "Walker"
 	world.add_child(walker)
 	walker.landed.connect(func():
-		if is_instance_valid(floor_builder) and floor_builder.ceilings:
+		if is_instance_valid(floor_builder) and floor_builder.ceilings and walker and not walker._over:   # not while seen from above
 			floor_builder.ceilings.visible = true)
 	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look_yaw, from)
 	walker._track_room()
@@ -1184,7 +1192,7 @@ func _start_guest(from_key := "") -> void:
 	walker.name = "Walker"
 	world.add_child(walker)
 	walker.landed.connect(func():
-		if is_instance_valid(floor_builder) and floor_builder.ceilings:
+		if is_instance_valid(floor_builder) and floor_builder.ceilings and walker and not walker._over:   # not while seen from above
 			floor_builder.ceilings.visible = true)
 	var look := 0.0
 	if route.size() > 0:
@@ -1392,7 +1400,7 @@ func _live_fix() -> void:
 		var in_room: bool = not Store.room_at(q).is_empty() and Store.room_at(q).key == _guest_room
 		info.live["toRoom"] = 0.0 if in_room else snappedf(left, 0.1)
 		info.live["atDoor"] = not in_room and left < 3.0
-		if Time.get_ticks_msec() - _route_at > 3000 and not in_room:
+		if Time.get_ticks_msec() - _route_at > 1000 and not in_room:   # the way on from here, never the bit already walked
 			_route_at = Time.get_ticks_msec()
 			walker.show_route(q, walker.nav.path(q, _guest_target), Store.room_label(Store.room(_guest_room)))
 		elif in_room:

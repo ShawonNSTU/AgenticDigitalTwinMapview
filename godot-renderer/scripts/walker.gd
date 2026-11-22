@@ -81,6 +81,9 @@ var live := false          # following live position fixes instead of a planned 
 var _you: Node3D           # "you are here" marker with the fix's accuracy circle
 var _you_acc: MeshInstance3D
 var _you_label: Label3D
+var _you_pulse: MeshInstance3D   # a ring spreading out from the dot, so it is found at a glance
+var _you_cone: MeshInstance3D    # which way the guest is facing
+var _follow_yaw := 0.0
 var _route_node: Node3D
 var _over := false
 var _over_from: Transform3D
@@ -113,28 +116,76 @@ func set_live(on: bool) -> void:
 		_you_acc.material_override = m
 		_you_acc.position.y = 0.02
 		_you.add_child(_you_acc)
+		var unshaded := func(c: Color) -> StandardMaterial3D:
+			var mm := StandardMaterial3D.new()
+			mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			mm.albedo_color = c
+			if c.a < 1.0:
+				mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mm.no_depth_test = true    # seen through furniture from above
+			mm.render_priority = 10
+			return mm
+		# white rim, blue dot: the map "you are here" everyone knows
+		var rim := MeshInstance3D.new()
+		var rm := CylinderMesh.new()
+		rm.top_radius = 0.42
+		rm.bottom_radius = 0.42
+		rm.height = 0.02
+		rm.radial_segments = 40
+		rim.mesh = rm
+		rim.material_override = unshaded.call(Color(1, 1, 1))
+		rim.position.y = 0.06
+		_you.add_child(rim)
 		var dot := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = 0.16
-		sm.height = 0.32
+		var sm := CylinderMesh.new()
+		sm.top_radius = 0.32
+		sm.bottom_radius = 0.32
+		sm.height = 0.03
+		sm.radial_segments = 40
 		dot.mesh = sm
-		var dm := StandardMaterial3D.new()
-		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		dm.albedo_color = Color("2563eb")
-		dot.material_override = dm
-		dot.position.y = 0.2
+		dot.material_override = unshaded.call(Color("2563eb"))
+		dot.position.y = 0.08
 		_you.add_child(dot)
+		# facing: a soft wedge ahead of the dot
+		_you_cone = MeshInstance3D.new()
+		var pm := PrismMesh.new()
+		pm.size = Vector3(1.1, 1.3, 0.01)
+		_you_cone.mesh = pm
+		_you_cone.material_override = unshaded.call(Color(0.23, 0.51, 0.96, 0.35))
+		var cone_pivot := Node3D.new()
+		cone_pivot.name = "Facing"
+		_you.add_child(cone_pivot)
+		cone_pivot.add_child(_you_cone)
+		_you_cone.position = Vector3(0, 0.05, -0.85)   # ahead is -z, as for the camera
+		_you_cone.rotation = Vector3(-PI / 2, 0, 0)    # lying flat, its tip pointing ahead
+		# the spreading ring
+		_you_pulse = MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.92
+		tm.outer_radius = 1.0
+		tm.rings = 48
+		tm.ring_segments = 6
+		_you_pulse.mesh = tm
+		_you_pulse.material_override = unshaded.call(Color(0.23, 0.51, 0.96, 0.6))
+		_you_pulse.position.y = 0.07
+		_you_pulse.scale = Vector3(0.01, 0.01, 0.01)
+		_you.add_child(_you_pulse)
 		_you_label = Label3D.new()
 		_you_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		_you_label.fixed_size = true
 		_you_label.no_depth_test = true
-		_you_label.pixel_size = 0.0007
-		_you_label.font_size = 24
-		_you_label.outline_size = 8
-		_you_label.modulate = Color("93c5fd")
-		_you_label.position.y = 0.7
+		_you_label.pixel_size = 0.0009
+		_you_label.font_size = 26
+		_you_label.outline_size = 10
+		_you_label.outline_modulate = Color(0.04, 0.06, 0.1, 0.95)
+		_you_label.modulate = Color(1, 1, 1)
+		_you_label.render_priority = 20
+		_you_label.outline_render_priority = 19
+		_you_label.position.y = 0.9
 		_you.add_child(_you_label)
 	_you.visible = on
+	_follow_yaw = yaw
+	overview(on)   # seen from above, following: where you are and the way on, at a glance
 
 
 ## A live fix (already snapped to walkable floor): the view walks there along the floor, never through walls.
@@ -143,7 +194,7 @@ func live_fix(q: Vector2, accuracy: float, source: String) -> void:
 		return
 	# the marker is where the body is: it walks the route between fixes, never through a wall
 	_you_acc.scale = Vector3(clampf(accuracy, 0.4, 15.0), 1, clampf(accuracy, 0.4, 15.0))
-	_you_label.text = "You are here · ±%.0f m · %s" % [accuracy, {"rtls": "positioning badge", "rtls-sim": "badge (simulated)", "checkpoint": "location code", "pdr": "step tracking"}.get(source, source)]
+	_you_label.text = "You are here"
 	if q.distance_to(p) > 8.0 or (_path.is_empty() and q.distance_to(p) > 0.35):
 		if q.distance_to(p) > 8.0:
 			teleport(q)  # a far jump (first fix, or a checkpoint): go there directly
@@ -533,6 +584,11 @@ func _process(delta: float) -> void:
 	_fit_fov()
 	if live and _you:
 		_you.position = Vector3(p.x, 0, p.y)
+		_you.get_node("Facing").rotation.y = yaw
+		var k := fmod(Time.get_ticks_msec() / 1600.0, 1.0)   # one ring every 1.6 s
+		var rr := lerpf(0.4, 2.4, k)
+		_you_pulse.scale = Vector3(rr, 1.0, rr)
+		(_you_pulse.material_override as StandardMaterial3D).albedo_color.a = 0.65 * (1.0 - k)
 	if not _lift.is_empty():
 		_lift_tick(delta)
 		return
@@ -634,14 +690,7 @@ func _apply() -> void:
 		if absf(wrapf(yaw - _look_goal[0], -PI, PI)) < 0.01 and absf(pitch - _look_goal[1]) < 0.01:
 			_look_goal = null
 	var bob := sin(_bob) * 0.02
-	# standing still in their own room, the view steps back to the wall behind and rises a little, as a photographer
-	# takes in a whole room from its corner; walking again brings it back to the eyes
-	var still := _path.is_empty() and _push <= 0.0 and joy.length() < 0.05 and not _down and not _keys.values().has(true)
-	var goal := _room_back() if still and not _confine.is_empty() and not live else 0.0
-	_back = lerpf(_back, goal, 0.06 if goal > _back else 0.25)
-	var behind := Vector2(sin(yaw), cos(yaw)) * _back
-	var lift := 0.12 * clampf(_back / ROOM_BACK, 0.0, 1.0)
-	var t := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch), Vector3(p.x + behind.x, eye + bob + lift, p.y + behind.y))
+	var t := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch), Vector3(p.x, eye + bob, p.y))
 	if _over or _over_t < 1.0:
 		_over_t = minf(_over_t + get_process_delta_time() / 1.2, 1.0)
 		var top := _overview_xform()
@@ -655,32 +704,11 @@ func _apply() -> void:
 		cam.global_transform = t
 
 
-const ROOM_BACK := 1.6   # furthest the room view steps back, metres
-var _back := 0.0
-
-
-## How far the camera can step back from the guest (straight behind, level) and stay inside the room, clear of its
-## walls by a hand's width.
-func _room_back() -> float:
-	var dir := Vector2(sin(yaw), cos(yaw))
-	var far := p + dir * (ROOM_BACK + 0.15)
-	var best := ROOM_BACK
-	var n := _confine.size()
-	for i in n:
-		var hit = Geometry2D.segment_intersects_segment(p, far, _confine[i], _confine[(i + 1) % n])
-		if hit != null:
-			best = minf(best, p.distance_to(hit) - 0.15)
-	# and short of any furniture behind (a lamp shade or a cupboard would fill the view): only floor the guest could
-	# stand on, in steps of 10 cm
-	var d := 0.0
-	while d + 0.1 <= best and nav.is_free(p + dir * (d + 0.1)):
-		d += 0.1
-	return d
-
-
 ## Straight down over the walker and the way to the destination; in the guest's own room, the whole room from above
 ## at a steep angle from the side they look from (ceiling lifted off), every piece at its true size.
 func _overview_xform() -> Transform3D:
+	if live and _you and _you.visible:
+		return _overview_follow()
 	if not _confine.is_empty():
 		var rb := Rect2(_confine[0], Vector2.ZERO)
 		for q in _confine:
@@ -698,6 +726,25 @@ func _overview_xform() -> Transform3D:
 		var at := Vector3(c.x, 0.6, c.y) + basis.z * dist
 		return Transform3D(basis, at)
 	return _overview_top()
+
+
+## Find me: from above and a little behind, turned the way the guest walks (as a sat-nav does, slowly so the map
+## doesn't swing), framing them and the next stretch of the way to their room.
+func _overview_follow() -> Transform3D:
+	_follow_yaw = lerp_angle(_follow_yaw, yaw, 0.02)
+	var box := Rect2(p, Vector2.ZERO).grow(4.0)
+	if _route_node:
+		for c in _route_node.get_children():
+			var q := Vector2(c.position.x, c.position.z)
+			if q.distance_to(p) < 14.0:
+				box = box.expand(q)
+	box = box.grow(2.0)
+	var span := maxf(box.size.x, box.size.y)
+	var pitch_r := deg_to_rad(-64.0)
+	var dist := span / (2.0 * tan(deg_to_rad(cam.fov) / 2.0)) + 3.0
+	var basis := Basis(Vector3.UP, _follow_yaw) * Basis(Vector3.RIGHT, pitch_r)
+	var c := box.get_center().lerp(p, 0.4)
+	return Transform3D(basis, Vector3(c.x, 0.0, c.y) + basis.z * dist)
 
 
 func _overview_top() -> Transform3D:
