@@ -128,8 +128,10 @@ export function sheet4F(rooms: PresetRoom[], furniture: PresetItem[]) {
   // nothing in the closed duct between the dressing rooms (it was traced as part of the gym)
   for (let i = furniture.length - 1; i >= 0; i--) {
     const f = furniture[i];
-    if (f.kind !== 'column' && f.fx > 0.2368 && f.fx < 0.2668 && f.fy > 0.3022 && f.fy < 0.3906) furniture.splice(i, 1);
+    if (f.kind !== 'column' && !f.duct && f.fx > 0.2368 && f.fx < 0.2668 && f.fy > 0.3022 && f.fy < 0.3906) furniture.splice(i, 1);
   }
+  // the duct itself: a closed box, not a hole in the floor
+  if (!furniture.some(f => f.duct)) furniture.push({ kind: 'cabinet', fx: 0.25182, fy: 0.34643, fw: 0.0286, fd: 0.0625, rot: 0, duct: true });
   return { rooms, furniture, applied: true };
 }
 

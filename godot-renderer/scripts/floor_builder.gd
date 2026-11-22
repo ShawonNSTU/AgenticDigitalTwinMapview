@@ -178,7 +178,7 @@ static func _floor_tex(kind: String) -> ImageTexture:
 						c = Color("b8bcc0")
 					img.set_pixel(x, y, c)
 		"carpet":  # a 500 mm carpet tile, 2 x 2, pile direction turned on alternate tiles (quarter-turn laying)
-			var base := Color("6b7280")
+			var base := Color("7a828e")
 			for y in n:
 				for x in n:
 					var q := int(x >= n / 2) + int(y >= n / 2)
@@ -187,8 +187,8 @@ static func _floor_tex(kind: String) -> ImageTexture:
 					if x % (n / 2) == 0 or y % (n / 2) == 0:
 						c = c.darkened(0.08)
 					img.set_pixel(x, y, c)
-		"rubber":  # gym rubber: dark grey with coloured EPDM flecks, 1 m tiles
-			var base := Color("34373c")
+		"rubber":  # gym rubber tiles: mid grey with light and blue EPDM flecks (dark rubber reads as a hole from above)
+			var base := Color("7b8088")
 			img.fill(base)
 			for y in n:
 				for x in n:
@@ -196,13 +196,13 @@ static func _floor_tex(kind: String) -> ImageTexture:
 			for i in 2600:
 				var x := rng.randi_range(0, n - 2)
 				var y := rng.randi_range(0, n - 2)
-				var col: Color = [Color("8a8f96"), Color("5d8fc9"), Color("c9c9c9"), Color("4d5157")][rng.randi_range(0, 3)]
+				var col: Color = [Color("a7abb1"), Color("6f9fd6"), Color("d9d9d6"), Color("5c6168")][rng.randi_range(0, 3)]
 				img.set_pixel(x, y, col)
 				if rng.randf() < 0.4:
 					img.set_pixel(x + 1, y, col)
 			for i in n:
-				img.set_pixel(i, 0, Color("26282c"))
-				img.set_pixel(0, i, Color("26282c"))
+				img.set_pixel(i, 0, Color("62666d"))
+				img.set_pixel(0, i, Color("62666d"))
 		"terrazzo":  # polished terrazzo, 2 x 2 tiles of 600 mm: pale grey with stone chips, a fine joint
 			var base := Color("d9d7d2")
 			for y in n:

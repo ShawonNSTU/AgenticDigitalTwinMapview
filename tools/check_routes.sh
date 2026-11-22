@@ -6,7 +6,11 @@ set -euo pipefail
 GODOT="${GODOT:-godot}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 log="$(mktemp)"
-run=(timeout 600 "$GODOT" --rendering-driver opengl3 --path "$here/godot-renderer" -- --routes='*')
+# a fresh checkout has no import cache yet: build it first, so the project's classes are known
+if [ ! -f "$here/godot-renderer/.godot/global_script_class_cache.cfg" ]; then
+  timeout 600 "$GODOT" --headless --path "$here/godot-renderer" --import > /dev/null 2>&1 || true
+fi
+run=(timeout 900 "$GODOT" --rendering-driver opengl3 --path "$here/godot-renderer" -- --routes='*')
 if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then run=(xvfb-run -a "${run[@]}"); fi
 "${run[@]}" > "$log" 2>&1 || true
 grep -E "^(WALK|NO WAY IN|AUTO DOOR)" "$log" || true
