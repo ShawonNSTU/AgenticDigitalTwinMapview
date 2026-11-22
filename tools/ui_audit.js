@@ -35,7 +35,7 @@ const CHECK = () => {
   for (const el of document.querySelectorAll('button, select, .stat, .state-chip, .eta-chip, .badge, .chip, .ready-chip, .floor-chip, .tabs button, .seg button, .eco-tag, .st-tag, .sim-tag, em.st')) {
     if (!vis(el)) continue;
     const t = (el.innerText || '').trim();
-    if (!t || t.length < 3 || el.closest('.ag-tasks, .ag-hist, .ag-sugg, .story-rail, .stepper, .part, .alert-row, .dev-row, .comfort-row, .ops-row')) continue;
+    if (!t || t.length < 3 || el.closest('.side-tab, .ag-tasks, .ag-hist, .ag-sugg, .story-rail, .stepper, .part, .alert-row, .dev-row, .comfort-row, .ops-row')) continue;
     if (el.tagName === 'SELECT') { if (el.scrollWidth > el.clientWidth + 2) out.push({ kind: 'select-clipped', el: name(el) }); continue; }
     if (lines(el) > 1) out.push({ kind: 'wrapped', el: name(el), h: Math.round(el.getBoundingClientRect().height) });
   }
@@ -121,6 +121,9 @@ async function run() {
       ['map-again', async p => { await renderer(p, { type: 'walk', on: false }); }],
       ['live-ops', async p => { await p.evaluate(() => [...document.querySelectorAll('.tabs button')].find(x => /Live ops/.test(x.textContent))?.click()); await wait(2500); }],
       ['agent', async p => { await p.evaluate(() => document.querySelector('.agp-fab')?.click()); await wait(1500); }],
+      ['agent-dragged', async p => { const h = await p.$eval('.agp-head .agp-title', e => { const r = e.getBoundingClientRect(); return [r.left + 20, r.top + 10]; }).catch(() => null); if (h) { await p.mouse.move(h[0], h[1]); await p.mouse.down(); await p.mouse.move(h[0] - 300, h[1] + 40, { steps: 6 }); await p.mouse.up(); } await wait(300); }],
+      ['side-folded', async p => { await p.evaluate(() => document.querySelector('.side-fold')?.click()); await wait(700); }],
+      ['side-back', async p => { await p.evaluate(() => { document.querySelector('.side-tab')?.click(); localStorage.removeItem('agp-pos'); }); await wait(700); }],
       ['agent-history', async p => { await p.evaluate(() => document.querySelector('.agp-head .agp-icon[aria-label="Conversation history"]')?.click()); await wait(800); }],
       ['agent-expanded', async p => { await p.evaluate(() => document.querySelector('.agp-expand')?.click()); await wait(600); await p.evaluate(() => { document.querySelector('.agp-expand')?.click(); document.querySelector('.agp-head .agp-icon[aria-label="Close"]')?.click(); }); await wait(400); }],
       ['device-panel', async p => { await p.evaluate(() => [...document.querySelectorAll('.tabs button')].find(x => /Devices/.test(x.textContent))?.click()); await wait(400); await p.evaluate(() => document.querySelector('.dev-row')?.click()); await wait(1500); }],
@@ -137,6 +140,8 @@ async function run() {
       ['room-tab', async p => { await p.evaluate(() => [...document.querySelectorAll('.tabs button')].find(x => /^Room/.test(x.textContent))?.click()); await wait(800); }],
       ['holo', async p => { await renderer(p, { type: 'deviceClicked', id: 'LT-01' }); await renderer(p, { type: 'anchor', id: 'LT-01', x: 0.5, y: 0.4, visible: true }); await wait(800); }],
       ['holo-ac', async p => { await renderer(p, { type: 'deviceClicked', id: 'AC-01' }); await renderer(p, { type: 'anchor', id: 'AC-01', x: 0.8, y: 0.2, visible: true }); await wait(800); }],
+      ['guest-folded', async p => { await p.evaluate(() => document.querySelector('.side-fold')?.click()); await wait(700); }],
+      ['guest-unfolded', async p => { await p.evaluate(() => document.querySelector('.side-tab')?.click()); await wait(700); }],
       ['tour', async p => { await p.evaluate(() => document.querySelector('.holo .hint-close, .holo button[aria-label="Close"]')?.click()); await wait(300); await p.evaluate(() => [...document.querySelectorAll('button')].find(x => /Take the tour/.test(x.textContent))?.click()); await wait(800); }],
       ['assistant', async p => { await p.evaluate(() => [...document.querySelectorAll('.tour button')].find(x => /End tour/.test(x.textContent))?.click()); await p.evaluate(() => document.querySelector('.agp-fab')?.click()); await wait(800); }],
       ['stay', async p => { await p.evaluate(() => [...document.querySelectorAll('.tabs button')].find(x => /Your stay/.test(x.textContent))?.click()); await wait(1500); }],

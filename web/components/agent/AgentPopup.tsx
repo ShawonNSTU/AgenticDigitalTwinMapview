@@ -11,15 +11,70 @@ export type PopupControls = { open: boolean; expanded: boolean; close: () => voi
 /** right / top: how much of the window the page's own side panel and header take, so the popup floats over the
  *  map beside them (on a narrow screen the page stacks and the popup uses the whole window). */
 export default function AgentPopup({ label = 'Ask AI', children, shortcut = true, right = 0, top = 0 }: { label?: string; shortcut?: boolean; right?: number; top?: number; children: (c: PopupControls) => ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const card = useRef<HTMLElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  // map in full screen: the page's header and side panel are gone, so the popup uses the whole screen
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const sync = () => setFull(document.body.classList.contains('has-pseudo-full'));
+    sync();
+    const mo = new MutationObserver(sync);
+    mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => mo.disconnect();
+  }, []);
+  // dragged by its header to wherever suits (kept on screen; remembered in this browser; double-click the header to
+  // put it back)
+  const [off, setOff] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem('agp-pos') ?? 'null'); if (v && Number.isFinite(v.x) && Number.isFinite(v.y)) setOff(v); } catch { /* no storage */ } }, []);
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number; base: DOMRect } | null>(null);
+  const clampOff = useCallback((x: number, y: number, base: DOMRect) => {
+    const keep = 64;   // this much of the card stays on screen
+    return {
+      x: Math.round(Math.min(window.innerWidth - keep - base.left, Math.max(keep - base.right, x))),
+      y: Math.round(Math.min(window.innerHeight - 48 - base.top, Math.max(-base.top, y))),
+    };
+  }, []);
+  const onDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('button, a, input, textarea, select') || window.innerWidth <= 640) return;
+    const el = card.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    drag.current = { px: e.clientX, py: e.clientY, ox: off.x, oy: off.y, base: new DOMRect(r.left - off.x, r.top - off.y, r.width, r.height) };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    el.classList.add('dragging');
+  }, [off]);
+  const onMove = useCallback((e: React.PointerEvent) => {
+    const d = drag.current; if (!d) return;
+    setOff(clampOff(d.ox + e.clientX - d.px, d.oy + e.clientY - d.py, d.base));
+  }, [clampOff]);
+  const onUp = useCallback(() => {
+    if (!drag.current) return;
+    drag.current = null;
+    card.current?.classList.remove('dragging');
+    setOff(o => { try { localStorage.setItem('agp-pos', JSON.stringify(o)); } catch { /* no storage */ } return o; });
+  }, []);
+  const resetPos = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    setOff({ x: 0, y: 0 }); try { localStorage.removeItem('agp-pos'); } catch { /* no storage */ }
+  }, []);
+  // a smaller window, or the side panel or full screen changing, can leave a dragged popup off screen: pull it back
+  useEffect(() => {
+    const fit = () => {
+      const el = card.current; if (!el || (off.x === 0 && off.y === 0)) return;
+      const r = el.getBoundingClientRect();
+      const c = clampOff(off.x, off.y, new DOMRect(r.left - off.x, r.top - off.y, r.width, r.height));
+      if (c.x !== off.x || c.y !== off.y) setOff(c);
+    };
+    const t = setTimeout(fit, 260);
+    window.addEventListener('resize', fit);
+    return () => { clearTimeout(t); window.removeEventListener('resize', fit); };
+  }, [off, clampOff, right, top, full, expanded, open]);
   const [act, setAct] = useState<Activity>({ busy: false, done: 0, total: 0 });
   const [unread, setUnread] = useState(0);
   const openRef = useRef(open); openRef.current = open;
   const wasBusy = useRef(false);
-  const card = useRef<HTMLElement>(null);
   const launcher = useRef<HTMLButtonElement>(null);
 
   const onActivity = useCallback((a: Activity) => {
@@ -52,28 +107,24 @@ export default function AgentPopup({ label = 'Ask AI', children, shortcut = true
   if (!mounted) return null;
   // in the page body, so no container of the map clips it or holds a phone's sheet inside the map
   return createPortal(
-    <div className={`agp ${open ? 'open' : ''} ${expanded ? 'expanded' : ''}`} style={{ '--agp-right': `${right}px`, '--agp-top': `${top}px` } as CSSProperties}>
+    <div className={`agp ${open ? 'open' : ''} ${expanded ? 'expanded' : ''}`} style={{ '--agp-right': `${full ? 0 : right}px`, '--agp-top': `${full ? 0 : top}px`, '--agp-dx': `${off.x}px`, '--agp-dy': `${off.y}px` } as CSSProperties}>
       <section ref={card} className="agp-card" role="dialog" aria-label="AI agent" aria-hidden={!open} inert={!open}
-        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}>
+        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}
+        onPointerDown={e => { if ((e.target as HTMLElement).closest('.agp-head')) onDown(e); }} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+        onDoubleClick={e => { if ((e.target as HTMLElement).closest('.agp-head')) resetPos(e); }}>
         <div className="agp-handle" aria-hidden />
         {children({ open, expanded, close, toggleExpand, onActivity })}
       </section>
-      {open ? (
-        <button ref={launcher} type="button" className="agp-fab round" aria-label="Close the AI agent" onClick={() => show(false)}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
-        </button>
-      ) : act.busy ? (
-        <button ref={launcher} type="button" className="agp-fab working" onClick={() => show(true)} aria-label="AI agent is working. Open it">
-          <span className="agp-spin" aria-hidden />{act.total > 1 ? `Working · ${act.done} of ${act.total} done` : 'Working…'}
-        </button>
-      ) : (
-        <button ref={launcher} type="button" className="agp-fab" onClick={() => show(true)} aria-label={unread ? `${label}: ${unread} new answer${unread > 1 ? 's' : ''}` : label}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3L12 3z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" /></svg>
-          <span className="agp-label">{label}</span>
-          {shortcut && <kbd>{mac ? '⌘' : 'Ctrl'} K</kbd>}
-          {unread > 0 && <span className="agp-badge">{unread}</span>}
-        </button>
-      )}
+      <button ref={launcher} type="button" className={`agp-fab ${open ? 'is-open' : ''} ${act.busy && !open ? 'working' : ''}`} onClick={() => show(!open)}
+        aria-label={open ? 'Close the AI agent' : act.busy ? `AI agent is working${act.total > 1 ? ` (${act.done} of ${act.total} done)` : ''}. Open it` : unread ? `${label}: ${unread} new answer${unread > 1 ? 's' : ''}` : label}
+        title={open ? 'Close (Esc)' : `${label}${shortcut ? ` (${mac ? '⌘' : 'Ctrl'} K)` : ''}`} aria-expanded={open}>
+        {open
+          ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+          : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3L12 3z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" /></svg>}
+        {act.busy && !open && <span className="agp-ring" aria-hidden />}
+        {act.busy && !open && act.total > 1 && <span className="agp-badge prog">{act.done}/{act.total}</span>}
+        {!act.busy && !open && unread > 0 && <span className="agp-badge">{unread}</span>}
+      </button>
     </div>,
     document.body,
   );

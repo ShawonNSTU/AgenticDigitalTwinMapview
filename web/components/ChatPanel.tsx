@@ -16,7 +16,7 @@ const TASKS = [
 ];
 
 /** The staff assistant (administrator, technician): one agent for the whole twin, in a popup over the map. */
-export default function ChatPanel({ onSelect, role = 'Administrator' }: { onSelect: (id: string) => void; role?: string }) {
+export default function ChatPanel({ onSelect, role = 'Administrator', right = 392 }: { onSelect: (id: string) => void; role?: string; right?: number }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [brief, setBrief] = useState<Brief | null>(null);
   useEffect(() => {
@@ -54,7 +54,7 @@ export default function ChatPanel({ onSelect, role = 'Administrator' }: { onSele
   );
 
   return (
-    <AgentPopup right={392} top={64}>
+    <AgentPopup right={right} top={64}>
       {ctl => <AgentPanel endpoint="/api/chat" history="/api/chat/history" home={home} title="Twin Assistant" subtitle={subtitle} ctl={ctl} placeholder="Ask anything or tell me what to do…"
         onUi={a => send(a as ToRenderer)} onSelect={onSelect} />}
     </AgentPopup>

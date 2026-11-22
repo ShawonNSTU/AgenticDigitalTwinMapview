@@ -10,6 +10,7 @@ import GuestAssistant from '@/components/GuestAssistant';
 import GuestJourney from '@/components/GuestJourney';
 import Locator from '@/components/Locator';
 import FullscreenButton from '@/components/FullscreenButton';
+import { SideFold, SideTab, useSideOpen } from '@/components/SidePanel';
 import { send, type FromRenderer } from '@/lib/bridge';
 
 type Dev = { id: string; type: string; label: string; name: string; health: string; online: boolean; readings: Record<string, unknown>; overrides: Record<string, unknown>; status: { name: string; value: string; health: string }[]; finding: { title: string; lvl: string } | null; commands: Cmd[]; st?: StProfile };
@@ -54,6 +55,7 @@ export default function GuestPage() {
   const [built, setBuilt] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
   const [tab, setTab] = useState<'stay' | 'room'>('stay');
+  const [sideOpen, setSideOpen] = useSideOpen('guest');
   const [tour, setTour] = useState<number | null>(null);
   const [overview, setOverview] = useState(false);
   const [hintShown, setHintShown] = useState(true);   // the "You're in …" card: closable, gone once the tour is over
@@ -182,7 +184,7 @@ export default function GuestPage() {
   );
 
   return (
-    <main className="guest">
+    <main className={`guest ${sideOpen ? '' : 'side-closed'}`}>
       <header className="guest-top">
         <span className="logo" />
         <div className="guest-title"><small>{view?.guestName ? `Welcome, ${view.guestName}` : 'Guest access'}{view?.title ? ` · ${view.title}` : ''}</small><b>{view?.room.name ?? '…'}</b></div>
@@ -242,10 +244,11 @@ export default function GuestPage() {
             </div>
           </div>
         )}
-        {view && <GuestAssistant token={token} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); else if (x.type === 'setLayer' && ['comfort', 'energy'].includes(x.layer)) send({ type: 'setLayer', layer: x.layer, on: x.on !== false }); }} />}
+        {!sideOpen && <SideTab label={tab === 'room' ? 'Room' : 'Your stay'} count={tab === 'room' ? view?.devices.length : undefined} onOpen={() => setSideOpen(true)} />}
+        {view && <GuestAssistant token={token} right={sideOpen ? 380 : 0} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); else if (x.type === 'setLayer' && ['comfort', 'energy'].includes(x.layer)) send({ type: 'setLayer', layer: x.layer, on: x.on !== false }); }} />}
       </section>
-      <aside className="guest-panel">
-        <div className="tabs"><button className={tab === 'stay' ? 'on' : ''} onClick={() => setTab('stay')}>Your stay</button><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room <i>{view?.devices.length ?? 0}</i></button></div>
+      <aside className="guest-panel" hidden={!sideOpen}>
+        <div className="tabs"><button className={tab === 'stay' ? 'on' : ''} onClick={() => setTab('stay')}>Your stay</button><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room <i>{view?.devices.length ?? 0}</i></button><SideFold onFold={() => setSideOpen(false)} /></div>
         {tab === 'stay' ? <GuestJourney token={token} onMsg={say} /> : (
           <div className="guest-devs">
             {view && view.devices.length === 0 && <div className="muted pad">This room has no connected devices.</div>}

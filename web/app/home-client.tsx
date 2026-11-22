@@ -11,6 +11,7 @@ import WalkHud from '@/components/WalkHud';
 import GuestQr from '@/components/GuestQr';
 import RoomFurniture from '@/components/RoomFurniture';
 import FullscreenButton from '@/components/FullscreenButton';
+import { SideFold, SideTab, useSideOpen } from '@/components/SidePanel';
 import OpsPanel from '@/components/OpsPanel';
 import { send, RENDERER_VERSION, type FromRenderer } from '@/lib/bridge';
 
@@ -30,6 +31,7 @@ export default function Home() {
   const [floorTitle, setFloorTitle] = useState('');
   const [sel, setSel] = useState<string | null>(null);
   const [tab, setTab] = useState<'devices' | 'live'>('devices');
+  const [sideOpen, setSideOpen] = useSideOpen('staff');
   const [hover, setHover] = useState<Hover>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
@@ -174,7 +176,7 @@ export default function Home() {
   const guestReady = (key: string) => fitted(key) || devices.some(d => d.room === key && d.type === 'lock');
 
   return (
-    <main className="app">
+    <main className={`app ${sideOpen ? '' : 'side-closed'}`}>
       <header className="topbar">
         <div className="brand"><span className="logo" /><div><b>Agentic Digital Twin</b><small>SmartThings · Map View</small></div></div>
         <div className="floor-chip"><span className="live" />{rooms.length ? `${rooms.length} rooms${floorTitle ? ` · ${floorTitle}` : ''}` : 'Loading floor…'}</div>
@@ -241,12 +243,13 @@ export default function Home() {
           </div>
         )}
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}</div>
-        <ChatPanel onSelect={select} />
+        {!sideOpen && <SideTab label={tab === 'live' ? 'Live ops' : 'Devices'} count={tab === 'live' ? undefined : devices.length} onOpen={() => setSideOpen(true)} />}
+        <ChatPanel onSelect={select} right={sideOpen ? 392 : 0} />
       </section>
-      <aside className="side">
+      <aside className="side" hidden={!sideOpen}>
         {sel ? <DevicePanel id={sel} t={sim ? Math.round(sim.t * 10) / 10 : 10} onClose={() => setSel(null)} onSelect={select} onMove={move} onRemove={remove} /> : (
           <>
-            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live ops</button></div>
+            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live ops</button><SideFold onFold={() => setSideOpen(false)} /></div>
             {tab === 'live' ? <OpsPanel toast={toast} /> : (
               <div className="list">
                 {devices.length === 0 && <div className="muted pad">Nothing placed yet. Drag a device from the palette on the map.</div>}
