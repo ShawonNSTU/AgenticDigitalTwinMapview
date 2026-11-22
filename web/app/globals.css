@@ -1014,6 +1014,20 @@ button.small { padding:4px 9px; font-size:12px; }
 .plan-hint { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); z-index:3; padding:7px 14px; font-size:12.5px; color:var(--text2); white-space:nowrap; }
 .plan-reading { position:absolute; z-index:3; top:50%; left:50%; transform:translate(-50%, -50%); display:flex; align-items:center; gap:12px; padding:14px 20px; font-weight:600; }
 .plan-reading .spinner { width:22px; height:22px; margin:0; border-width:2.5px; border-color:var(--line2); border-top-color:var(--acc); }
+.plan-reading span:last-child { display:flex; flex-direction:column; gap:2px; } .plan-reading small { font-weight:500; color:var(--muted); font-size:12px; }
+.plan-scan { position:absolute; inset:0; z-index:2; pointer-events:none; overflow:hidden; border-radius:inherit; }
+.plan-scan::after { content:""; position:absolute; left:0; right:0; height:120px; top:-120px; background:linear-gradient(180deg, rgba(37,99,235,0), rgba(37,99,235,.10) 70%, rgba(37,99,235,.38) 100%); animation:plan-scan 2.4s ease-in-out infinite; }
+@keyframes plan-scan { 0% { top:-120px; } 100% { top:100%; } }
+.setup-wait h3 { margin:4px 0 6px; font-size:17px; color:var(--text); }
+.setup-wait p { margin:0 0 14px; font-size:13px; }
+.read-steps { list-style:none; margin:0 0 16px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.read-steps li { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text2); }
+.read-steps li::before { content:""; width:14px; height:14px; border-radius:50%; border:2px solid var(--acc-line); border-top-color:var(--acc); animation:spin 1s linear infinite; flex:none; }
+.skel-rows { display:flex; flex-direction:column; gap:8px; }
+.skel-rows span { height:36px; border-radius:10px; background:linear-gradient(90deg, var(--bg2) 0%, #f8fafc 50%, var(--bg2) 100%); background-size:200% 100%; animation:skel 1.4s ease-in-out infinite; }
+@keyframes skel { 0% { background-position:100% 0; } 100% { background-position:-100% 0; } }
+.btn-spin { display:inline-block; width:14px; height:14px; margin-right:8px; vertical-align:-2px; border-radius:50%; border:2px solid rgba(255,255,255,.45); border-top-color:#fff; animation:spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .plan-scan::after, .skel-rows span, .read-steps li::before, .btn-spin { animation:none; } }
 .plan svg.view { cursor:default; }
 .setup .side { display:flex; flex-direction:column; }
 .setup-side .panel { flex:1; overflow:auto; gap:12px; padding:18px; }
@@ -1023,7 +1037,7 @@ button.small { padding:4px 9px; font-size:12px; }
 .setup-side .room-list { max-height:none; }
 .setup-foot { padding:12px 18px 16px; border-top:1px solid var(--line); background:#fff; display:flex; flex-direction:column; gap:6px; }
 .setup-foot .ghost-file.small { font-size:12px; padding:4px 9px; }
-.setup-wait { padding:30px 4px; text-align:center; }
+.setup-wait { padding:8px 2px; text-align:left; }
 /* map toolbar: Layers menu (layers and quality) + Whole floor, on every screen */
 .layers-menu { display:block !important; }
 .layers-inline { display:none !important; }
