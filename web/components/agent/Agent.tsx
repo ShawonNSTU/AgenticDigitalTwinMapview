@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
 import { Rich, useTyped } from './Rich';
+import { PopupHeader, type PopupControls } from './AgentPopup';
 
 export type Step = { text: string; at: number; done: boolean };
 export type Result = { device_id: string; label: string; ok: boolean; summary?: string; error?: string; offline?: boolean };
@@ -320,11 +321,16 @@ export function Composer({ busy, onAsk, onStop, placeholder, tools, value, setVa
 }
 
 /** The whole panel: a home screen until the first request, then the runs, and the composer. */
-export function AgentPanel({ endpoint, history, home, placeholder, onUi, onSelect, onText, tools, status, value, setValue, agentRef }: {
+export function AgentPanel({ endpoint, history, home, placeholder, onUi, onSelect, onText, tools, title, subtitle, ctl, value, setValue, agentRef }: {
   endpoint: string; history?: string; home: (ask: (q: string) => void) => ReactNode; placeholder: string; onUi?: (a: UiAction) => void; onSelect?: (id: string) => void; onText?: (t: string) => void;
-  tools?: ReactNode; status?: ReactNode; value?: string; setValue?: (v: string) => void; agentRef?: React.MutableRefObject<{ ask: (q: string) => void } | null>;
+  tools?: ReactNode; title: string; subtitle: ReactNode; ctl?: PopupControls; value?: string; setValue?: (v: string) => void; agentRef?: React.MutableRefObject<{ ask: (q: string) => void } | null>;
 }) {
   const a = useAgent(endpoint, { onUi, onSelect, onText, history });
+  // the launcher shows progress while the popup is closed
+  const last = a.runs[a.runs.length - 1];
+  const report = ctl?.onActivity;
+  const todoDone = last?.todo.filter(t => t.status !== 'pending' && t.status !== 'running').length ?? 0, todoTotal = last?.todo.length ?? 0;
+  useEffect(() => { report?.({ busy: a.busy, done: todoDone, total: todoTotal }); }, [report, a.busy, todoDone, todoTotal]);
   if (agentRef) agentRef.current = { ask: a.ask };
   const [showHist, setShowHist] = useState(false);
   const [del, setDel] = useState('');   // the conversation asking "delete?"
@@ -339,12 +345,9 @@ export function AgentPanel({ endpoint, history, home, placeholder, onUi, onSelec
   const toggleHist = () => { if (!showHist) a.loadChats(); setShowHist(h => !h); };
   return (
     <div className="ag">
-      <div className="ag-bar">{status}
-        <span className="ag-bar-acts">
-          {a.hasHistory && <button type="button" className={`ghost ag-hist-btn ${showHist ? 'on' : ''}`} onClick={toggleHist} disabled={a.busy} aria-pressed={showHist} title="Earlier conversations">↺ History</button>}
-          {(a.runs.length > 0 || showHist) && <button type="button" className="ghost ag-new" onClick={() => { a.reset(); setShowHist(false); }} disabled={a.busy} title="Start a new conversation">＋ New</button>}
-        </span>
-      </div>
+      <PopupHeader title={title} subtitle={subtitle} ctl={ctl} historyOn={showHist}
+        onHistory={a.hasHistory ? (a.busy ? undefined : toggleHist) : undefined}
+        onNew={() => { a.reset(); setShowHist(false); }} canNew={!a.busy && (a.runs.length > 0 || showHist)} />
       {showHist ? (
         <div className="ag-feed ag-hist">
           <h3>Conversations</h3>

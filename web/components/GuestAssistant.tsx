@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { AgentPanel, type UiAction } from './agent/Agent';
+import AgentPopup from './agent/AgentPopup';
 
 type Lang = 'en-US' | 'bn-BD';
 const TASKS: Record<Lang, string[]> = {
@@ -52,7 +53,11 @@ export default function GuestAssistant({ token, onUi }: { token: string; onUi: (
       <div className="ag-tasks">{TASKS[lang].map(t => <button type="button" key={t} onClick={() => ask(t)}><i>›</i>{t}</button>)}</div>
     </div>
   );
-  return <AgentPanel endpoint={`/api/guest/${token}/chat`} history={`/api/guest/${token}/chat/history`} home={home} tools={tools} placeholder={lang === 'bn-BD' ? 'যেমন: এসি ২৪ ডিগ্রি করো' : 'e.g. dim the lights'}
-    status={<div className="ag-status"><i className="dot ok" /><b>Room assistant</b></div>} onUi={a => onUi(a as UiAction & { ids?: string[] })} onText={say}
-    value={text} setValue={setText} agentRef={agent} />;
+  return (
+    <AgentPopup label={lang === 'bn-BD' ? 'সহকারী' : 'Ask AI'} shortcut={false} right={380} top={56}>
+      {ctl => <AgentPanel endpoint={`/api/guest/${token}/chat`} history={`/api/guest/${token}/chat/history`} home={home} tools={tools} placeholder={lang === 'bn-BD' ? 'যেমন: এসি ২৪ ডিগ্রি করো' : 'e.g. dim the lights'}
+        title={lang === 'bn-BD' ? 'রুম সহকারী' : 'Room assistant'} subtitle={<span className="agp-state"><i className="dot ok" />{lang === 'bn-BD' ? 'আপনার রুমের লাইট, ব্লাইন্ড, এসি ও টিভি' : 'Lights, blinds, AC and TV in your room'}</span>}
+        ctl={ctl} onUi={a => onUi(a as UiAction & { ids?: string[] })} onText={say} value={text} setValue={setText} agentRef={agent} />}
+    </AgentPopup>
+  );
 }

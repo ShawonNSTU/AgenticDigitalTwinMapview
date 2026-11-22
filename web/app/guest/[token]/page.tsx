@@ -53,7 +53,7 @@ export default function GuestPage() {
   const [ready, setReady] = useState(false);
   const [built, setBuilt] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
-  const [tab, setTab] = useState<'stay' | 'room' | 'assistant'>('stay');
+  const [tab, setTab] = useState<'stay' | 'room'>('stay');
   const [tour, setTour] = useState<number | null>(null);
   const [overview, setOverview] = useState(false);
   const [hintShown, setHintShown] = useState(true);   // the "You're in …" card: closable, gone once the tour is over
@@ -242,10 +242,11 @@ export default function GuestPage() {
             </div>
           </div>
         )}
+        {view && <GuestAssistant token={token} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); else if (x.type === 'setLayer' && ['comfort', 'energy'].includes(x.layer)) send({ type: 'setLayer', layer: x.layer, on: x.on !== false }); }} />}
       </section>
       <aside className="guest-panel">
-        <div className="tabs"><button className={tab === 'stay' ? 'on' : ''} onClick={() => setTab('stay')}>Your stay</button><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room <i>{view?.devices.length ?? 0}</i></button><button className={tab === 'assistant' ? 'on' : ''} onClick={() => setTab('assistant')}>Assistant</button></div>
-        {tab === 'stay' ? <GuestJourney token={token} onMsg={say} /> : tab === 'assistant' ? <GuestAssistant token={token} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); else if (x.type === 'setLayer' && ['comfort', 'energy'].includes(x.layer)) send({ type: 'setLayer', layer: x.layer, on: x.on !== false }); }} /> : (
+        <div className="tabs"><button className={tab === 'stay' ? 'on' : ''} onClick={() => setTab('stay')}>Your stay</button><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room <i>{view?.devices.length ?? 0}</i></button></div>
+        {tab === 'stay' ? <GuestJourney token={token} onMsg={say} /> : (
           <div className="guest-devs">
             {view && view.devices.length === 0 && <div className="muted pad">This room has no connected devices.</div>}
             {view?.devices.map(d => (

@@ -29,7 +29,7 @@ export default function Home() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [floorTitle, setFloorTitle] = useState('');
   const [sel, setSel] = useState<string | null>(null);
-  const [tab, setTab] = useState<'devices' | 'live' | 'agent'>('devices');
+  const [tab, setTab] = useState<'devices' | 'live'>('devices');
   const [hover, setHover] = useState<Hover>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
@@ -241,12 +241,13 @@ export default function Home() {
           </div>
         )}
         <div className="toasts">{toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}</div>
+        <ChatPanel onSelect={select} />
       </section>
       <aside className="side">
         {sel ? <DevicePanel id={sel} t={sim ? Math.round(sim.t * 10) / 10 : 10} onClose={() => setSel(null)} onSelect={select} onMove={move} onRemove={remove} /> : (
           <>
-            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live ops</button><button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>AI agent</button></div>
-            {tab === 'agent' ? <ChatPanel onSelect={select} /> : tab === 'live' ? <OpsPanel toast={toast} /> : (
+            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live ops</button></div>
+            {tab === 'live' ? <OpsPanel toast={toast} /> : (
               <div className="list">
                 {devices.length === 0 && <div className="muted pad">Nothing placed yet. Drag a device from the palette on the map.</div>}
                 {byRoom.map(([room, rows]) => (
