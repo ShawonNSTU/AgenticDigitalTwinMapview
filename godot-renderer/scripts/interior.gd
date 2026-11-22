@@ -181,22 +181,83 @@ func _mesh(k: String) -> Mesh:
 			c.top_radius = 0.5
 			c.bottom_radius = 0.5
 			c.height = 1.0
-			c.radial_segments = 14
+			c.radial_segments = 28
 			c.rings = 1
 			m = c
 		"sphere":
 			var s := SphereMesh.new()
 			s.radius = 0.5
 			s.height = 1.0
-			s.radial_segments = 12
-			s.rings = 6
+			s.radial_segments = 24
+			s.rings = 12
 			m = s
 		_:
-			var b := BoxMesh.new()
-			b.size = Vector3.ONE
-			m = b
+			m = bevel_box(0.045)
 	_meshes[k] = m
 	return m
+
+
+## A unit box with its edges rounded off (chamfer c, normals blended across it), so furniture edges catch the
+## light the way real furniture does instead of meeting at knife-sharp corners. 26 faces; shared by every box part.
+static func bevel_box(c: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var h := 0.5
+	var e := h - c
+	var fp := func(axis: int, sg: Vector3) -> Vector3:
+		var q := sg * e
+		q[axis] = sg[axis] * h
+		return q
+	var nrm := func(axis: int, sign: float) -> Vector3:
+		var n := Vector3.ZERO
+		n[axis] = sign
+		return n
+	var tri := func(pa: Vector3, pb: Vector3, pc: Vector3, na: Vector3, nb: Vector3, nc: Vector3, out: Vector3) -> void:
+		if (pb - pa).cross(pc - pa).dot(out) > 0.0:   # Godot's front faces wind clockwise seen from outside
+			var t := pb; pb = pc; pc = t
+			var tn := nb; nb = nc; nc = tn
+		for v in [[pa, na], [pb, nb], [pc, nc]]:
+			st.set_normal(v[1])
+			st.add_vertex(v[0])
+	# the six faces, inset by the chamfer
+	for axis in 3:
+		var u := (axis + 1) % 3
+		var w := (axis + 2) % 3
+		for sign in [-1.0, 1.0]:
+			var n: Vector3 = nrm.call(axis, sign)
+			var q := []
+			for su in [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]:
+				var sg := Vector3.ZERO
+				sg[axis] = sign
+				sg[u] = su[0]
+				sg[w] = su[1]
+				q.append(fp.call(axis, sg))
+			tri.call(q[0], q[1], q[2], n, n, n, n)
+			tri.call(q[0], q[2], q[3], n, n, n, n)
+	# twelve edge strips: each side takes the normal of the face it meets, so the strip shades round
+	for a in 3:
+		var b := (a + 1) % 3
+		var w := (a + 2) % 3
+		for sa in [-1.0, 1.0]:
+			for sb in [-1.0, 1.0]:
+				var na: Vector3 = nrm.call(a, sa)
+				var nb: Vector3 = nrm.call(b, sb)
+				var p := []
+				for sw in [-1.0, 1.0]:
+					var sg := Vector3.ZERO
+					sg[a] = sa
+					sg[b] = sb
+					sg[w] = sw
+					p.append([fp.call(a, sg), fp.call(b, sg)])
+				tri.call(p[0][0], p[1][0], p[1][1], na, na, nb, na + nb)
+				tri.call(p[0][0], p[1][1], p[0][1], na, nb, nb, na + nb)
+	# eight corner triangles
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				var sg := Vector3(sx, sy, sz)
+				tri.call(fp.call(0, sg), fp.call(1, sg), fp.call(2, sg), nrm.call(0, sx), nrm.call(1, sy), nrm.call(2, sz), sg)
+	return st.commit()
 
 
 func _mat(k: String) -> StandardMaterial3D:

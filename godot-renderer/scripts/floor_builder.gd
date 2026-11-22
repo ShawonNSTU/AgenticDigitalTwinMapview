@@ -91,6 +91,7 @@ func build() -> void:
 			_zone_walls(r, h, doors)
 		elif str(r.get("finish", "")) == "lift-lobby":
 			_zone_walls(r, h, doors, _lobby_wall_mat(), Color("2e3a5c"))
+	_wall_shade()
 	if Store.walk:
 		_ceilings(h)
 	if Store.outdoor_pad.has("x"):
@@ -379,6 +380,58 @@ var _glass: StandardMaterial3D
 ## One stretch of wall from `start` to `end` metres along the edge. Outside walls get windows: about every
 ## 3 m a 1.2 m wide window (sill and head at real heights, scaled like the walls) with glass between.
 var _skirt_mat: StandardMaterial3D
+## Soft shade on the floor along every wall, darkest where floor meets wall: the light a real corner doesn't get
+## (what ambient occlusion does in games; the web renderer has none). One instanced draw for the whole floor.
+func _wall_shade() -> void:
+	if wall_pieces.is_empty():
+		return
+	var g := Gradient.new()
+	g.set_color(0, Color(0.02, 0.03, 0.05, 0.34))
+	g.set_color(1, Color(0.02, 0.03, 0.05, 0.0))
+	g.add_point(0.3, Color(0.02, 0.03, 0.05, 0.14))
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill_from = Vector2(0, 0)
+	tex.fill_to = Vector2(0, 1)
+	tex.width = 4
+	tex.height = 64
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = tex
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	var q := PlaneMesh.new()
+	q.size = Vector2(1, 1)
+	var width := 0.55
+	var xs: Array[Transform3D] = []
+	for wp in wall_pieces:
+		var a: Vector2 = wp[0]
+		var b: Vector2 = wp[1]
+		var len := a.distance_to(b)
+		if len < 0.05:
+			continue
+		var u := (b - a) / len
+		var nrm := Vector2(-u.y, u.x)
+		var mid := (a + b) / 2
+		var ang := -atan2(u.y, u.x)
+		for side in [1.0, -1.0]:
+			var c: Vector2 = mid + nrm * side * (WALL / 2 + width / 2)
+			# the plane's -z edge (dark) must face the wall: turned half round for the other side
+			xs.append(Transform3D(Basis(Vector3.UP, ang + (0.0 if side > 0 else PI)) * Basis.from_scale(Vector3(len + WALL, 1, width)), Vector3(c.x, 0.011, c.y)))
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = q
+	mm.instance_count = xs.size()
+	for i in xs.size():
+		mm.set_instance_transform(i, xs[i])
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "WallShade"
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
 func _skirting() -> StandardMaterial3D:
 	if _skirt_mat == null:
 		_skirt_mat = StandardMaterial3D.new()
