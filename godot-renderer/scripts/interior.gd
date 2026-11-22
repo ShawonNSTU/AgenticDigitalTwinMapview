@@ -212,6 +212,20 @@ static func bevel_box(c: float) -> ArrayMesh:
 	return bevel_box_v(Vector3(c, c, c))
 
 
+## A box of a real size with its edges rounded to radius r (devices and other one-off parts).
+static func rounded_box(size: Vector3, r: float) -> ArrayMesh:
+	var c := Vector3(minf(r / maxf(size.x, 0.0001), 0.45), minf(r / maxf(size.y, 0.0001), 0.45), minf(r / maxf(size.z, 0.0001), 0.45))
+	var unit := bevel_box_v(c)
+	var arr := unit.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	for i in v.size():
+		v[i] = v[i] * size
+	arr[Mesh.ARRAY_VERTEX] = v
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return m
+
+
 ## The same with a chamfer per axis (in unit-box terms), so a box scaled to a real size can keep a round edge of
 ## the same real radius on every side.
 static func bevel_box_v(c: Vector3) -> ArrayMesh:

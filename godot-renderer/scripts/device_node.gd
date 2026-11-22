@@ -87,9 +87,7 @@ func setup(d: Dictionary) -> DeviceNode:
 	_variant = variant(d)
 
 	body = MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
-	body.mesh = bm
+	body.mesh = Interior.rounded_box(size, minf(0.012, minf(size.x, minf(size.y, size.z)) * 0.25))   # moulded casing, no knife edges
 	base_color = Color("eef0f3") if d.type != "tv" else Color("22262c")
 	body_mat.albedo_color = base_color
 	body_mat.roughness = 0.45
@@ -288,6 +286,7 @@ func _details(type: String, s: Vector3) -> void:
 			for i in 8:
 				_add_box(Vector3(0.01, s.y * 0.8, 0.01), Vector3(-s.x * 0.45 + i * 0.02, 0, s.z * 0.51), metal)
 		"camera":
+			_add_cyl(s.x * 0.5, 0.012, Vector3(0, s.y * 0.5 - 0.006, 0), _m(Color("f4f5f7"), 0.0, 0.4))   # ceiling mount
 			var dome := MeshInstance3D.new()
 			var sm := SphereMesh.new()
 			sm.radius = s.x * 0.45
@@ -299,6 +298,7 @@ func _details(type: String, s: Vector3) -> void:
 			_add_box(Vector3(0.01, 0.01, 0.01), Vector3(s.x * 0.3, s.y * 0.2, s.z * 0.5), _glow(Color("f85149")))
 		"light":
 			body.mesh = _cyl(s.x * 0.5, s.y)
+			_add_cyl(s.x * 0.56, 0.01, Vector3(0, -s.y * 0.5 + 0.004, 0), _m(Color("f6f6f4"), 0.0, 0.35))   # trim ring
 			_add_cyl(s.x * 0.42, s.y * 0.2, Vector3(0, -s.y * 0.55, 0), _glow(Color(1.0, 0.95, 0.82)))
 		"speaker", "purifier", "vacuum":
 			body.mesh = _cyl(minf(s.x, s.z) * 0.5, s.y)
@@ -355,9 +355,7 @@ func _glow(c: Color) -> StandardMaterial3D:
 
 func _add_box(sz: Vector3, p: Vector3, m: Material) -> void:
 	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = sz
-	mi.mesh = bm
+	mi.mesh = Interior.rounded_box(sz, minf(0.006, minf(sz.x, minf(sz.y, sz.z)) * 0.35))
 	mi.material_override = m
 	mi.position = p
 	body.add_child(mi)
@@ -368,7 +366,7 @@ func _cyl(r: float, h: float) -> CylinderMesh:
 	cm.top_radius = r
 	cm.bottom_radius = r
 	cm.height = h
-	cm.radial_segments = 20
+	cm.radial_segments = 36
 	return cm
 
 
