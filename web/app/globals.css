@@ -1166,3 +1166,21 @@ details.lab[open] { gap:12px; }
   .guest-stage:has(.holo) .side-tab, .stage:has(.holo) .side-tab { display:none; }   /* a device's controls are open over the map bottom */
   .side-tab b { writing-mode:horizontal-tb; transform:none; }
 }
+
+/* ---------------- Find me (components/Locator.tsx) ---------------- */
+.locator-pill { gap:8px; color:var(--acc-dark); font-weight:600; }
+.locator { padding:12px 14px; gap:8px; font-size:13px; }
+.locator.arrived { border-color:#86efac; }
+.loc-head { display:flex; align-items:center; gap:8px; } .loc-head b { flex:1; font-size:14px; }
+.loc-dot { width:12px; height:12px; border-radius:50%; background:#cbd5e1; box-shadow:0 0 0 3px #fff, 0 0 0 4px var(--line2); flex:none; }
+.loc-dot.on { background:#2563eb; box-shadow:0 0 0 3px #fff, 0 0 0 4px rgba(37,99,235,.35); animation:loc-pulse 1.6s ease-out infinite; }
+.locator.arrived .loc-dot { background:#16a34a; animation:none; }
+@keyframes loc-pulse { 0% { box-shadow:0 0 0 3px #fff, 0 0 0 4px rgba(37,99,235,.5); } 100% { box-shadow:0 0 0 3px #fff, 0 0 0 14px rgba(37,99,235,0); } }
+.loc-big { display:flex; align-items:center; gap:12px; }
+.loc-m { font-size:34px; font-weight:700; line-height:1; color:var(--text); letter-spacing:-.02em; } .loc-m small { font-size:15px; font-weight:600; color:var(--muted); }
+.loc-to { font-size:13px; line-height:1.4; } .loc-to .muted { font-size:12px; }
+.loc-bar { height:6px; border-radius:3px; background:var(--bg2); overflow:hidden; } .loc-bar i { display:block; height:100%; background:linear-gradient(90deg, #60a5fa, #2563eb); border-radius:3px; transition:width .6s ease; }
+.loc-help { margin:0; font-size:12.5px; color:var(--text2); line-height:1.45; }
+.loc-src { font-size:11.5px; color:var(--muted); }
+.loc-acts { display:flex; flex-wrap:wrap; gap:6px; } .loc-acts button { font-size:12.5px; padding:6px 10px; }
+@media (prefers-reduced-motion: reduce) { .loc-dot.on { animation:none; } }

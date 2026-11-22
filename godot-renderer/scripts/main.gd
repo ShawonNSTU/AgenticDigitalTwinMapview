@@ -132,10 +132,22 @@ func _ready() -> void:
 			var gt := Node.new()
 			gt.set_script(load("res://tests/guest_test.gd"))
 			add_child(gt)
+		if a.begins_with("--live-shot"):
+			var ls := Node.new()
+			ls.set_script(load("res://tests/live_shot.gd"))
+			add_child(ls)
+		if a.begins_with("--tour-trace"):
+			var tt := Node.new()
+			tt.set_script(load("res://tests/tour_trace.gd"))
+			add_child(tt)
 		if a.begins_with("--guest-stress="):
 			var gs := Node.new()
 			gs.set_script(load("res://tests/guest_stress.gd"))
 			add_child(gs)
+		if a.begins_with("--eye-shots"):
+			var es := Node.new()
+			es.set_script(load("res://tests/eye_shots.gd"))
+			add_child(es)
 		if a.begins_with("--walk="):
 			var wt := Node.new()
 			wt.set_script(load("res://tests/walk_test.gd"))
@@ -1029,7 +1041,7 @@ func start_walk(room_key := "") -> void:
 	walker.name = "Walker"
 	world.add_child(walker)
 	walker.landed.connect(func():
-		if is_instance_valid(floor_builder) and floor_builder.ceilings:
+		if is_instance_valid(floor_builder) and floor_builder.ceilings and walker and not walker._over:   # not while seen from above
 			floor_builder.ceilings.visible = true)
 	walker.begin(floor_builder.wall_pieces, floor_builder.lintels, start, look_yaw, from)
 	walker._track_room()
@@ -1042,6 +1054,21 @@ func start_walk(room_key := "") -> void:
 ## blue, ACES tone mapping (highlights roll off instead of clipping), a soft glow round lamps, a touch of contrast.
 func _walk_look(on: bool) -> void:
 	env.ambient_light_color = Color("d8d0c4") if on else Color("aab4c3")
+	# fill light that depends on which way a surface faces, as in a real room: brightest from the ceiling, warm
+	# from the walls, darker from the floor. A flat fill colour lit every face the same, so furniture read flat.
+	if on and env.sky == null:
+		var sm := ProceduralSkyMaterial.new()
+		sm.sky_top_color = Color("fbf7f0")
+		sm.sky_horizon_color = Color("e6ddd0")
+		sm.ground_horizon_color = Color("b9ad9c")
+		sm.ground_bottom_color = Color("5f5952")
+		sm.sun_angle_max = 0.0
+		var sky := Sky.new()
+		sky.sky_material = sm
+		sky.radiance_size = Sky.RADIANCE_SIZE_32
+		env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY if on else Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_sky_contribution = 0.8   # the rest stays the fill colour, which night and dimming still tint
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES if on else Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.0
 	env.tonemap_white = 6.0 if on else 1.0
@@ -1184,7 +1211,7 @@ func _start_guest(from_key := "") -> void:
 	walker.name = "Walker"
 	world.add_child(walker)
 	walker.landed.connect(func():
-		if is_instance_valid(floor_builder) and floor_builder.ceilings:
+		if is_instance_valid(floor_builder) and floor_builder.ceilings and walker and not walker._over:   # not while seen from above
 			floor_builder.ceilings.visible = true)
 	var look := 0.0
 	if route.size() > 0:
@@ -1392,7 +1419,7 @@ func _live_fix() -> void:
 		var in_room: bool = not Store.room_at(q).is_empty() and Store.room_at(q).key == _guest_room
 		info.live["toRoom"] = 0.0 if in_room else snappedf(left, 0.1)
 		info.live["atDoor"] = not in_room and left < 3.0
-		if Time.get_ticks_msec() - _route_at > 3000 and not in_room:
+		if Time.get_ticks_msec() - _route_at > 1000 and not in_room:   # the way on from here, never the bit already walked
 			_route_at = Time.get_ticks_msec()
 			walker.show_route(q, walker.nav.path(q, _guest_target), Store.room_label(Store.room(_guest_room)))
 		elif in_room:

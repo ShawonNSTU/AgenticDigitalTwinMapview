@@ -144,29 +144,43 @@ export default function Locator({ token, route, roomName, onUnlock }: { token: s
   }, [scan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const age = fix ? Math.round((Date.now() - fix.at) / 1000) : null;
+  // the distance left, against the most it has been, for the progress bar
+  const most = useRef(0);
+  if (where?.toRoom != null) most.current = Math.max(most.current, where.toRoom);
+  const done = where?.toRoom === 0;
+  const pct = where?.toRoom != null && most.current > 0 ? Math.round(100 * (1 - where.toRoom / most.current)) : 0;
+  const start = () => { setOpen(true); setLive(true); };
+  const stop = () => { setOpen(false); setLive(false); setSim(false); setScan(false); most.current = 0; };
   // folded to a small button until it is needed (it opens by itself while following a position)
   if (!open && !live && !scan) return (
-    <button className="locator-pill glass" onClick={() => setOpen(true)}><span aria-hidden>◎</span> Find me</button>
+    <button className="locator-pill glass" onClick={start} title="Show where you are on the map and the way to your room">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8" /><path d="M12 1v3M12 20v3M1 12h3M20 12h3" /></svg>
+      Find me
+    </button>
   );
   return (
-    <div className="locator glass">
-      <div className="row between"><b>Find me</b><label className="switch-line"><input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} /> Follow me</label><button className="hint-x" aria-label="Close" onClick={() => { setOpen(false); setLive(false); }}>✕</button></div>
-      {fix && <span className="muted">±{Math.round(fix.accuracy)} m · {SRC[fix.source] ?? fix.source} · {age}s ago</span>}
-      <div className="row wrap">
-        <button onClick={() => setScan(true)}>Scan a code</button>
-        <button className={pdr ? 'on' : ''} onClick={startPdr} disabled={pdr}>{pdr ? `${steps} steps` : 'Count steps'}</button>
-        <button className={sim ? 'on' : ''} disabled={route.length < 2} onClick={() => setSim(!sim)} title="For a demo without a positioning system">{sim ? 'Stop demo' : 'Demo badge'}</button>
+    <div className={`locator glass ${done ? 'arrived' : ''}`} role="region" aria-label="Find me">
+      <div className="loc-head">
+        <span className={`loc-dot ${fix ? 'on' : ''}`} aria-hidden />
+        <b>{fix ? (done ? 'You’re in your room' : 'You are here') : 'Finding you…'}</b>
+        <button className="hint-x" aria-label="Stop finding me" onClick={stop}>✕</button>
       </div>
-      {live && where && (
-        <div className="loc-way">
-          {where.toRoom === 0
-            ? <span><b>In {roomName ?? 'your room'}</b></span>
-            : where.toRoom != null
-              ? <span><b>{Math.max(1, Math.round(where.toRoom))} m to {roomName ?? 'your room'}</b> · about {eta(where.toRoom)} walk · now in {where.room}</span>
-              : <span>Now in {where.room}</span>}
-          {where.atDoor && onUnlock && <button className="pri" onClick={onUnlock}>You’re at your door · Unlock</button>}
+      {live && where && !done && where.toRoom != null && (
+        <div className="loc-big">
+          <span className="loc-m">{Math.max(1, Math.round(where.toRoom))}<small> m</small></span>
+          <span className="loc-to">to {roomName ?? 'your room'}<br /><span className="muted">about {eta(where.toRoom)} · now in {where.room}</span></span>
         </div>
       )}
+      {live && where && !done && where.toRoom != null && <div className="loc-bar" aria-hidden><i style={{ width: `${pct}%` }} /></div>}
+      {live && where && where.toRoom == null && <span>Now in <b>{where.room}</b></span>}
+      {where?.atDoor && onUnlock && <button className="pri" onClick={onUnlock}>You’re at your door · Unlock</button>}
+      {!fix && <p className="loc-help">Scan the code on the nearest door frame for an exact spot. Your phone then keeps track of your steps from there.</p>}
+      {fix && <span className="loc-src">±{Math.round(fix.accuracy)} m · {SRC[fix.source] ?? fix.source} · {age}s ago</span>}
+      <div className="loc-acts">
+        <button className={!fix ? 'pri' : ''} onClick={() => setScan(!scan)}>{scan ? 'Stop scanning' : fix ? 'Scan again' : 'Scan a door code'}</button>
+        <button className={pdr ? 'on' : ''} onClick={startPdr} disabled={pdr}>{pdr ? `${steps} steps` : 'Count my steps'}</button>
+        <button className={`ghost ${sim ? 'on' : ''}`} disabled={route.length < 2} onClick={() => { setLive(true); setSim(!sim); }} title="Plays a positioning badge along the way, for a demo">{sim ? 'Stop demo' : 'Demo'}</button>
+      </div>
       {scan && <video ref={video} className="scan-video" muted playsInline />}
       {note && <span className="loc-note">{note}</span>}
     </div>

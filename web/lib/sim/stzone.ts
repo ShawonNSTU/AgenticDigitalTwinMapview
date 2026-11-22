@@ -46,14 +46,13 @@ export function fitSmartThingsZone({ rt, addDevice, removeDevice }: Api) {
   if (!r) return false;
   r.finish = ZONE_FINISH;
   fitLiftLobby(rt);
-  // no pillars: the drawing's structural columns (filled squares) are left out of the 3D floor so they don't block
-  // views and walks
-  rt.furniture = rt.furniture.filter(f => f.kind !== 'column');
   setArrival();
   growZone(r, rt.furniture);
   const P = polyOf(r);
   const xs = P.map(p => p[0]), zs = P.map(p => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  // the structural columns stand everywhere else on the floor; the zone's own interior follows the reference photo
+  rt.furniture = rt.furniture.filter(f => !(f.kind === 'column' && f.x > x0 - 0.2 && f.x < x1 + 0.2 && f.z > z0 - 0.2 && f.z < z1 + 0.2));
   const inside = (x: number, z: number) => x > x0 && x < x1 && z > z0 && z < z1;
   const door = rt.furniture.find(f => f.kind === 'door' && Math.abs(f.x - x1) < 0.3 && f.z > z0 && f.z < z1)
     ?? rt.furniture.find(f => f.kind === 'door' && (Math.abs(f.x - x0) < 0.3 || Math.abs(f.x - x1) < 0.3 || Math.abs(f.z - z0) < 0.3 || Math.abs(f.z - z1) < 0.3) && f.x > x0 - 0.3 && f.x < x1 + 0.3 && f.z > z0 - 0.3 && f.z < z1 + 0.3);

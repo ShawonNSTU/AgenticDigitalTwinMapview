@@ -867,6 +867,34 @@ def score(rooms: np.ndarray, n: int) -> float:
     return (rect / total) * min(1.0, total / foot / 0.6) * min(1.0, n / 3)
 
 
+def columns(gray: np.ndarray, h: float, width_m: float | None) -> list[dict]:
+    """Structural columns: the solid filled blocks a plan draws them as. Ink is opened with a square a good deal
+    thicker than the walls, so walls, text, furniture outlines and hatching drop away and only solid blocks stay; a
+    block counts when it is nearly all ink, roughly square (up to 3:1) and between 0.25 and 1.8 m across at the
+    plan's scale. Returned like furniture: centre and size as fractions of the image width."""
+    H, W = gray.shape
+    if not width_m or width_m <= 0:
+        return []
+    ppm = W / width_m
+    ink = (gray < min(110, int(np.percentile(gray, 3)) + 60)).astype(np.uint8)
+    k = int(max(2.6 * 2 * h, 0.22 * ppm, 5))
+    solid = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
+    n, _, st, _ = cv2.connectedComponentsWithStats(solid, 8)
+    lo, hi = max(0.25 * ppm, k), 1.8 * ppm
+    out = []
+    for i in range(1, n):
+        x, y, w, hh, area = st[i]
+        if not (lo <= w <= hi and lo <= hh <= hi) or max(w, hh) > 3 * min(w, hh):
+            continue
+        # nearly all ink in the original drawing too (a hatched or outlined box is a room or furniture, not a column)
+        if ink[y:y + hh, x:x + w].mean() < 0.8:
+            continue
+        out.append({"kind": "column", "fx": round(float((x + w / 2) / W), 5), "fy": round(float((y + hh / 2) / H), 5),
+                    "fw": round(float(w / W), 5), "fd": round(float(hh / W), 5), "rot": 0})
+    # a sheet full of solid blobs is a legend or a pattern, not a structural grid
+    return out if len(out) <= 120 else []
+
+
 def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
     H0, W0 = img.shape[:2]
     # work at 1200-1600 px: small scans are upscaled so thin walls and small text survive thresholding
@@ -925,13 +953,14 @@ def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
     dim = dimension_scale(gray, boxes, best["barrier"])
     if dim and 4 <= W / dim[0] <= 400:
         width_m, note = round(W / dim[0], 1), dim[1]
+    cols = columns(gray, h, width_m)
     # the leaf opens to the side the plan draws its swing on (the renderer opens it towards (sin rot, cos rot))
     for d in ds:
         if swing_side(gray, best["barrier"], d, h) < 0:
             d["ux"], d["uy"] = -d["ux"], -d["uy"]
     out_doors = [{"kind": "door", "fx": round(d["x"] / W, 5), "fy": round(d["y"] / H, 5), "fw": round(d["w"] / W, 5),
                   "fd": round(max(2 * h, 2) / W, 5), "rot": round(-math.atan2(d["uy"], d["ux"]), 4)} for d in ds]
-    return {"rooms": out_rooms, "doors": out_doors, "photo_corners": None, "width_m": width_m, "scale_note": note, "wall_px": round(2 * h / W, 5),
+    return {"rooms": out_rooms, "doors": out_doors, "columns": cols, "photo_corners": None, "width_m": width_m, "scale_note": note, "wall_px": round(2 * h / W, 5),
             "_labels": rooms, "_barrier": barrier, "_shape": (H, W), "_texts": [ln["text"] for ln in lines] + extra_texts,
             "_boxes": boxes, "_lines": lines, "_foot": foot, "_img": img, "_h": h}
 
