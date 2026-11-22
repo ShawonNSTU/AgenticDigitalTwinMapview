@@ -43,7 +43,7 @@ CAPABILITY_LABELS: dict[str, str] = {
     "colorTemperature": "light color temperature",
     "lock": "lock",
     "windowShade": "blinds / shade",
-    "windowShadeLevel": "blinds / shade position",
+    "windowShadeLevel": "blinds / shade open % (100 = fully open, 0 = closed)",
 }
 
 COMMAND_LABELS: dict[tuple[str, str], str] = {
@@ -63,7 +63,7 @@ COMMAND_LABELS: dict[tuple[str, str], str] = {
     ("dryerOperatingState", "setMachineState"): "run or pause the cycle",
     ("windowShade", "open"): "open",
     ("windowShade", "close"): "close",
-    ("windowShadeLevel", "setShadeLevel"): "set blinds / shade position",
+    ("windowShadeLevel", "setShadeLevel"): "set how far the blinds / shade is open (%)",
     ("colorTemperature", "setColorTemperature"): "set light color temperature",
 }
 
@@ -83,7 +83,7 @@ CONFIRMATIONS: dict[tuple[str, str], str] = {
     ("dryerOperatingState", "setMachineState"): "Done! {device} is set to {value}.",
     ("windowShade", "open"): "Done! {device} is opening.",
     ("windowShade", "close"): "Done! {device} is closing.",
-    ("windowShadeLevel", "setShadeLevel"): "Done! {device} position is set to {value}%.",
+    ("windowShadeLevel", "setShadeLevel"): "Done! {device} is now {value}% open.",
     ("colorTemperature", "setColorTemperature"): "Done! {device} color temperature is set to {value}K.",
 }
 GENERIC_CONFIRMATION = "Done! {device}: {action}{value_part}."
@@ -105,7 +105,7 @@ DONE_PHRASES: dict[tuple[str, str], str] = {
     ("dryerOperatingState", "setMachineState"): "set {device} to {value}",
     ("windowShade", "open"): "opened {device}",
     ("windowShade", "close"): "closed {device}",
-    ("windowShadeLevel", "setShadeLevel"): "set {device} position to {value}%",
+    ("windowShadeLevel", "setShadeLevel"): "set {device} to {value}% open",
     ("colorTemperature", "setColorTemperature"): "set {device} color temperature to {value}K",
 }
 GENERIC_DONE_PHRASE = "{action} for {device}{value_part}"

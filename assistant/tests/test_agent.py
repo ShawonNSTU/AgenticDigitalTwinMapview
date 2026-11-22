@@ -32,7 +32,7 @@ async def test_exact_name_skips_device_llm_and_executes(make_agent, settings):
     })
     res = await run(agent, settings, "set the Desk Lamp brightness to 40%")
     assert res.status == "success"
-    assert llm.labels() == ["router", "action_select"]  # no device_plan call
+    assert llm.labels() == []  # a plain command on one named device: the fast lane, no model call at all
     assert res.data["command_generated"] == {"commands": [{
         "component": "main", "capability": "switchLevel",
         "command": "setLevel", "arguments": [40]}]}
@@ -62,8 +62,8 @@ async def test_follow_up_uses_router_rewrite(make_agent, settings):
     router_prompt = llm.calls[0]["user"]
     assert "Which one do you mean" in router_prompt and router_prompt.endswith("Latest user message: blinds")
     # downstream prompts receive only the standalone request, not the history
-    assert llm.labels() == ["router", "action_select"]  # exact name in the rewrite -> no device LLM call
-    assert "Which one do you mean" not in llm.calls[1]["system"] + llm.calls[1]["user"]
+    # the rewrite is a plain command on one named device: device control needs no model call after the router
+    assert llm.labels() == ["router"]
 
 
 async def test_invalid_value_gets_deterministic_question(make_agent, settings):
@@ -242,7 +242,7 @@ async def test_unsupported_device_is_skipped_and_failures_are_reported(make_agen
     assert res.status == "success" and sorted(sent) == ["Blinds Switch", "Light 1"]
     assert res.message == (
         "Done! Light 1 is turned off. But I couldn't control Blinds Switch right now (HTTP 500). "
-        "Sorry, Aqara Roller Shade Controller can't do that in this demo. It can: open, close, set blinds / shade position."
+        "Sorry, Aqara Roller Shade Controller can't do that in this demo. It can: open, close, set how far the blinds / shade is open (%)."
     )
     statuses = {r["device_name"]: r["status"] for r in res.data["results"]}
     assert statuses == {"Light 1": "success", "Blinds Switch": "error"}
@@ -305,8 +305,7 @@ async def test_location_hidden_without_data(make_agent, settings, tmp_path):
 
 def test_http_contract_matches_frontend(settings):
     llm = FakeLLM({
-        "router": [route("device_control", "turn on the Blinds Switch"), route("chitchat", "hi")],
-        "action_select": [act("switch.on", "")],
+        "router": [route("chitchat", "hi")],   # "turn on the Blinds Switch" takes the fast lane (no model)
         "chitchat": [{"reply": "Hello!"}],
     })
     client = TestClient(create_app(settings, llm))

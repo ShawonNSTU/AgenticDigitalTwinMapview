@@ -26,7 +26,7 @@ READINGS: dict[tuple[str, str], str] = {
     ("colorControl", "hue"): "color hue",
     ("colorControl", "saturation"): "color saturation",
     ("windowShade", "windowShade"): "shade",
-    ("windowShadeLevel", "shadeLevel"): "shade position",
+    ("windowShadeLevel", "shadeLevel"): "open",
     ("temperatureMeasurement", "temperature"): "temperature",
     ("relativeHumidityMeasurement", "humidity"): "humidity",
     ("thermostatCoolingSetpoint", "coolingSetpoint"): "target temperature",

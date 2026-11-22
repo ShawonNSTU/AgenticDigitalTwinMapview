@@ -14,7 +14,10 @@ type StCommand = { component: string; capability: string; command: string; argum
 type Status = { at: number; readings: Record<string, unknown>; online: boolean; healthAt?: number };
 /** Values a command just set, shown over the device's last report until it reports them (or the hold runs out),
  *  so the twin never flicks back to the old state while the real device is still moving. */
-type Hold = { keys: string[]; before: Record<string, unknown>; until: number };
+type Hold = { keys: string[]; before: Record<string, unknown>; until: number;
+  /** A moving device (a shade): what it was told to reach. The hold stays until it gets there (it reports the
+   *  positions on the way, which must not show as the end state), or runs out. */
+  target?: Record<string, number>; cmds?: StCommand[]; resent?: boolean; sentAt?: number };
 type State = {
   token: string; links: Record<string, Link>; status: Record<string, Status>; lastError: string;
   holds: Record<string, Hold>;
@@ -32,6 +35,8 @@ if (!st.token && process.env.SMARTTHINGS_TOKEN) st.token = process.env.SMARTTHIN
 /** How often linked devices' real status is read (ms). One batched request per round when the API allows it. */
 export const POLL_MS = Math.max(1000, Number(process.env.SMARTTHINGS_POLL_MS) || 2000);
 const HOLD_MS = 8000;
+/** How long a shade may take to roll all the way (a full Aqara roller run is about 30-40 s). */
+const MOVE_MS = 60_000;
 
 const base = () => (process.env.SMARTTHINGS_API ?? 'https://api.smartthings.com/v1').replace(/\/$/, '');
 export const configured = () => !!st.token;
@@ -180,11 +185,14 @@ export async function send(localId: string, type: string, command: string, args:
   // the twin keeps what was asked for until the device reports it (a shade takes a while to roll)
   const keys = [...new Set(cmds.flatMap(c => KEYS[c.capability] ?? []))].filter(k => !expect || k in expect);
   const before = st.status[localId]?.readings ?? {};
-  st.holds[localId] = { keys, before: Object.fromEntries(keys.map(k => [k, before[k]])), until: Date.now() + (type === 'blinds' ? HOLD_MS * 3 : HOLD_MS) };
+  const target = type === 'blinds' && expect && Number.isFinite(Number(expect.pos)) ? { pos: Number(expect.pos) } : undefined;
+  st.holds[localId] = { keys, before: Object.fromEntries(keys.map(k => [k, before[k]])), until: Date.now() + (target ? MOVE_MS : HOLD_MS),
+    ...(target ? { target, cmds, sentAt: Date.now() } : {}) };
   st.version++;
-  // read it back shortly after: most devices report within a second
+  // read it back shortly after: most devices report within a second; a shade is followed until it arrives
   setTimeout(() => refresh(localId).catch(() => {}), 700);
   setTimeout(() => refresh(localId).catch(() => {}), 2500);
+  if (target) follow(localId);
   return cmds;
 }
 
@@ -255,12 +263,35 @@ function store(localId: string, readings: Record<string, unknown>, online: boole
   }
   st.status[localId] = { at: Date.now(), readings, online, healthAt: healthAt ?? prev?.healthAt };
   if (!prev || prev.online !== online || JSON.stringify(prev.readings) !== JSON.stringify(readings)) st.version++;
-  // a hold ends as soon as the device reports a change on what the command touched
+  // a hold ends as soon as the device reports a change on what the command touched; a moving device's hold ends
+  // when it reports the position it was sent to (within 2 %), not at the first position on the way
   const h = st.holds[localId];
-  if (h && (Date.now() > h.until || h.keys.some(k => k in readings && JSON.stringify(readings[k]) !== JSON.stringify(h.before[k])))) {
+  const arrived = h?.target && Object.entries(h.target).every(([k, t]) => Number.isFinite(Number(readings[k])) && Math.abs(Number(readings[k]) - t) <= 2);
+  const changed = h && h.keys.some(k => k in readings && JSON.stringify(readings[k]) !== JSON.stringify(h.before[k]));
+  if (h && (Date.now() > h.until || (h.target ? arrived : changed))) {
     delete st.holds[localId]; st.version++;
   }
   if (l && !online && prev?.online !== false) st.lastError = `${l.label ?? l.stId} is offline`;
+}
+
+/** Follow a moving shade: read it every 1.5 s until it reports where it was sent. If after 12 s it has not moved
+ *  at all (the motor missed the command, e.g. it was still powering up), send the command once more. */
+function follow(localId: string) {
+  const tick = async () => {
+    const h = st.holds[localId];
+    if (!h?.target) return;
+    await refresh(localId).catch(() => {});
+    const now = st.status[localId]?.readings ?? {};
+    const still = Object.keys(h.target).every(k => JSON.stringify(now[k]) === JSON.stringify(h.before[k]));
+    const moving = /ing$/.test(String(now.shade ?? ''));
+    if (st.holds[localId] === h && !h.resent && still && !moving && Date.now() - (h.sentAt ?? 0) > 12_000 && h.cmds) {
+      h.resent = true;
+      const l = st.links[localId];
+      if (l) await call(`/devices/${encodeURIComponent(l.stId)}/commands`, { method: 'POST', body: JSON.stringify({ commands: h.cmds }) }).catch(() => {});
+    }
+    if (st.holds[localId] === h && Date.now() < h.until) setTimeout(tick, 1500);
+  };
+  setTimeout(tick, 1500);
 }
 
 /** Read one device's status now (and its health every 30 s). */

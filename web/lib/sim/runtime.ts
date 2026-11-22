@@ -355,8 +355,9 @@ export function resetBuilding() {
 }
 
 /* ---------------- which floor is showing, kept across restarts ---------------- */
-// The app starts with no floor and asks for a plan. The floor last built (an upload, or the recognised 4th floor)
-// is saved in .data/floor.json and comes back after a restart. Devices placed later are not saved.
+// Every fresh start of the server begins at floor setup: no floor is shown until a plan is uploaded (or the
+// recognised 4th floor is picked), so each demo runs plan → 3D from the start. The floor last built is still saved
+// in .data/floor.json; set KEEP_FLOOR=1 to bring it back after a restart instead. Devices placed later are not saved.
 const SAVE = path.join(process.cwd(), '.data', 'floor.json');
 function save(x: object | null) {
   try {
@@ -411,13 +412,13 @@ export function knownFloorPlan(id: string) {
   };
 }
 
-// Start (once per server process): the saved floor, or none yet (the reference floor is loaded underneath so every
-// API keeps working, but the pages ask for a plan).
+// Start (once per server process): no floor yet, so the pages ask for a plan (the reference floor is loaded
+// underneath so every API keeps working); with KEEP_FLOOR=1, the floor saved by the last run.
 if (!(globalThis as { __twinBooted?: boolean }).__twinBooted) {
   (globalThis as { __twinBooted?: boolean }).__twinBooted = true;
   try { if (defaultPreset()) resetBuilding(); } catch (e) { console.warn('default floor not loaded:', (e as Error).message); }
   try {
-    const saved = existsSync(SAVE) ? JSON.parse(readFileSync(SAVE, 'utf8')) : null;
+    const saved = process.env.KEEP_FLOOR === '1' && existsSync(SAVE) ? JSON.parse(readFileSync(SAVE, 'utf8')) : null;
     if (saved?.preset) loadKnownFloor(saved.preset, false);
     else if (saved?.upload) uploadBuilding(saved.upload, false);
   } catch (e) { console.warn('saved floor not loaded:', (e as Error).message); }

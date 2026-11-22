@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Protocol
 
 import ollama
@@ -48,6 +49,12 @@ class OllamaLLM:
         headers = {"Authorization": f"Bearer {settings.ollama_api_key}"} if settings.ollama_api_key else None
         self._client = ollama.AsyncClient(host=settings.ollama_base_url, timeout=settings.llm_timeout_s, headers=headers)
         self._think = _think_value(settings.ollama_think)
+
+    def _model_for(self, label: str) -> str:
+        """The fast model for closed-choice steps when one is configured; the main model for everything else."""
+        if self.s.ollama_fast_model and label in self.s.fast_labels and not (self.s.reasoning and label in self.s.reasoning_labels):
+            return self.s.ollama_fast_model
+        return self.s.ollama_model
 
     def _think_for(self, label: str) -> bool | str | None:
         """Reasoning steps think (at the configured level, or "medium" for gpt-oss); the rest use OLLAMA_THINK."""
@@ -92,7 +99,7 @@ class OllamaLLM:
         unreachable = 0
         for attempt in range(1, self.s.llm_max_retries + 2):
             kwargs: dict[str, Any] = {
-                "model": self.s.ollama_model,
+                "model": self._model_for(label),
                 "messages": messages,
                 "options": {"temperature": self.s.llm_temperature},
                 "keep_alive": self.s.ollama_keep_alive,
@@ -104,6 +111,7 @@ class OllamaLLM:
                 kwargs["think"] = think
 
             log.debug("[%s] attempt %d prompt:\n--- system ---\n%s\n--- user ---\n%s", label, attempt, system, user)
+            t0 = time.monotonic()
             try:
                 content = await asyncio.wait_for(self._stream(kwargs, label, show=bool(think)), timeout=self.s.llm_timeout_s)
             except Exception as exc:  # network / server errors: retry without feedback
@@ -113,7 +121,7 @@ class OllamaLLM:
                 continue
             unreachable = 0
 
-            log.info("[%s] attempt %d raw: %s", label, attempt, content)
+            log.info("[%s] %s, %.1f s, attempt %d raw: %s", label, kwargs["model"], time.monotonic() - t0, attempt, content)
             try:
                 obj = extract_json(content)
                 errors = validate(obj, schema)

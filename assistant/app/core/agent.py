@@ -9,7 +9,8 @@ from typing import Any
 from app.config import Settings
 from app.core.context import TurnContext
 from app.core.llm import LLM, LLMError, LLMUnavailable
-from app.core.router import Router
+from app.core.fastlane import direct as plain_command
+from app.core.router import Route, Router
 from app.core.trace import reasoning_sink
 from app.core.skill import Skill, SkillResult, load_skills
 
@@ -53,6 +54,14 @@ class Agent:
         ctx.capabilities = [s.capability for s in skills if s.capability]
 
         ctx.progress("routing", "Understanding")
+        # a plain command naming one device needs no routing: straight to device control (the model is not asked)
+        if "device_control" in by_name and plain_command(ctx.message, ctx.devices) is not None:
+            log.info("fast lane: %s", ctx.message)
+            skill, result = await self._run_one(ctx, by_name["device_control"], ctx.message, by_name)
+            result.data.setdefault("skill", skill.name)
+            result.data.setdefault("request", ctx.message)
+            result.data["fast_lane"] = True
+            return result
         try:
             route = await self.router.route(ctx, skills)
         except LLMUnavailable as exc:

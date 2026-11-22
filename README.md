@@ -262,8 +262,10 @@ the device list, side panel and chat still work. `next start` only serves files 
 started, so restart it after exporting.
 
 The app starts by asking for a floor plan (http://localhost:3000 sends you to /setup until one is built). Upload the
-image and it is read straight away; check the names, the building and floor, and the scale, then render. The floor
-last built is kept in `web/.data/floor.json` and comes back after a restart (devices placed later are not kept).
+image and it is read straight away; check the names, the building and floor, and the scale, then render. Every
+fresh start of the server begins here again, so each demo shows the plan turning into 3D. To have the floor last
+built come back after a restart instead, start the web app with `KEEP_FLOOR=1` (it is kept in
+`web/.data/floor.json`; devices placed later are not kept).
 "Upload floor plan" in the header replaces it. What the reader does (assistant/app/floorplan/plan_cv.py, OpenCV + Tesseract):
 
 - a photo of a sheet taken at an angle is recognised from the paper outline and straightened on its corners

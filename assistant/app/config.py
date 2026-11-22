@@ -48,6 +48,12 @@ class Settings:
     ollama_api_key: str = field(default_factory=lambda: _env("OLLAMA_API_KEY"))
     # How long Ollama keeps the model loaded after a turn ("5m", "1h", "-1" = forever). Avoids a cold start per chat.
     ollama_keep_alive: str = field(default_factory=lambda: _env("OLLAMA_KEEP_ALIVE", "30m"))
+    # Optional smaller, faster model for the closed-choice steps (routing, picking devices and actions, status):
+    # their answers are fixed lists checked by code, so a small model is as accurate there and several times
+    # faster. Empty: OLLAMA_MODEL everywhere. The reasoning steps (REASONING_LABELS) always use OLLAMA_MODEL.
+    ollama_fast_model: str = field(default_factory=lambda: _env("OLLAMA_FAST_MODEL", ""))
+    fast_labels: list[str] = field(default_factory=lambda: _env_list("FAST_LABELS") or
+        ["router", "device_plan", "action_select", "status_targets", "confirm"])
     # gpt-oss accepts "low" | "medium" | "high"; other thinking models accept "true"/"false"; empty = model default.
     ollama_think: str = field(default_factory=lambda: _env("OLLAMA_THINK", "low"))
     # Reasoning: for these steps the model thinks before answering (Ollama "think"), and the thinking streams to the
