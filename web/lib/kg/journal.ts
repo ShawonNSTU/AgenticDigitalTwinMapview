@@ -7,7 +7,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-export type Kind = 'command' | 'reported' | 'device' | 'floor' | 'guest' | 'fault' | 'alert' | 'maintenance' | 'routine' | 'sim' | 'access';
+export type Kind = 'command' | 'reported' | 'device' | 'floor' | 'guest' | 'fault' | 'alert' | 'maintenance' | 'routine' | 'sim' | 'access' | 'energy' | 'comfort' | 'arrival' | 'housekeeping' | 'prediction';
 export type JEvent = { at: number; kind: Kind; text: string; by?: string; devices?: string[]; room?: string; guest?: string };
 
 const FILE = path.join(process.cwd(), '.data', 'journal.jsonl');

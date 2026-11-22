@@ -297,7 +297,7 @@ export function activeFault(d) {
   if (!a) return null;
   const spec = (FAULTS[d.type] ?? []).find(f => f.key === a.key);
   if (!spec) return null;
-  const ramp = clamp((Date.now() - a.since) / RAMP_MS, 0, 1);
+  const ramp = clamp((Date.now() - a.since) / (a.rampMs ?? RAMP_MS), 0, 1);
   return { spec, s: a.severity * ramp, target: a.severity, level: a.level, ramp };
 }
 /** Reference text for a technician: what the device's parts do and, for a known fault, what it is. */
@@ -317,11 +317,16 @@ export function setFault(id: string, key: string, level = 'developing') {
   const L = LEVELS.find(l => l.key === level) ?? LEVELS[1];
   const prev = G.faults[id];
   // changing only the severity of the same fault keeps it developed; a new fault starts from zero
-  G.faults[id] = { key, level: L.key, severity: L.s, since: prev && prev.key === key ? prev.since - RAMP_MS : Date.now() };
+  G.faults[id] = { key, level: L.key, severity: L.s, since: prev && prev.key === key && !L.rampMs && !prev.rampMs ? prev.since - RAMP_MS : Date.now(), ...(L.rampMs ? { rampMs: L.rampMs } : {}) };
   journal({ kind: 'fault', devices: [id], room: d.room, text: `Fault simulated on ${String(d.name).split(' · ')[0]} (${id}): ${(FAULTS[d.type] ?? []).find((f: any) => f.key === key)?.name ?? key}, ${L.key}` });
   return { ok: true };
 }
 export function clearFault(id: string) { const had = !!G.faults[id]; delete G.faults[id]; if (had) journal({ kind: 'fault', devices: [id], room: byId[id]?.room, text: `Fault cleared on ${String(byId[id]?.name ?? id).split(' · ')[0]} (${id})` }); return { ok: had }; }
+/** How an injected fault develops: when it started, over how long it ramps to full severity, and how far. */
+export function faultTimeline(id: string): { key: string; level: string; since: number; rampMs: number; severity: number } | null {
+  const a = G.faults[id];
+  return a ? { key: a.key, level: a.level, since: a.since, rampMs: a.rampMs ?? RAMP_MS, severity: a.severity } : null;
+}
 export function faultList() { return Object.entries(G.faults).map(([id, a]: any) => ({ id, key: a.key, level: a.level })); }
 export { LEVELS };
 

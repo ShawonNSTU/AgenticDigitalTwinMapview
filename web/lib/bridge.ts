@@ -9,7 +9,7 @@ export type ToRenderer =
   | { type: 'closeDevice' }
   | { type: 'focusPart'; id: string; part: string }
   | { type: 'trace'; from: string }
-  | { type: 'setLayer'; layer: 'devices' | 'piping' | 'names' | 'ids' | 'temperature' | 'exploded' | 'furniture'; on: boolean }
+  | { type: 'setLayer'; layer: 'devices' | 'piping' | 'names' | 'ids' | 'temperature' | 'exploded' | 'furniture' | 'comfort' | 'energy' | 'ops'; on: boolean; metric?: 'thermal' | 'air' | 'score' }
   | { type: 'setTime'; t: number }
   | { type: 'setScenario'; key: string }
   | { type: 'resetView' }
@@ -26,7 +26,11 @@ export type ToRenderer =
   | { type: 'preview'; id: string; readings: Record<string, unknown>; text?: string }
   | { type: 'track'; id: string }
   // story mode (app/story): cinematic shots, data wave, guest/technician walks, TV text, heatmap, night
-  | { type: 'story'; action: 'build' | 'shot' | 'room' | 'wave' | 'walk' | 'endWalk' | 'tv' | 'heat' | 'night'; [k: string]: unknown };
+  // experience: rendering quality, a technician's route to a device, a guest's welcome moment
+  | { type: 'setQuality'; tier: 'auto' | 'ultra' | 'high' | 'balanced' | 'lite' }
+  | { type: 'dispatchRoute'; id: string }
+  | { type: 'welcome'; room: string; guest?: string; state?: string }
+  | { type: 'story'; action: 'build' | 'shot' | 'room' | 'wave' | 'walk' | 'endWalk' | 'tv' | 'heat' | 'night' | 'cast'; [k: string]: unknown };
 
 /** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */
 export type Placement = { x: number; y: number; z: number; rotationY: number; room: string };
@@ -45,11 +49,13 @@ export type FromRenderer =
   | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string; guest?: 'walking' | 'arrived'; from?: string; to?: string; metres?: number; route?: [number, number][]; live?: { x: number; z: number; room: string; toRoom?: number; atDoor?: boolean } }
   | { type: 'roomClicked'; room: string; roomName: string }
   | { type: 'guestDenied'; code: number }
-  | { type: 'anchor'; id: string; x: number; y: number; visible: boolean };
+  | { type: 'anchor'; id: string; x: number; y: number; visible: boolean }
+  | { type: 'quality'; tier: string; auto: boolean; fps: number; scale: number; renderer: string }
+  | { type: 'techRoute'; id: string; metres: number; from: string; phase: 'started' | 'arrived' | 'failed' };
 
 /** The renderer build this page expects (godot-renderer/autoloads/bridge.gd VERSION). An older export in
  *  web/public/godot is reported on the page, so a stale build is never mistaken for a bug. */
-export const RENDERER_VERSION = '0.7.1';
+export const RENDERER_VERSION = '0.8.0';
 
 let frame: HTMLIFrameElement | null = null;
 const queue: ToRenderer[] = [];
@@ -58,6 +64,8 @@ let ready = false;
 export function attach(f: HTMLIFrameElement | null) { frame = f; }
 
 export function send(msg: ToRenderer) {
+  // layer switches from anywhere (a panel, the assistant) keep the map toolbar's buttons in step
+  if (msg.type === 'setLayer' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('twin-layer', { detail: msg }));
   if (!ready || !frame?.contentWindow) { queue.push(msg); return; }
   frame.contentWindow.postMessage({ source: 'twin-host', ...msg }, '*');
 }

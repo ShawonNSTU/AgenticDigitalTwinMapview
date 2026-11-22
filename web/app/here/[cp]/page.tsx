@@ -15,6 +15,6 @@ export default function Here() {
   }, [cp]);
   return (
     <main className="guest-denied"><div className="glass"><span className="logo" /><h2>Location code</h2>
-      <p>{none ? 'Open your room link (the QR code from the front desk) on this phone first, then scan this code again.' : 'Finding you on the map…'}</p></div></main>
+      <p>{none ? 'Open your room link on this phone first, then scan this code again.' : 'Finding you on the map…'}</p></div></main>
   );
 }

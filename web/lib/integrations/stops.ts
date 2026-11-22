@@ -9,13 +9,18 @@ import { alerts, addRecord } from '@/lib/sim/maintenance';
 import { createPass, listPasses, revoke, entranceRooms, guestCommand, guestCommands } from '@/lib/sim/guests';
 import { ROUTINES, routineById, savedFor, savedById, saveRoutine, deleteRoutine, type SavedStep } from '@/lib/sim/routines';
 import { supported } from './smartthings';
+import { comfort as comfortRooms, roomComfort } from '@/lib/experience/comfort';
+import { summary as energySummary } from '@/lib/experience/energy';
+import * as arrival from '@/lib/experience/arrival';
+import { predictions as predictedFailures, dispatchTech, dispatches } from '@/lib/experience/predict';
+import { refresh as refreshExperience } from '@/lib/experience/loop';
 import { devicesInScope, agentNames, allowedCommands, toTwin, ownerKey, resolveDevice, type Scope, type StCmd } from './stagent';
 
 type Out = { status: number; body: unknown };
 const ok = (body: unknown): Out => ({ status: 200, body });
 const bad = (status: number, error: string): Out => ({ status, body: { error } });
 const roomLabel = (key: string) => { const r = (ROOMS as any[]).find(x => x.key === key); return r ? String(r.label ?? r.name).split('\n')[0] : key; };
-const GUEST_OPS = new Set(['routines', 'routine_run', 'routine_save', 'routine_delete']);
+const GUEST_OPS = new Set(['routines', 'routine_run', 'routine_save', 'routine_delete', 'comfort', 'comfort_apply', 'energy', 'journey', 'journey_action']);
 
 export async function runOp(op: string, b: Record<string, any>, scope: Scope): Promise<Out> {
   const staff = scope.kind === 'host';
@@ -56,7 +61,7 @@ export async function runOp(op: string, b: Record<string, any>, scope: Scope): P
       return ok({ ok: r.ok, note: r.ok ? 'fault cleared; the device returns to normal' : 'that device has no simulated fault' });
     }
     case 'simulate_fault': {
-      const r = setFault(b.device_id, String(b.key), ['early', 'developing', 'severe'].includes(b.level) ? b.level : 'developing');
+      const r = setFault(b.device_id, String(b.key), ['early', 'developing', 'severe', 'degrading'].includes(b.level) ? b.level : 'developing');
       return r.ok ? ok({ ok: true }) : bad(400, String((r as any).error ?? 'could not start that fault'));
     }
     case 'sim': {
@@ -75,6 +80,57 @@ export async function runOp(op: string, b: Record<string, any>, scope: Scope): P
     case 'routines': return ok({ routines: [...ROUTINES.map(r => ({ id: r.id, name: r.name, about: r.about })), ...savedFor(ownerKey(scope)).map(r => ({ id: r.id, name: r.name, about: `your routine: ${r.steps.length} step(s) on ${new Set(r.steps.map(x => x.deviceId)).size} device(s)`, custom: true }))], rooms: staff ? [...new Set(devicesInScope(scope).map(d => d.room))].map(k => ({ id: k, name: roomLabel(k) })) : undefined });
     case 'routine_save': return saveFromActions(String(b.name ?? ''), Array.isArray(b.actions) ? b.actions : [], scope);
     case 'routine_delete': return deleteRoutine(ownerKey(scope), String(b.routine)) ? ok({ ok: true }) : bad(404, 'No such saved routine');
+    // ---- comfort, energy, guest journeys, predictions (lib/experience) ----
+    case 'comfort': {
+      const room = staff ? (b.room ? String(b.room) : '') : scope.pass.room;
+      const list = room ? [roomComfort(room)].filter(Boolean) : comfortRooms();
+      return ok({ rooms: list.map((c: any) => ({ room: c.room, name: c.name, score: c.score, grade: c.grade, temp: c.temp, target: c.target, hum: c.hum, pm: c.pm, lux: c.lux, db: c.db,
+        parts: Object.fromEntries(Object.entries(c.parts).map(([k, v]: any) => [k, `${v.score}/100 ${v.label}${v.measured ? '' : ' (estimated)'}`])), eta_to_target_min: c.etaToTargetMin, advice: c.advice.map((a: any) => a.text) })) });
+    }
+    case 'comfort_apply': {
+      const room = staff ? String(b.room ?? '') : scope.pass.room;
+      const c = roomComfort(room);
+      if (!c) return bad(404, 'No comfort data for that room');
+      const results = [];
+      for (const a of c.advice) for (const x of a.actions) {
+        if (!staff && !guestCommands(byId[x.id]?.type, scope.pass, x.id).some((g: any) => g.name === x.command)) continue;
+        const r: any = staff ? await dispatch(x.id, x.command, x.args ?? {}, false, by) : await guestCommand(scope.pass, x.id, x.command, x.args ?? {});
+        const good = 'body' in r ? r.status === 200 : r.ok;
+        results.push({ device_id: x.id, name: String(byId[x.id]?.name ?? x.id).split(' · ')[0], command: x.command, args: x.args ?? {}, ok: good, ...(good ? {} : { error: 'body' in r ? String(r.body.error) : String(r.error) }) });
+      }
+      await refreshExperience();
+      const after = roomComfort(room);
+      return ok({ room: c.name, score_before: c.score, score_after: after?.score ?? c.score, advice_applied: c.advice.map(a => a.text), results, note: results.length ? 'Temperature changes take a few minutes; the score keeps rising as the room settles.' : 'Nothing to change: the room is already comfortable.' });
+    }
+    case 'energy': {
+      const room = staff ? (b.room ? String(b.room) : undefined) : scope.pass.room;
+      const e: any = energySummary(room);
+      return ok({ scope: e.scope?.name ?? 'whole floor', watts_now: e.w, kwh_today: e.kwh, cost_today: `${e.cost} ${e.tariff.currency}`, co2_kg_today: e.co2Kg, avoided_by_automation: e.avoided, eco_rooms: e.eco,
+        top_devices: e.top.slice(0, 5).map((t: any) => ({ id: t.id, name: t.name, watts: t.w, source: t.src })), rooms: staff && !room ? e.rooms.slice(0, 8) : undefined, method: e.method });
+    }
+    case 'journey': {
+      if (!staff) return ok({ journey: arrival.publicJourney(arrival.journey(scope.pass.token)) });
+      return ok({ journeys: arrival.journeys().map(j => ({ token: j.token, guest: j.guest, room: j.roomName, state: j.state, eta_min: j.eta ? Math.max(0, Math.round((j.eta - Date.now()) / 60000)) : null, prefs: j.prefs, steps_done: j.steps.filter(s => s.status === 'done').length, steps: j.steps.length })), housekeeping: arrival.housekeeping().slice(0, 5) });
+    }
+    case 'journey_action': {
+      const token = staff ? String(b.token ?? '') : scope.pass.token;
+      if (!arrival.journey(token)) return bad(404, 'No such stay');
+      const a = String(b.action);
+      if (a === 'on_my_way' || a === 'eta') arrival.onMyWay(token, Math.max(0, Math.min(1440, Number(b.minutes) || 10)), staff ? 'host' : 'guest');
+      else if (a === 'prepare') await arrival.prepare(token, staff ? 'front desk via the assistant' : 'guest asked the assistant');
+      else if (a === 'away') await arrival.away(token, 'guest told the assistant');
+      else if (a === 'prefs') arrival.setPrefs(token, { ...(typeof b.temp === 'number' ? { temp: b.temp } : {}), ...(b.scene ? { scene: b.scene } : {}), ...(typeof b.curtain === 'number' ? { curtain: b.curtain } : {}) });
+      else if (a === 'checkout' && staff) { await arrival.checkout(token, 'front desk via the assistant'); revoke(token, 'assistant'); }
+      else return bad(422, 'action must be on_my_way, prepare, away, prefs' + (staff ? ', eta or checkout' : ''));
+      await refreshExperience();
+      return ok({ journey: arrival.publicJourney(arrival.journey(token)) });
+    }
+    case 'predictions': return ok({ predictions: predictedFailures().slice(0, 12).map(p => ({ device_id: p.deviceId, name: p.name, room: p.roomName, part: p.partName, title: p.title, when: p.etaText, eta_min: p.etaMin, confidence: p.confidence, basis: p.basis, evidence: p.evidence, action: p.action })), dispatches: dispatches() });
+    case 'dispatch_tech': {
+      if (!byId[b.device_id]) return bad(404, `Unknown device ${b.device_id}`);
+      const x = dispatchTech(String(b.device_id), String(b.reason ?? ''));
+      return ok({ ok: true, dispatch: x });
+    }
     case 'routine_run': if (String(b.routine).startsWith('c-')) return runSaved(String(b.routine), scope, by); return runRoutine(String(b.routine), staff ? String(b.room ?? '') : scope.pass.room, scope, by);
   }
   return bad(404, `Unknown op ${op}`);

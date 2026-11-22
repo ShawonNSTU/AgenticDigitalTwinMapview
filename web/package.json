@@ -8,6 +8,7 @@
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "test:faults": "tsx tests/faults.test.mts",
+    "test:experience": "tsx tests/experience.test.mts",
     "export:renderer": "node scripts/export-renderer.mjs",
     "dev:https": "node scripts/serve-https.mjs --dev",
     "start:https": "NODE_ENV=production node scripts/serve-https.mjs"

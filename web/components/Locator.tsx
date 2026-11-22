@@ -11,6 +11,7 @@ const SRC: Record<string, string> = { rtls: 'positioning badge', 'rtls-sim': 'ba
  *  location QR codes on the walls (scanned with this page or the phone camera), and between fixes from the
  *  phone's own step counting and compass (pedestrian dead reckoning). The 3D view follows the position. */
 export default function Locator({ token, route, roomName, onUnlock }: { token: string; route: [number, number][]; roomName?: string; onUnlock?: () => void }) {
+  const [open, setOpen] = useState(false);
   const [live, setLive] = useState(false);
   const [fix, setFix] = useState<Fix | null>(null);
   const [pdr, setPdr] = useState(false);
@@ -143,14 +144,18 @@ export default function Locator({ token, route, roomName, onUnlock }: { token: s
   }, [scan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const age = fix ? Math.round((Date.now() - fix.at) / 1000) : null;
+  // folded to a small button until it is needed (it opens by itself while following a position)
+  if (!open && !live && !scan) return (
+    <button className="locator-pill glass" onClick={() => setOpen(true)}><span aria-hidden>◎</span> Find me</button>
+  );
   return (
     <div className="locator glass">
-      <div className="row between"><b>Find me</b><label className="switch-line"><input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} /> Follow my position</label></div>
-      <span className="muted">{fix ? `±${Math.round(fix.accuracy)} m · ${SRC[fix.source] ?? fix.source}${fix.checkpoint ? ` (${fix.checkpoint})` : ''} · ${age}s ago` : live ? 'Waiting for a position: use your badge, scan a location code or start step tracking.' : 'Your position is shared only with this page.'}</span>
+      <div className="row between"><b>Find me</b><label className="switch-line"><input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} /> Follow me</label><button className="hint-x" aria-label="Close" onClick={() => { setOpen(false); setLive(false); }}>✕</button></div>
+      {fix && <span className="muted">±{Math.round(fix.accuracy)} m · {SRC[fix.source] ?? fix.source} · {age}s ago</span>}
       <div className="row wrap">
-        <button onClick={() => setScan(true)}>Scan a location code</button>
-        <button className={pdr ? 'on' : ''} onClick={startPdr} disabled={pdr}>{pdr ? `Step tracking · ${steps} steps` : 'Step tracking'}</button>
-        <button className={sim ? 'on' : ''} disabled={route.length < 2} onClick={() => setSim(!sim)} title="For a demo without a positioning system">{sim ? 'Stop simulated badge' : 'Simulate a badge'}</button>
+        <button onClick={() => setScan(true)}>Scan a code</button>
+        <button className={pdr ? 'on' : ''} onClick={startPdr} disabled={pdr}>{pdr ? `${steps} steps` : 'Count steps'}</button>
+        <button className={sim ? 'on' : ''} disabled={route.length < 2} onClick={() => setSim(!sim)} title="For a demo without a positioning system">{sim ? 'Stop demo' : 'Demo badge'}</button>
       </div>
       {live && where && (
         <div className="loc-way">

@@ -30,6 +30,19 @@ Proof of concept with three features:
    API, so each change shows in 3D at once and reaches the real device when it is linked; guests stay limited to
    their room and pass.
 
+**Hotel experience** ([docs/experience.md](docs/experience.md)): live from the SmartThings devices, on the 3D floor.
+- *The room knows you're coming*: a guest says "on my way" (or walks from the lift); the room is pre-conditioned in
+  time to their temperature, light and curtain (the zone's real SmartThings devices move), turns *ready*, and the TV
+  welcomes them by name. Heading out sets eco; check-out sets eco and sends housekeeping.
+- *Comfort you can see*: a live comfort field on each room's floor (cool / warm / clean air, moving air), a score with
+  measured vs estimated parts, and "make it comfortable".
+- *Every watt tells a story*: power flowing to every room, a pillar per device, kWh / cost / CO2 today and what
+  presence-aware eco avoided.
+- *Fix it before the guest notices*: beacons over faults and predicted failures ("fails in 4 min"), one-click
+  technician dispatch with the route walked in 3D and the x-ray opened at the failing part.
+- *Light that feels real*: quality tiers (lite → ultra) that adapt to the device's frame rate, contact shadows, grading.
+All of it is in the assistant too ("is my room ready?", "how much energy today?", "what will fail next?").
+
 **Hotel use case** (the 4th floor is treated as a hotel floor):
 
 0. **No pillars.** The drawing's structural columns are left out of the 3D floor so they don't block views and walks.
@@ -294,6 +307,9 @@ cd assistant && TWIN_URL=http://localhost:3000 .venv/bin/python -m pytest -q   #
 cd web && npm run typecheck && npm run build
 # after every pull: cd web && npm install && npm run export:renderer && npm run build && npm start
 cd web && npm run test:faults                           # every fault × severity: readings, parts, diagnosis
+node tools/ui_audit.js && node tools/ui_audit_deep.js   # 270 screens: every page, state, menu, fold, dialog and device control; every page and state at desktop, laptop, iPad (both ways), 768 px tablet and phone: wrapped controls, clipped text, overlapping or off-screen overlays (needs puppeteer-core + Chrome)
+cd web && npm run test:experience                       # power model, energy and eco savings, comfort, predictions, welcome scene
+cd godot-renderer && godot --path . -- --xp-shots=/tmp/xp   # comfort, energy, beacons, technician route, quality tiers, TV welcome (platform running)
 cd godot-renderer && godot --headless --path . -- --smoke   # drives every bridge command
 cd godot-renderer && godot --path . -- --camera=/tmp/camera # fit, zoom range, plan view, rotate, pan limits on 8 m to 300 m floors
 cd godot-renderer && godot --path . -- --place=/tmp/place   # drag and drop 21 devices (platform running)

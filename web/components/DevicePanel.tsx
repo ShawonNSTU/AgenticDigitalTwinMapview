@@ -11,7 +11,7 @@ type Active = { key: string; name: string; level: string; severity: number; deve
 type Device = { id: string; type: string; label: string; name: string; health: string; parts: Part[]; finding: Finding; fault: Active; faults: FaultOpt[]; readings: Record<string, unknown>; overrides: Record<string, unknown> | null; online?: boolean; source?: string; reported?: string[] };
 type Rec = { id: string; at: number; by: string; status: string; cause: string; action: string; notes: string };
 
-const LEVELS = [{ key: 'early', name: 'Early' }, { key: 'developing', name: 'Developing' }, { key: 'severe', name: 'Severe' }] as const;
+const LEVELS = [{ key: 'early', name: 'Early' }, { key: 'developing', name: 'Developing' }, { key: 'severe', name: 'Severe' }, { key: 'degrading', name: 'Degrading' }] as const;
 const json = (r: Response) => r.json();
 
 /** Selected device: health, fault simulation, diagnosis with guided repair, and live components. Refreshes every second. */
@@ -79,44 +79,47 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
     setBusy(false);
     if (r.ok) { setD(await r.json()); setStep(0); }
   }
-  const chosen = d.faults.find(o => o.key === pick);
 
   return (
     <div className="panel">
       <div className="dev-head">
         <span className="dev-ico big"><DeviceIcon type={d.type} size={26} /></span>
-        <div className="grow"><b>{d.id} · {d.label}</b><div className="muted">{d.name.split(' · ').slice(1).join(' · ')}</div></div>
-        <span className={`badge ${d.health}`}>{d.health === 'ok' ? 'Normal' : d.health === 'watch' ? 'Watch' : 'Fault'}</span>
-      </div>
-      <div className="btns">
-        <button className="pri" onClick={openTwin}>Open digital twin</button>
-        <button onClick={() => { send({ type: 'setLayer', layer: 'exploded', on: !exploded }); setExploded(!exploded); }}>{exploded ? 'Assemble' : 'Explode'}</button>
-        <button onClick={() => { send({ type: 'closeDevice' }); setTwinOpen(false); onClose(); }}>Floor</button>
-      </div>
-      {(onMove || onRemove) && <div className="btns small">
-        {onMove && <button onClick={() => onMove(id)}>Move on map</button>}
-        {onRemove && <button className="danger" onClick={() => onRemove(id)}>Remove</button>}
-      </div>}
-
-      <div className={`source-line ${d.source === 'smartthings' ? 'real' : ''}`}>
-        {d.source === 'smartthings'
-          ? <>Connected to SmartThings · live from the device: {d.reported?.length ? d.reported.join(', ') : 'status'}. Component values below are simulated for explanation, not live diagnostics.</>
-          : <>Simulated device: all values come from the simulator (link it to a real device on Integrations).</>}
+        <div className="grow">
+          <b>{d.name.split(' · ')[0]}</b>
+          <div className="dev-sub"><span className={`badge ${d.health}`}>{d.health === 'ok' ? 'Normal' : d.health === 'watch' ? 'Watch' : 'Fault'}</span>
+            <span className={`src-pill ${d.source === 'smartthings' ? 'real' : ''}`} title={d.source === 'smartthings' ? `Live from SmartThings: ${d.reported?.join(', ') || 'status'}` : 'Simulated device'}>{d.source === 'smartthings' ? 'SmartThings' : 'Simulated'}</span>
+            <span className="muted">{d.id} · {d.name.split(' · ').slice(1).join(' · ') || d.label}</span></div>
+        </div>
+        {(onMove || onRemove) && (
+          <details className="more-menu">
+            <summary aria-label="More actions">⋯</summary>
+            <div className="glass">
+              {onMove && <button className="ghost" onClick={() => onMove(id)}>Move on map</button>}
+              {onRemove && <button className="ghost danger" onClick={() => onRemove(id)}>Remove</button>}
+            </div>
+          </details>
+        )}
       </div>
       {cmds.length > 0 && (
         <section className="ctl-box">
-          <div className="lab-head"><b>Controls</b>{d.online === false ? <span className="off-tag">Offline</span> : <span className="muted">what this device supports</span>}</div>
+          {d.online === false && <span className="off-tag">Offline</span>}
           <DeviceControls dev={{ type: d.type, readings: d.readings, overrides: d.overrides }} commands={cmds} run={runCmd} disabled={d.online === false} />
           {cmdMsg && <div className="bad-text">{cmdMsg}</div>}
         </section>
       )}
+      <div className="btns">
+        {twinOpen ? <>
+          <button onClick={() => { send({ type: 'setLayer', layer: 'exploded', on: !exploded }); setExploded(!exploded); }}>{exploded ? 'Assemble' : 'Explode'}</button>
+          <button onClick={() => { send({ type: 'closeDevice' }); setTwinOpen(false); onClose(); }}>Back to floor</button>
+        </> : <button className="pri" onClick={openTwin}>Look inside (3D twin)</button>}
+      </div>
 
       {d.faults.length > 0 && (
-        <section className={`lab ${active ? 'lab-on' : ''}`}>
-          <div className="lab-head">
-            <b>Fault simulation</b>
-            {active ? <span className="sim-tag">Simulated · {LEVELS.find(l => l.key === active.level)?.name}</span> : <span className="muted">for training and diagnosis</span>}
-          </div>
+        <details className={`lab ${active ? 'lab-on' : ''}`} open={!!active}>
+          <summary className="lab-head">
+            <b>Simulate a fault</b>
+            {active && <span className="sim-tag">{LEVELS.find(l => l.key === active.level)?.name}</span>}
+          </summary>
           {active && (
             <div className="sev">
               <div className="row between"><span>{active.name}</span><span className="muted">{active.developing ? 'developing…' : 'fully developed'}</span></div>
@@ -126,11 +129,10 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
           <div className="fault-list" role="radiogroup" aria-label="Fault to simulate">
             {d.faults.map(o => (
               <button key={o.key} role="radio" aria-checked={pick === o.key} className={`fault-opt ${pick === o.key ? 'on' : ''} ${active?.key === o.key ? 'running' : ''}`} onClick={() => setPick(o.key)}>
-                <b>{o.name}</b><span>{o.what}</span>
+                <b title={o.what}>{o.name}</b>
               </button>
             ))}
           </div>
-          {chosen && <div className="muted">Affects: {chosen.parts.map(k => d.parts.find(p => p.key === k)?.name ?? k).join(', ')}</div>}
           <div className="seg" role="radiogroup" aria-label="Severity">
             {LEVELS.map(l => <button key={l.key} role="radio" aria-checked={level === l.key} className={level === l.key ? 'on' : ''} onClick={() => setLevel(l.key)}>{l.name}</button>)}
           </div>
@@ -139,7 +141,7 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
             {active && <button disabled={busy} onClick={clear}>Clear fault</button>}
           </div>
           {err && <div className="muted" style={{ color: 'var(--fault)' }}>{err}</div>}
-        </section>
+        </details>
       )}
 
       {f && (
@@ -156,18 +158,20 @@ export default function DevicePanel({ id, onClose, onSelect, onMove, onRemove }:
           </div>
         </div>
       )}
-      <div className="sec-title">Components <span className="muted">· live where the device reports it; “not measured” parts are shown for explanation only</span></div>
+      <details className="fold">
+      <summary>Components <i>{d.parts.length}</i></summary>
       <div className="parts">{d.parts.map(p => (
         <div key={p.key} className={`part ${affected.has(p.key) ? 'hit' : ''}`} onClick={() => { if (!twinOpen) openTwin(); send({ type: 'focusPart', id, part: p.key }); }}>
           <span><i className={`dot ${p.health}`} />{p.name}{p.inferred && <em className="not-measured"> not measured</em>}</span><b>{p.value}</b>
         </div>))}
       </div>
-      <div className="sec-title">Maintenance history</div>
-      {recs.length === 0 ? <div className="muted">No investigations recorded for this device.</div> : (
+      </details>
+      {recs.length > 0 && (
+        <details className="fold"><summary>Maintenance history <i>{recs.length}</i></summary>
         <div className="recs">{recs.slice(0, 6).map(r => (
           <div key={r.id} className="rec"><b>{r.status}</b> · {new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {r.by}
             {r.cause && <div>Cause: {r.cause}</div>}{r.action && <div>Action: {r.action}</div>}{r.notes && <div className="muted">{r.notes}</div>}</div>))}
-        </div>
+        </div></details>
       )}
     </div>
   );

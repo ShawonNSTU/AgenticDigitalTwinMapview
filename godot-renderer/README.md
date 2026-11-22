@@ -50,8 +50,12 @@ scripts/tube.gd            shared pipe builder (floor piping and internal flows)
 scripts/plan_geo.gd        room polygons, shared wall network, shortest path along walls
 scripts/piping.gd          liquid/gas lines ODU → each AC, flow speed by health, trace
 scripts/camera_rig.gd      orbit/pan/zoom, touch, fly_to
+scripts/quality.gd         rendering tiers (lite, balanced, high, ultra) and auto mode that follows the frame rate
+scripts/experience_layer.gd  comfort field, energy flows and device pillars, beacons for faults and predicted failures,
+                           arrival auras, the technician's route (data: Store.experience from /api/floor)
 shaders/pipe_flow.gdshader animated refrigerant dashes (works on WebGL 2)
 shaders/ghost.gdshader     fresnel x-ray shell
+shaders/comfort_field.gdshader  comfort field: cool / warm / clean sources, moving air, drifting texture (web-safe)
 data/*.json                sample home (same files as web/lib/sim/data); used until the platform sends a layout
 data/internal_flows.json   per device type: flows between parts, medium, and the live reading that sets the speed
 data/part_layout.json      per device type: where each part sits, which component model draws it, and which readings drive its animation
@@ -61,6 +65,8 @@ tests/room_shots.gd        close-ups of named rooms: `-- --rooms=/tmp/rooms "--r
 tests/zone_shots.gd        the SmartThings zone from its photos' viewpoints, a live change and CPU-side cost:
                            `-- --zone-shots=/tmp/zone` (platform running)
 tests/twin_gallery.gd      opens every device type and saves assembled + exploded screenshots: `-- --gallery=/tmp/gallery`
+tests/experience_shots.gd  comfort, energy, beacons, technician route, quality tiers, TV welcome:
+                           `-- --xp-shots=/tmp/xp` (platform running)
 tests/demo_shots.gd        screenshots of the upload flow against a running platform:
                            `godot --path . -- --demo-shots=/tmp/out --open=AC-03 --part=filter`
 ```

@@ -77,16 +77,16 @@ export default function Integrations() {
   return (
     <main className="settings">
       <header className="topbar">
-        <div className="brand"><span className="logo" /><div><b>Integrations</b><small>Devices · door access · indoor positioning</small></div></div>
+        <div className="brand"><span className="logo" /><div><b>Integrations</b><small>SmartThings · doors · positioning</small></div></div>
         <div className="stats">{msg && <span className="stat good">{msg}</span>}<a href="/"><button className="ghost">Floor map</button></a><a href="/tech"><button className="ghost">Technician</button></a></div>
       </header>
       <div className="settings-body">
         <section className="card">
           <h3>SmartThings</h3>
-          <p className="muted">Link devices on the twin to real SmartThings devices. Commands to a linked device (from the host, guests or the assistants) go to SmartThings; its reported status replaces the simulated values. Other devices stay simulated.</p>
+          <p className="muted">Linked devices are controlled for real. The rest stay simulated.</p>
           <div className="row"><span className={`badge ${st?.configured ? 'ok' : 'watch'}`}>{st?.configured ? 'Connected' : 'Not connected'}</span><span className="muted">{st?.api}</span></div>
-          <div className="row"><input type="password" placeholder="Personal access token (devices: read, execute; locations: read)" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && token) connect(); }} /><button className="pri" disabled={busy || (!token && !st?.configured)} onClick={connect}>{busy ? 'Connecting…' : st?.configured && !token ? 'Disconnect' : 'Connect'}</button></div>
-          <span className="muted">Create a token at account.smartthings.com/tokens. Connecting fetches every device in the account and puts it on the map: on the 4th floor in the SmartThings Experience Zone, taking the place of the simulated device it matches; on other floors in the room with the same name as its SmartThings room. Or set SMARTTHINGS_TOKEN on the server. A token entered here is kept in memory only.</span>
+          <div className="row"><input type="password" placeholder="SmartThings personal access token" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && token) connect(); }} /><button className="pri" disabled={busy || (!token && !st?.configured)} onClick={connect}>{busy ? 'Connecting…' : st?.configured && !token ? 'Disconnect' : 'Connect'}</button></div>
+          {!st?.configured && <span className="muted">Create one at account.smartthings.com/tokens</span>}
           {sync && (
             <div className="sync-card">
               <b>{sync.found} devices in the account · {sync.linked.length + sync.already} on the map{sync.room ? ` (${sync.room})` : ''}{sync.already ? ` · ${sync.already} were linked already` : ''}</b>
@@ -97,7 +97,7 @@ export default function Integrations() {
           )}
           {st?.lastError && <div className="bad-text">Last error: {st.lastError}</div>}
           {acctErr && <div className="bad-text">{acctErr}</div>}
-          {st?.configured && <div className="row"><button disabled={busy} onClick={resync}>Fetch devices again</button><button onClick={byName}>Link by name</button><span className="muted">Links every twin device whose name is the name of a device in the SmartThings app (the SmartThings Experience Zone uses the app's names).</span></div>}
+          {st?.configured && <div className="row"><button disabled={busy} onClick={resync}>Fetch devices again</button><button onClick={byName} title="Link every device whose name matches a device in the SmartThings app">Link by name</button></div>}
           <table className="tbl">
             <thead><tr><th>Twin device</th><th>Room</th><th>SmartThings device</th><th /></tr></thead>
             <tbody>{devs.filter(d => CONTROLLED.includes(d.type)).map(d => {
@@ -116,37 +116,37 @@ export default function Integrations() {
 
         <section className="card">
           <h3>Door access policy</h3>
-          <p className="muted">Guests may unlock only their own room&apos;s door, only if their pass allows it, after the check-in PIN, during their stay. Every lock and unlock attempt is logged.</p>
+          <p className="muted">Guests unlock only their own door, with their PIN, during their stay.</p>
           {policy && <div className="grid3">
-            <label>Ask for the PIN again after (minutes)<input type="number" min={0} value={policy.stepUpMinutes} onChange={e => setPolicy({ ...policy, stepUpMinutes: +e.target.value })} /></label>
+            <label>PIN again after (min)<input type="number" min={0} value={policy.stepUpMinutes} onChange={e => setPolicy({ ...policy, stepUpMinutes: +e.target.value })} /></label>
             <label>Most unlocks per 10 minutes<input type="number" min={1} value={policy.maxUnlocksPer10Min} onChange={e => setPolicy({ ...policy, maxUnlocksPer10Min: +e.target.value })} /></label>
-            <label>Lock again after (seconds, 0 = never)<input type="number" min={0} value={policy.autoRelockSec} onChange={e => setPolicy({ ...policy, autoRelockSec: +e.target.value })} /></label>
+            <label>Relock after (s, 0 = never)<input type="number" min={0} value={policy.autoRelockSec} onChange={e => setPolicy({ ...policy, autoRelockSec: +e.target.value })} /></label>
           </div>}
           <button className="pri" onClick={async () => { const d = await post('/api/integrations', { policy }); setPolicy(d.lockPolicy); flash('Policy saved'); }}>Save policy</button>
-          <h4>Access log</h4>
+          <details className="fold"><summary>Access log <i>{audit.length}</i></summary>
           {audit.length === 0 ? <div className="muted">No lock activity yet.</div> : (
             <table className="tbl"><thead><tr><th>When</th><th>Lock</th><th>Action</th><th>By</th><th>Result</th><th>Via</th></tr></thead>
               <tbody>{audit.slice(0, 40).map((a, i) => <tr key={i}><td>{new Date(a.at).toLocaleTimeString()}</td><td>{a.deviceId}</td><td>{a.action}</td><td>{a.by}</td><td className={a.ok ? 'ok-text' : 'bad-text'}>{a.ok ? 'done' : `refused: ${a.reason}`}</td><td>{a.via}</td></tr>)}</tbody></table>
           )}
+          </details>
         </section>
 
         <section className="card">
           <h3>Indoor positioning</h3>
-          <p className="muted">Guests can follow their live position in 3D. Fixes come from the hotel&apos;s positioning system (badges), from location QR codes on the walls, and between them from the phone&apos;s step tracking.</p>
+          <p className="muted">Guests see where they are in 3D, from badges, wall QR codes or step counting.</p>
           {pos && <>
             <div className="grid3">
-              <label>Plan “up” points to (compass degrees)<input type="number" value={pos.config.northDeg} onChange={e => setPos({ ...pos, config: { ...pos.config, northDeg: +e.target.value } })} /></label>
+              <label>Plan north (°)<input type="number" value={pos.config.northDeg} onChange={e => setPos({ ...pos, config: { ...pos.config, northDeg: +e.target.value } })} /></label>
               <label>Step length (m)<input type="number" step={0.05} value={pos.config.stepLength} onChange={e => setPos({ ...pos, config: { ...pos.config, stepLength: +e.target.value } })} /></label>
               <div className="row end"><button className="pri" onClick={async () => { await post('/api/positioning', { northDeg: pos.config.northDeg, stepLength: pos.config.stepLength }); flash('Saved'); }}>Save</button></div>
             </div>
-            <h4>Positioning system (RTLS) webhook</h4>
-            <p className="muted">Bind a badge to a guest at check-in (the badge tag on the guest QR form). The positioning system posts fixes in floor metres:</p>
+            <details className="fold"><summary>Badge system (RTLS) webhook</summary>
             <pre className="code">{`curl -X POST ${origin}${pos.webhook} \\
   -H 'x-rtls-key: ${pos.config.rtlsKey}' -H 'Content-Type: application/json' \\
-  -d '{"tag":"BADGE-0042","x":12.4,"z":-3.1,"accuracy":0.4}'`}</pre>
-            <div className="row between"><h4>Location QR codes ({pos.checkpoints.length})</h4><button onClick={() => window.print()}>Print the codes</button></div>
-            <p className="muted">Put each code on the wall at its spot (beside the door it names, or in the stair or lift). Scanning one with the phone camera fixes the guest&apos;s position to about a metre.</p>
-            <div className="cp-sheet">{pos.checkpoints.map(c => <div key={c.id} className="cp">{qrs[c.id] && <img src={qrs[c.id]} alt={`Location code: ${c.label}`} width={130} height={130} />}<b>{c.label}</b><small>{c.id} · x {c.x}, z {c.z}</small></div>)}</div>
+  -d '{"tag":"BADGE-0042","x":12.4,"z":-3.1,"accuracy":0.4}'`}</pre></details>
+            <details className="fold"><summary>Wall QR codes <i>{pos.checkpoints.length}</i></summary>
+            <div className="row"><span className="muted grow">Put each code on the wall at its spot.</span><button onClick={() => window.print()}>Print</button></div>
+            <div className="cp-sheet">{pos.checkpoints.map(c => <div key={c.id} className="cp">{qrs[c.id] && <img src={qrs[c.id]} alt={`Location code: ${c.label}`} width={130} height={130} />}<b>{c.label}</b><small>{c.id}</small></div>)}</div></details>
           </>}
         </section>
       </div>

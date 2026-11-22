@@ -319,7 +319,9 @@ export function twinInsight(d: any, scope: Scope) {
 /* ---------------- one chat turn: the PoC's chat events from the agent's stream ---------------- */
 
 export type Turn = { messages: { role: string; content: string }[] };
-const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHighlight', 'resetView', 'setLayer', 'trace', 'selectRoom']);
+const ALLOWED_UI = new Set(['highlight', 'focusDevice', 'openDevice', 'clearHighlight', 'resetView', 'setLayer', 'trace', 'selectRoom', 'dispatchRoute']);
+// layers a guest's assistant may switch on in their own view (their room's comfort and energy)
+const GUEST_LAYERS = ['comfort', 'energy'];
 const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 /**
@@ -347,7 +349,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean; pub
             signal: AbortSignal.timeout(120_000),
           });
         } catch {
-          out('error', { message: opts.guest ? 'The assistant is not available right now.' : `The assistant service is not reachable at ${ASSISTANT_URL()}. Start assistant (see its README).` });
+          out('error', { message: opts.guest ? 'The assistant is not available right now.' : `The assistant isn’t running. Start it at ${ASSISTANT_URL()} (see assistant/README).` });
           return;
         }
         if (!up.ok || !up.body) { out('error', { message: `The SmartThings agent answered HTTP ${up.status}.` }); return; }
@@ -373,7 +375,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean; pub
             else if (ev === 'final') {
               const d = data?.data ?? {};
               const text = String(d.question ?? data?.message ?? '');
-              if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model is not reachable. Check OLLAMA_BASE_URL in assistant/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
+              if (d.llm_unavailable && !opts.guest) out('error', { message: `The AI model isn’t reachable right now. Check OLLAMA_BASE_URL in assistant/.env and that Ollama is running (${String(d.error ?? '').slice(0, 200)}).` });
               else if (text) {
                 // the offer to save a routine becomes a card with a name field in the UI, not a line of text
                 const offer = !!d.save_offer;
@@ -401,7 +403,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean; pub
               // the diagnostics skill (staff): highlight / focus / open a device and its part, with ids checked against the scope
               for (const u of Array.isArray(d.ui) ? d.ui : []) {
                 if (!u || !ALLOWED_UI.has(u.type)) continue;
-                if (scope.kind === 'guest' && !['highlight', 'focusDevice', 'selectRoom'].includes(u.type)) continue;   // a guest's view only points at their own devices
+                if (scope.kind === 'guest' && !['highlight', 'focusDevice', 'selectRoom'].includes(u.type) && !(u.type === 'setLayer' && GUEST_LAYERS.includes(String(u.layer)))) continue;   // a guest's view only points at their own devices
                 if (u.type === 'clearHighlight' || u.type === 'resetView') { out('ui_action', { type: u.type }); continue; }
                 if (u.type === 'setLayer') { if (typeof u.layer === 'string') out('ui_action', { type: 'setLayer', layer: u.layer, on: u.on !== false }); continue; }
                 if (u.type === 'selectRoom') { const k = String(u.room ?? ''); if ((ROOMS as any[]).some(r => r.key === k) && (scope.kind === 'host' || k === scope.pass.room)) out('ui_action', { type: 'selectRoom', room: k }); continue; }
@@ -410,6 +412,7 @@ export function agentTurn(turn: Turn, scope: Scope, opts: { guest?: boolean; pub
                 if (!ok.length) continue;
                 if (u.type === 'highlight') out('ui_action', { type: 'highlight', ids: ok, reason: 'found by the assistant' });
                 else if (u.type === 'focusDevice') out('ui_action', { type: 'focusDevice', id: ok[0] });
+                else if (u.type === 'dispatchRoute' && scope.kind === 'host') out('ui_action', { type: 'dispatchRoute', id: ok[0] });
                 else if (u.type === 'openDevice') { out('ui_action', { type: 'openDevice', id: ok[0], ...(typeof u.part === 'string' ? { part: u.part } : {}) }); out('select', { id: ok[0] }); }
               }
               if (results.length) out('result', { results: results.map(r => {
@@ -437,9 +440,9 @@ export async function agentHealth() {
     const d = await r.json();
     const llm = d?.llm ?? {};
     const problem = !r.ok ? `The assistant answered HTTP ${r.status}.`
-      : llm.reachable === false ? `Ollama is not reachable at ${llm.url}. Set OLLAMA_BASE_URL in assistant/.env.`
+      : llm.reachable === false ? `The AI model isn’t reachable right now. Ollama at ${llm.url}: set OLLAMA_BASE_URL in assistant/.env.`
       : llm.model_present === false ? `Ollama has no model "${d.model}". Run: ollama pull ${d.model}`
-      : d?.device_api?.reachable === false ? `The device API is not reachable at ${d.device_api.url}.` : null;
+      : d?.device_api?.reachable === false ? `The device service isn’t reachable. ${d.device_api.url}` : null;
     return { ok: r.ok, ready: !problem, problem, url: ASSISTANT_URL(), model: d?.model ?? null, skills: d?.skills ?? [], llm };
-  } catch { return { ok: false, ready: false, problem: `The assistant service is not running at ${ASSISTANT_URL()}. Start assistant.`, url: ASSISTANT_URL(), model: null, skills: [], llm: null }; }
+  } catch { return { ok: false, ready: false, problem: `The assistant isn’t running. Start it at ${ASSISTANT_URL()}.`, url: ASSISTANT_URL(), model: null, skills: [], llm: null }; }
 }

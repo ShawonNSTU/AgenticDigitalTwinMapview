@@ -20,7 +20,7 @@ export default function SignIn() {
       <form className="glass pin-card" onSubmit={go}>
         <span className="logo" />
         <h2>Sign in</h2>
-        <div className="seg"><button type="button" className={role === 'host' ? 'on' : ''} onClick={() => setRole('host')}>Hotel administrator</button><button type="button" className={role === 'tech' ? 'on' : ''} onClick={() => setRole('tech')}>Technician</button></div>
+        <div className="seg"><button type="button" className={role === 'host' ? 'on' : ''} onClick={() => setRole('host')}>Administrator</button><button type="button" className={role === 'tech' ? 'on' : ''} onClick={() => setRole('tech')}>Technician</button></div>
         <input type="password" placeholder="Access key" value={key} onChange={e => setKey(e.target.value)} autoFocus />
         {err && <div className="bad-text">{err}</div>}
         <button className="pri" disabled={!key}>Sign in</button>

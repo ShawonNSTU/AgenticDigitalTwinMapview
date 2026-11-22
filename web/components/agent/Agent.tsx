@@ -225,7 +225,7 @@ export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Ru
       {after && last && !busy && run.choices.length > 0 && (
         <div className="ag-choices">{run.choices.map(c => <button type="button" key={c} onClick={() => onAsk(c)}>{c}</button>)}</div>
       )}
-      {run.error && <div className="ag-error">⚠ {run.error}</div>}
+      {run.error && <ErrorNote text={run.error} />}
       {run.shown.length > 1 && !run.results.length && <button type="button" className="ag-link" onClick={() => onFocus(run.shown)}>Show {run.shown.length} devices in 3D</button>}
       {after && run.sources.length > 0 && (
         <div className="ag-sources"><small>Based on</small>
@@ -289,6 +289,17 @@ export function AgentPanel({ endpoint, home, placeholder, onUi, onSelect, onText
         <div ref={end} />
       </div>
       <Composer busy={a.busy} onAsk={a.ask} onStop={a.stop} placeholder={placeholder} tools={tools} value={value} setValue={setValue} />
+    </div>
+  );
+}
+
+/** An error in one plain sentence; the technical detail (URLs, logs) folded under it. */
+export function ErrorNote({ text }: { text: string }) {
+  const m = /^(.*?[.!?])(\s|$)([\s\S]*)$/.exec(text.trim());
+  const head = m ? m[1] : text, rest = m ? m[3].trim() : '';
+  return (
+    <div className="ag-error">⚠ {head}
+      {rest && <details className="ag-error-more"><summary>Details</summary><code>{rest}</code></details>}
     </div>
   );
 }

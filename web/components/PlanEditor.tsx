@@ -52,6 +52,7 @@ export default function PlanEditor() {
   const [vtx, setVtx] = useState<{ room: number; i: number; at: Pt; moved: boolean } | null>(null); // corner pressed: click adds it, drag moves it
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);                     // the plan's drawing tools are open
   const [hasFloor, setHasFloor] = useState(false);                    // a floor is built already (else this is the first step)
   useEffect(() => { fetch('/api/building').then(r => r.json()).then(b => setHasFloor(!b.empty)).catch(() => {}); }, []);
   const ar = img ? img.h / img.w : 0.6;
@@ -81,7 +82,7 @@ export default function PlanEditor() {
   }
 
   function down(e: React.PointerEvent) {
-    if (!img) return;
+    if (!img || !editing) return;
     const p = pt(e);
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     if (mode === 'straighten') {
@@ -149,7 +150,7 @@ export default function PlanEditor() {
       const dist = Math.hypot(q[0] - p[0], (q[1] - p[1]) * ar);
       if (!best || dist < best.dist) best = { q, ux: dx / L, uz: dz / L, dist };
     }
-    if (!best || best.dist > 0.03) { setMsg('Click on a wall (a room edge) to add a door there.'); return; }
+    if (!best || best.dist > 0.03) return;
     const fw = 0.9 / widthM;
     setDoors(ds => [...ds, { kind: 'door', fx: best!.q[0], fy: best!.q[1], fw, fd: 0.15 / widthM, rot: -Math.atan2(best!.uz, best!.ux) }]);
   }
@@ -158,11 +159,11 @@ export default function PlanEditor() {
    *  The reader sends back the drawing cropped to the building with its text removed: that is what the 3D floor shows. */
   async function detect(src = img, straightened = false) {
     if (!src) return;
-    setBusy(true); setMsg(straightened ? 'Reading the straightened plan…' : 'Reading the plan: walls, rooms, doors, names and the scale…');
+    setBusy(true); setMsg('');
     try {
       const r = await fetch('/api/floorplan/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: src.url }) });
       const j = await r.json();
-      if (!r.ok) { setMsg(`${j.error ?? j.detail ?? 'Reading the plan failed'} You can draw the rooms by hand.`); return; }
+      if (!r.ok) { setMsg('Couldn’t read this plan. Draw the rooms with the Rooms tool.'); return; }
       if (j.photo_corners && !j.known) {
         if (!straightened) {
           // a photo of a sheet taken at an angle: flatten it on the corners the reader found, then read again
@@ -172,8 +173,8 @@ export default function PlanEditor() {
           setBusy(false);
           return detect(flat, true);
         }
-        setQuad(j.photo_corners); setMode('straighten');
-        setMsg('This still looks like a photo at an angle. Move the four handles onto the corners of the drawing, press "Straighten", and it is read again.');
+        setQuad(j.photo_corners); setMode('straighten'); setEditing(true);
+        setMsg('');
         return;
       }
       let base = src;
@@ -192,13 +193,13 @@ export default function PlanEditor() {
       setScaleNote(j.width_m && !j.known ? `Estimated ${j.scale_note ?? ''}.` : '');
       setMode('rooms');
       const named = j.rooms.filter((x: { name: string }) => !/^Room \d+$/.test(x.name)).length;
-      setMsg(`Read ${j.rooms.length} rooms (${named} named from the plan), ${j.doors?.length ?? 0} doors${j.furniture?.length ? ` and ${j.furniture.length} interior items` : ''}. Check the names and the scale, then render. Anything off can be fixed below.`);
-    } catch { setMsg('Reading the plan failed. Draw the rooms by hand.'); } finally { setBusy(false); }
+      setMsg(j.rooms.length ? '' : 'No rooms found. Draw them with the Rooms tool.'); void named;
+    } catch { setMsg('Couldn’t read this plan. Draw the rooms with the Rooms tool.'); } finally { setBusy(false); }
   }
 
   async function build() {
     if (!img || !rooms.length) return;
-    setBusy(true); setMsg('Building the 3D map…');
+    setBusy(true); setMsg('');
     const title = [location.trim(), floorName.trim()].filter(Boolean).join(' · ') || 'Uploaded floor plan';
     // a recognised floor is built from its checked model; any other plan from what was read (no devices yet:
     // they are dragged onto the 3D map afterwards)
@@ -229,30 +230,46 @@ export default function PlanEditor() {
   const rename = (i: number, name: string) => setRooms(rs => rs.map((r, j) => j === i ? { ...r, name } : r));
   const fs = 0.016;
 
+  const tools: { key: typeof mode; label: string; hint: string }[] = [
+    { key: 'rooms', label: 'Rooms', hint: 'Drag a rectangle, or click corners to draw any shape' },
+    { key: 'doors', label: 'Doors', hint: 'Click a wall to add a door, a door to remove it' },
+    { key: 'straighten', label: 'Straighten', hint: 'Drag the four handles onto the plan’s corners' },
+  ];
+  const tool = tools.find(t => t.key === mode)!;
+  const stage = !img ? 'upload' : busy && !rooms.length ? 'reading' : 'review';
+
   return (
     <main className="setup">
       <header className="topbar">
-        <a href="/" className="brand"><span className="logo" /><div><b>Agentic Digital Twin</b><small>Floor plan → 3D map</small></div></a>
-        <div className="floor-chip">{img ? (rooms.length ? `${rooms.length} rooms · ${doors.length} doors` : 'Plan loaded') : 'No plan yet'}</div>
-        <div className="stats">
-          {img && <label className="ghost-file"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />Another plan</label>}
-          {hasFloor && <a href="/"><button>Back to map</button></a>}
-        </div>
+        <a href="/" className="brand"><span className="logo" /><div><b>Agentic Digital Twin</b><small>New floor</small></div></a>
+        <div className="stats">{hasFloor && <a href="/"><button className="ghost">Cancel</button></a>}</div>
       </header>
-      <div className="setup-body">
+      <div className={`setup-body ${stage}`}>
         <section className="plan">
           {!img ? (
             <label className="drop">
               <span className="drop-ico" aria-hidden>⬆</span>
-              <b>Upload a floor plan image</b><span className="muted">PNG, JPEG or WebP, a scan, an export or a phone photo of a printed sheet. Clean architectural plans read best.</span>
+              <b>Upload a floor plan</b>
+              <span className="muted">An image, a scan or a photo of a printed plan</span>
               <span className="drop-btn">Choose a file</span>
               <input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />
             </label>
-          ) : (
-            <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={mode}>
+          ) : (<>
+            {stage === 'review' && (
+              <div className="plan-tools glass">
+                {editing ? <>
+                  <div className="seg">{tools.map(t => <button key={t.key} className={mode === t.key ? 'on' : ''} onClick={() => setMode(t.key)}>{t.label}</button>)}</div>
+                  {mode === 'straighten' && <button className="pri" onClick={applyStraighten}>Apply</button>}
+                  <button className="ghost" onClick={() => { setEditing(false); setMode('rooms'); setDraft([]); }}>Done</button>
+                </> : <button onClick={() => setEditing(true)}>Edit plan</button>}
+              </div>
+            )}
+            {stage === 'review' && editing && <div className="plan-hint glass">{tool.hint}</div>}
+            {stage === 'reading' && <div className="plan-reading glass"><span className="spinner" />Reading your plan…</div>}
+            <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={editing ? mode : 'view'}>
               <rect x={-PAD} y={-PAD} width={1 + 2 * PAD} height={ar + 2 * PAD} fill="#eef2f7" />
               <image href={img.url} x={0} y={0} width={1} height={ar} preserveAspectRatio="none" />
-              {furniture.length + suggested.length > 0 && (
+              {editing && furniture.length + suggested.length > 0 && (
                 <g pointerEvents="none" opacity={0.7}>
                   {[...furniture, ...suggested].map((f, i) => {
                     // footprint rectangle rotated to its facing direction (rot 0 faces down the image)
@@ -266,12 +283,12 @@ export default function PlanEditor() {
                 <g key={r.key}>
                   <polygon points={r.pts.map(([x, y]) => `${x},${y * ar}`).join(' ')} fill={r.color} fillOpacity={0.35} stroke={r.color} strokeWidth={0.003} />
                   <text x={c[0]} y={c[1] * ar} fontSize={fs} textAnchor="middle" fill="#111">{r.name}</text>
-                  {mode === 'rooms' && r.pts.map(([x, y], i) => (
+                  {editing && mode === 'rooms' && r.pts.map(([x, y], i) => (
                     <circle key={i} cx={x} cy={y * ar} r={0.006} fill="#fff" stroke={r.color} strokeWidth={0.003} style={{ cursor: 'move' }}
                       onPointerDown={e => { e.stopPropagation(); (e.currentTarget.ownerSVGElement as Element).setPointerCapture?.(e.pointerId); setVtx({ room: k, i, at: [x, y], moved: false }); }} />
                   ))}
                 </g>); })}
-              {mode === 'straighten' && (
+              {editing && mode === 'straighten' && (
                 <g>
                   <polygon points={quad.map(([x, y]) => `${x},${y * ar}`).join(' ')} fill="#4c8dff" fillOpacity={0.08} stroke="#ffb020" strokeWidth={0.003} strokeDasharray="0.01 0.006" />
                   {quad.map(([x, y], i) => (
@@ -295,46 +312,38 @@ export default function PlanEditor() {
                 return <line key={i} x1={d.fx - ux * h} y1={d.fy * ar - uz * h} x2={d.fx + ux * h} y2={d.fy * ar + uz * h} stroke="#22c55e" strokeWidth={0.006} strokeLinecap="round" style={{ cursor: mode === 'doors' ? 'pointer' : undefined }} />;
               })}
             </svg>
-          )}
+          </>)}
         </section>
-        <aside className="side setup-side">
-          <div className="panel">
-            {msg && <div className="note">{msg}</div>}
-            <section className={`step ${img ? 'done' : 'cur'}`}>
-              <h4><i>1</i>Image</h4>
-              <div className="row"><button disabled={!img} className={mode === 'straighten' ? 'on' : ''} onClick={() => setMode('straighten')}>Straighten photo</button>{mode === 'straighten' && <button className="pri" onClick={applyStraighten}>Straighten</button>}</div>
-              {mode === 'straighten' && <div className="muted">Drag the four orange handles onto four points that form a rectangle in reality: the corners of the drawing frame, or four outer corners of the building. Then press Straighten.</div>}
-            </section>
-            <section className={`step ${rooms.length ? 'done' : img ? 'cur' : ''}`}>
-              <h4><i>2</i>Rooms<em>{rooms.length || ''}</em></h4>
-              <div className="muted">The plan is read as soon as it is uploaded: walls, rooms, doors, the scale and the printed room names. Photos taken at an angle are straightened first, and the drawing is cropped to the building with its text removed for the 3D floor. With an Anthropic key on the agent, Claude also names rooms and lists furniture.</div>
-              <div className="row"><button className={rooms.length ? '' : 'pri'} disabled={!img || busy} onClick={() => detect()}>{busy ? 'Reading…' : rooms.length ? 'Read again' : 'Read the plan'}</button><button disabled={!img} className={mode === 'rooms' ? 'on' : ''} onClick={() => setMode('rooms')}>Draw rooms</button></div>
-              {mode === 'rooms' && img && <div className="muted">Drag for a rectangle. For any other shape click each corner, then click the first corner (or double-click, or Enter). Click an existing corner to reuse it; drag a white dot to move it (rooms sharing it move too). Backspace undoes a corner, Esc cancels.</div>}
-              {rooms.length > 0 && <div className="room-list">{rooms.map((r, i) => (
-                <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input value={r.name} onChange={e => rename(i, e.target.value)} /><button className="icon" title="Delete room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
-              ))}</div>}
-            </section>
-            <section className={`step ${rooms.length ? 'done' : ''}`}>
-              <h4><i>3</i>Doors<em>{doors.length || ''}</em></h4>
-              <div className="row"><button disabled={!rooms.length} className={mode === 'doors' ? 'on' : ''} onClick={() => setMode('doors')}>Edit doors</button><span className="muted">shown in green on the plan</span></div>
-              {mode === 'doors' && <div className="muted">Click a wall to add a door, click a door to remove it. Walls are built along room edges and doors leave openings.</div>}
-            </section>
-            <section className={`step ${rooms.length ? 'done' : ''}`}>
-              <h4><i>4</i>Interiors<em>{furniture.length + suggested.length || ''}</em></h4>
-              {furniture.length > 0 && <div className="row"><span className="muted grow">{furniture.length} items read from the plan (orange)</span><button onClick={() => setFurniture([])}>Remove</button></div>}
-              <label className="switch"><input type="checkbox" checked={suggest} onChange={e => setSuggest(e.target.checked)} /><span /> Suggest furniture by room type <em>{suggested.length} items, blue</em></label>
-              <div className="muted">Suggestions follow the room names (bedroom, kitchen, office…) and are a starting fit-out, not read from the drawing. Rename a room to change its furniture. SmartThings devices are added on the 3D map afterwards, by dragging them into a room.</div>
-            </section>
-            <section className={`step ${rooms.length ? 'cur' : ''}`}>
-              <h4><i>5</i>Scale and build</h4>
-              <label className="field">Building or site <input value={location} placeholder="e.g. Head office" onChange={e => setLocation(e.target.value)} /></label>
-              <label className="field">Floor <input value={floorName} placeholder="e.g. 4th floor" onChange={e => setFloorName(e.target.value)} /></label>
-              <label className="field">Plan width <span className="row"><input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} /> m</span></label>
-              {scaleNote && <div className="muted">{scaleNote} Correct it if you know a real dimension.</div>}
-              <button className="pri wide" disabled={!img || !rooms.length || busy} onClick={build}>Render the 3D map</button>
-            </section>
-          </div>
-        </aside>
+        {img && (
+          <aside className="side setup-side">
+            <div className="panel">
+              {stage === 'reading' ? <div className="setup-wait muted">Finding rooms, doors and names…</div> : <>
+                <div className="setup-head">
+                  <h3>Check your floor</h3>
+                  <span className="muted">{rooms.length} rooms · {doors.length} doors · {widthM} m wide</span>
+                </div>
+                {msg && <div className="note">{msg}</div>}
+                <div className="setup-fields">
+                  <label className="field">Building<input value={location} placeholder="Head office" onChange={e => setLocation(e.target.value)} /></label>
+                  <label className="field">Floor<input value={floorName} placeholder="4th floor" onChange={e => setFloorName(e.target.value)} /></label>
+                  <label className="field" title={scaleNote ? `${scaleNote} Correct it if you know a real dimension.` : ''}>Width (m)<input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} /></label>
+                </div>
+                <div className="sec-title">Rooms</div>
+                {rooms.length ? <div className="room-list">{rooms.map((r, i) => (
+                  <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input aria-label="Room name" value={r.name} onChange={e => rename(i, e.target.value)} /><button className="icon" title="Remove room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
+                ))}</div> : <div className="muted">None yet. Use <b>Edit plan</b> to draw them.</div>}
+                <label className="switch"><input type="checkbox" checked={suggest} onChange={e => setSuggest(e.target.checked)} /><span /> Furnish rooms by type</label>
+              </>}
+            </div>
+            <div className="setup-foot">
+              <button className="pri wide" disabled={!rooms.length || busy} onClick={build}>{busy && rooms.length ? 'Creating…' : 'Create 3D map'}</button>
+              <div className="row between">
+                <button className="ghost small" disabled={busy} onClick={() => detect()}>Read again</button>
+                <label className="ghost-file small"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />Another plan</label>
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
     </main>
   );

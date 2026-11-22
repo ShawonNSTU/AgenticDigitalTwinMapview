@@ -11,6 +11,7 @@ import WalkHud from '@/components/WalkHud';
 import GuestQr from '@/components/GuestQr';
 import RoomFurniture from '@/components/RoomFurniture';
 import FullscreenButton from '@/components/FullscreenButton';
+import OpsPanel from '@/components/OpsPanel';
 import { send, RENDERER_VERSION, type FromRenderer } from '@/lib/bridge';
 
 type Sim = { t: number; playing: boolean; scenario: string; scenarios: { key: string; name: string }[] };
@@ -28,7 +29,7 @@ export default function Home() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [floorTitle, setFloorTitle] = useState('');
   const [sel, setSel] = useState<string | null>(null);
-  const [tab, setTab] = useState<'devices' | 'agent'>('devices');
+  const [tab, setTab] = useState<'devices' | 'live' | 'agent'>('devices');
   const [hover, setHover] = useState<Hover>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [moving, setMoving] = useState<string | null>(null);
@@ -87,6 +88,18 @@ export default function Home() {
     es.addEventListener('live', () => loadDevices());   // a real SmartThings device changed
     es.addEventListener('devices', () => { loadDevices(); send({ type: 'refreshDevices' }); });
     es.addEventListener('layout', () => { setSel(null); loadDevices(); loadRooms(); });
+    // guest journeys: say when a room starts being prepared and when it is ready
+    const states: Record<string, string> = {};
+    es.addEventListener('journey', e => {
+      for (const j of JSON.parse((e as MessageEvent).data) as { token: string; guest: string; roomName: string; state: string }[]) {
+        const was = states[j.token]; states[j.token] = j.state;
+        if (was === undefined || was === j.state) continue;
+        if (j.state === 'preparing') toast(`Preparing ${j.roomName} for ${j.guest || 'a guest'}`);
+        if (j.state === 'ready') toast(`${j.roomName} is ready for ${j.guest || 'the guest'}`);
+        if (j.state === 'arrived') toast(`${j.guest || 'The guest'} arrived in ${j.roomName}`);
+        if (j.state === 'departed') toast(`${j.guest || 'Guest'} checked out of ${j.roomName} · eco and housekeeping`);
+      }
+    });
     loadDevices(); loadRooms();
     return () => es.close();
   }, [loadDevices, loadRooms, toast]);
@@ -168,10 +181,22 @@ export default function Home() {
         <div className="stats">
           <span className="stat"><b>{devices.length}</b> devices</span>
           <span className={`stat ${bad.length ? 'warn' : 'good'}`}><b>{bad.length}</b> {bad.length === 1 ? 'needs' : 'need'} attention</span>
-          <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
-          <a href="/tech"><button className="ghost">Technician</button></a>
-          <a href="/integrations"><button className="ghost">Integrations</button></a>
-          <a href="/setup"><button className="ghost">Upload floor plan</button></a>
+          <nav className="top-links">
+            <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
+            <a href="/tech"><button className="ghost">Technician</button></a>
+            <a href="/integrations"><button className="ghost">Integrations</button></a>
+            <a href="/setup"><button className="ghost">Upload floor plan</button></a>
+          </nav>
+          {/* tablets and small laptops: the same links in a menu, so the header stays on one line */}
+          <details className="top-more" onToggle={e => { const d = e.currentTarget; if (d.open) { const close = (ev: MouseEvent) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', close); } }; document.addEventListener('pointerdown', close); } }}>
+            <summary aria-label="More">Menu</summary>
+            <div className="top-menu glass" onClick={e => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false; }}>
+              <button className="ghost" onClick={() => setupRoom()}>Hotel setup</button>
+              <a href="/tech"><button className="ghost">Technician console</button></a>
+              <a href="/integrations"><button className="ghost">Integrations</button></a>
+              <a href="/setup"><button className="ghost">Upload floor plan</button></a>
+            </div>
+          </details>
         </div>
       </header>
       <section className="stage" ref={stage} data-fullscreen>
@@ -187,26 +212,21 @@ export default function Home() {
         {!walk.on && ready && devices.length === 0 && !hintClosed && (
           <div className="empty-hint glass">
             <button className="hint-close" aria-label="Close" title="Close" onClick={closeHint}>✕</button>
-            <b>This floor has no SmartThings devices yet</b>
-            <span>Drag devices from the palette onto any room. Wall units snap to the nearest wall, locks go beside a door, lights on the ceiling.</span>
+            <b>No devices yet</b>
+            <span>Drag one from the palette onto a room</span>
           </div>
         )}
         {roomSel && !walk.on && (
           <div className="room-card glass">
             <button className="hint-close" aria-label="Close" onClick={() => { setRoomSel(null); send({ type: 'selectRoom', room: '' }); }}>✕</button>
-            <span className="muted">Room</span>
             <b>{roomSel.roomName}</b>
-            <span className="muted">{devices.filter(d => d.room === roomSel.room).length} SmartThings devices</span>
-            {fitted(roomSel.room)
-              ? <span className="ready-chip">SmartThings devices installed · ready for guests</span>
-              : guestReady(roomSel.room)
-                ? <span className="ready-chip">Hotel setup done · ready for guests</span>
-                : <span className="muted small">Guest access needs this room's devices first: use “Set up as guest room”.</span>}
+            <span className="muted">{devices.filter(d => d.room === roomSel.room).length} devices{guestReady(roomSel.room) ? ' · ready for guests' : ''}</span>
             <div className="row">
               <button onClick={() => { send({ type: 'walk', action: 'start', room: roomSel.room }); }}>Walk in</button>
-              {!fitted(roomSel.room) && <button className={guestReady(roomSel.room) ? '' : 'pri'} onClick={() => setupRoom(roomSel.room)}>Set up as guest room</button>}
+              {guestReady(roomSel.room)
+                ? <button className="pri" onClick={() => setQrFor(roomSel)}>Check in a guest</button>
+                : <button className="pri" onClick={() => setupRoom(roomSel.room)}>Set up as guest room</button>}
               <button className={furnish ? 'on' : ''} onClick={() => setFurnish(!furnish)}>Furniture</button>
-              <button className="pri" disabled={!guestReady(roomSel.room)} title={guestReady(roomSel.room) ? '' : 'Run Hotel setup for this room first'} onClick={() => setQrFor(roomSel)}>Guest QR code</button>
             </div>
             {furnish && <RoomFurniture room={roomSel.room} />}
           </div>
@@ -225,8 +245,8 @@ export default function Home() {
       <aside className="side">
         {sel ? <DevicePanel id={sel} t={sim ? Math.round(sim.t * 10) / 10 : 10} onClose={() => setSel(null)} onSelect={select} onMove={move} onRemove={remove} /> : (
           <>
-            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>AI agent</button></div>
-            {tab === 'agent' ? <ChatPanel onSelect={select} /> : (
+            <div className="tabs"><button className={tab === 'devices' ? 'on' : ''} onClick={() => setTab('devices')}>Devices <i>{devices.length}</i></button><button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live ops</button><button className={tab === 'agent' ? 'on' : ''} onClick={() => setTab('agent')}>AI agent</button></div>
+            {tab === 'agent' ? <ChatPanel onSelect={select} /> : tab === 'live' ? <OpsPanel toast={toast} /> : (
               <div className="list">
                 {devices.length === 0 && <div className="muted pad">Nothing placed yet. Drag a device from the palette on the map.</div>}
                 {byRoom.map(([room, rows]) => (

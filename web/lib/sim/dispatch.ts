@@ -8,6 +8,14 @@ import * as ST from '@/lib/integrations/smartthings';
 import { audit, scheduleRelock } from './access';
 import { log as journal } from '@/lib/kg/journal';
 
+/** Listeners told when a person (not the automation) changed a device: room, device, who. */
+type Activity = (room: string, id: string, by: string) => void;
+const ga = globalThis as unknown as { __activity?: Activity[] };
+const listeners: Activity[] = (ga.__activity ??= []);
+export function onActivity(fn: Activity) { if (!listeners.includes(fn)) listeners.push(fn); }
+/** Who acts for the building itself (their commands are not someone using the room). */
+export const AUTOMATION = ['arrival', 'eco', 'housekeeping', 'auto-relock', 'comfort-auto'];
+
 export type Result = { ok: boolean; error?: string; offline?: boolean; needsConfirmation?: boolean; via?: 'smartthings' | 'simulator'; device?: unknown; note?: string };
 
 export async function dispatch(id: string, command: string, args: Record<string, unknown> = {}, confirmed = false, by = 'user'): Promise<Result> {
@@ -48,5 +56,6 @@ export async function dispatch(id: string, command: string, args: Record<string,
   const shown = Object.entries(args).map(([k, v]) => `${k} ${v}`).join(', ');
   journal({ kind: 'command', by, devices: [id], room: d.room,
     text: `${label} (${id}): ${command}${shown ? ` (${shown})` : ''} ${res.ok ? `done${res.via === 'smartthings' ? ' on the real SmartThings device' : ''}` : `FAILED: ${res.error}`}${note ? `; ${note}` : ''}` });
+  if (res.ok && !AUTOMATION.includes(by)) for (const fn of listeners) { try { fn(d.room, id, by); } catch { /* a listener must not break a command */ } }
   return note && res.ok ? { ...res, note } : res;
 }

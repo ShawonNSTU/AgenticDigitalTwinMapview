@@ -12,6 +12,8 @@ type Alert = {
   status: 'new' | 'acknowledged' | 'investigating' | 'resolved'; events: { at: number; text: string }[];
   assignee: { id: string; name: string } | null;
 };
+type Pred = { key: string; deviceId: string; name: string; type: string; roomName: string; title: string; etaText: string; etaMin: number | null; confidence: number; basis: string; evidence: string[]; action: string; part: string | null; partName: string | null };
+type Disp = { deviceId: string; tech: { name: string } | null; fromName: string; status: string };
 type Rec = { id: string; at: number; by: string; status: string; cause: string; action: string; notes: string };
 
 const ago = (ms: number) => { const s = Math.round((Date.now() - ms) / 1000); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
@@ -33,6 +35,10 @@ export default function TechPage() {
   const [summing, setSumming] = useState(false);
   const [notify, setNotify] = useState(true); // hides the button until the browser's permission is known (no SSR mismatch)
   const known = useRef(new Set<string>());
+  const [preds, setPreds] = useState<Pred[]>([]);
+  const [disp, setDisp] = useState<Disp[]>([]);
+  const [psel, setPsel] = useState<string | null>(null);   // a predicted failure picked (no alert yet)
+  const loadPreds = useCallback(() => fetch('/api/predictions').then(r => r.json()).then(x => { setPreds(x.predictions); setDisp(x.dispatches); }).catch(() => {}), []);
   const [techs, setTechs] = useState<{ id: string; name: string }[]>([]);
   const [me, setMe] = useState('');   // which technician is using this console ('' = everyone's alerts)
   const meRef = useRef('');
@@ -58,6 +64,14 @@ export default function TechPage() {
       load();
     });
     es.addEventListener('health', () => load());
+    // predicted failures: tell the technician when a new one is due within the hour
+    const seenPred = new Set<string>();
+    es.addEventListener('predicted', e => {
+      const x = JSON.parse((e as MessageEvent).data);
+      setPreds(x.predictions); setDisp(x.dispatches);
+      for (const p of x.predictions as Pred[]) if (!seenPred.has(p.key)) { seenPred.add(p.key); if (p.etaMin != null && p.etaMin <= 60) { setToast(`Predicted · ${p.deviceId} ${p.name} in ${p.roomName}: ${p.title}, in ${p.etaText}`); setTimeout(() => setToast(''), 6000); } }
+    });
+    loadPreds();
     // a resolved alert means the device is fixed: it leaves the list everywhere at once
     es.addEventListener('cleared', e => {
       const c = JSON.parse((e as MessageEvent).data);
@@ -66,7 +80,7 @@ export default function TechPage() {
     });
     const h = setInterval(load, 5000);
     return () => { es.close(); clearInterval(h); };
-  }, [load]);
+  }, [load, loadPreds]);
   useEffect(() => { setNotify(typeof Notification === 'undefined' || Notification.permission === 'granted'); }, []);
 
   const a = alerts.find(x => x.deviceId === sel) ?? null;
@@ -81,7 +95,21 @@ export default function TechPage() {
     if (m.type === 'ready') setReady(true);
     if (m.type === 'floorBuilt') setBuilt(true);
     if (m.type === 'deviceClicked') setSel(m.id);
-  }, []);
+    // the technician reached the device on the map: on site, and the x-ray opens at the failing part
+    if (m.type === 'techRoute' && m.phase === 'arrived') {
+      fetch('/api/predictions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: m.id, status: 'on_site' }) }).then(() => loadPreds());
+      const p = predsRef.current.find(x => x.deviceId === m.id);
+      setToast(`On site at ${m.id}${p?.partName ? ` · opening the ${p.partName}` : ''}`); setTimeout(() => setToast(''), 5000);
+      send({ type: 'openDevice', id: m.id, ...(p?.part ? { part: p.part } : {}) });
+    }
+  }, [loadPreds]);
+  const predsRef = useRef<Pred[]>([]);
+  useEffect(() => { predsRef.current = preds; }, [preds]);
+  const dispatchTo = async (id: string, reason: string) => {
+    const r = await fetch('/api/predictions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: id, reason }) });
+    if (r.ok) { const x = await r.json(); send({ type: 'dispatchRoute', id }); setToast(`${x.tech?.name ?? 'Technician'} on the way to ${id} from ${x.fromName}`); setTimeout(() => setToast(''), 5000); loadPreds(); }
+  };
+  const p0 = preds.find(x => x.deviceId === psel) ?? null;
 
   const record = async () => {
     if (!a) return;
@@ -135,11 +163,36 @@ export default function TechPage() {
               <em className={`st ${x.status}`}>{x.status}</em>
             </button>
           ))}
+          {preds.length > 0 && <div className="row between pred-title"><b>Predicted</b><span className="muted small">before guests notice</span></div>}
+          {preds.slice(0, 6).map(p => (
+            <button key={p.key} className={`alert-row predicted ${psel === p.deviceId && !sel ? 'on' : ''}`} onClick={() => { setSel(null); setPsel(p.deviceId); send({ type: 'focusDevice', id: p.deviceId }); }}>
+              <span className="dev-ico"><DeviceIcon type={p.type} size={16} /></span>
+              <span className="grow"><b>{p.deviceId} · {p.title}</b><small>{p.roomName} · {Math.round(p.confidence * 100)} % · {p.basis.replace('-', ' ')}</small></span>
+              <em className="eta-chip">{p.etaMin != null ? `in ${p.etaText}` : p.etaText}</em>
+            </button>
+          ))}
         </div>
         {toast && <div className="toasts"><div className="toast bad">{toast}</div></div>}
       </section>
       <aside className="side">
-        {!a ? <div className="panel"><div className="muted">Pick an alert to investigate. New alerts appear here and as notifications.</div></div> : (
+        {!a && p0 ? (
+          <div className="panel">
+            <div className="dev-head">
+              <span className="dev-ico big"><DeviceIcon type={p0.type} size={26} /></span>
+              <div className="grow"><b>{p0.deviceId} · {p0.name}</b><div className="muted">{p0.roomName} · predicted, not failed yet</div></div>
+              <span className="badge predicted">in {p0.etaText}</span>
+            </div>
+            <div className="finding predicted"><b>{p0.title}</b><div className="muted">{Math.round(p0.confidence * 100)} % confidence · {p0.basis.replace('-', ' ')}</div><ul>{p0.evidence.map(e => <li key={e}>{e}</li>)}</ul></div>
+            <div className="sec-title">Recommended</div><div>{p0.action}</div>
+            {(() => { const d = disp.find(x => x.deviceId === p0.deviceId && x.status !== 'done'); return (
+              <div className="btns">
+                {d ? <span className="muted">{d.tech?.name ?? 'Technician'} {d.status === 'on_site' ? 'on site' : `on the way from ${d.fromName}`}</span>
+                  : <button className="pri" onClick={() => dispatchTo(p0.deviceId, p0.title)}>Send me there · show the route</button>}
+                <button onClick={() => send({ type: 'openDevice', id: p0.deviceId, ...(p0.part ? { part: p0.part } : {}) })}>Open 3D twin{p0.partName ? ` at the ${p0.partName}` : ''}</button>
+                {d && d.status !== 'done' && <button onClick={() => fetch('/api/predictions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: p0.deviceId, status: 'on_site' }) }).then(loadPreds)}>I’m on site</button>}
+              </div>); })()}
+          </div>
+        ) : !a ? <div className="panel"><div className="muted">Pick an alert or a predicted failure.</div></div> : (
           <div className="panel">
             <div className="dev-head">
               <span className="dev-ico big"><DeviceIcon type={a.type} size={26} /></span>
@@ -149,6 +202,7 @@ export default function TechPage() {
             <div className="btns">
               <button className="pri" onClick={() => send({ type: 'openDevice', id: a.deviceId })}>Open 3D twin</button>
               <button onClick={() => send({ type: 'focusDevice', id: a.deviceId })}>Show on floor</button>
+              <button onClick={() => dispatchTo(a.deviceId, a.title)}>Route me there</button>
               <button onClick={() => send({ type: 'closeDevice' })}>Floor</button>
             </div>
             <div className={`finding ${a.level}`}>
@@ -162,12 +216,12 @@ export default function TechPage() {
             <ol className="steps">{a.steps.map((s, i) => <li key={i} onClick={() => send({ type: 'focusPart', id: a.deviceId, part: s.p })}>{s.t}</li>)}</ol>
             <div className="sec-title">AI summary</div>
             <button onClick={summarise} disabled={summing}>{summing ? 'Reading the evidence…' : 'Summarise the evidence and suggest checks'}</button>
-            {summary && <div className="ai-sum">{summary}<div className="muted">Suggestions only: the technician confirms the cause and decides the repair.</div></div>}
-            <div className="sec-title">Service notes</div>
+            {summary && <div className="ai-sum">{summary}</div>}
+            <details className="fold"><summary>Service notes</summary>
             <div className="docs"><b>{a.docs.title}</b>{a.docs.fault && <p><b>{a.docs.fault.name}:</b> {a.docs.fault.what}</p>}
-              <p className="muted">Parts: {a.docs.parts.map(p => `${p.name}${p.measured ? '' : ' (not measured)'}`).join(', ')}</p></div>
-            <div className="sec-title">Recent events</div>
-            <div className="recs">{a.events.length ? a.events.slice().reverse().map((e, i) => <div key={i} className="rec">{e.at ? `${ago(e.at)} · ` : ''}{e.text}</div>) : <div className="muted">No events.</div>}</div>
+              <p className="muted">Parts: {a.docs.parts.map(p => `${p.name}${p.measured ? '' : ' (not measured)'}`).join(', ')}</p></div></details>
+            {a.events.length > 0 && <details className="fold"><summary>Recent events <i>{a.events.length}</i></summary>
+            <div className="recs">{a.events.slice().reverse().map((e, i) => <div key={i} className="rec">{e.at ? `${ago(e.at)} · ` : ''}{e.text}</div>)}</div></details>}
             <div className="sec-title">Record the investigation</div>
             <div className="rec-form">
               <div className="seg">{STATUS.filter(s => s !== 'new').map(s => <button key={s} className={form.status === s ? 'on' : ''} onClick={() => setForm(f => ({ ...f, status: s }))}>{s}</button>)}</div>
@@ -176,8 +230,8 @@ export default function TechPage() {
               <textarea placeholder="Notes" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               <div className="row"><input className="grow" placeholder="Your name" value={form.by} onChange={e => setForm(f => ({ ...f, by: e.target.value }))} /><button className="pri" onClick={record}>Save record</button></div>
             </div>
-            <div className="sec-title">Maintenance history</div>
-            <div className="recs">{recs.length ? recs.map(r => <div key={r.id} className="rec"><b>{r.status}</b> · {new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {r.by}{r.cause && <div>Cause: {r.cause}</div>}{r.action && <div>Action: {r.action}</div>}{r.notes && <div className="muted">{r.notes}</div>}</div>) : <div className="muted">Nothing recorded yet.</div>}</div>
+            <details className="fold"><summary>Maintenance history <i>{recs.length}</i></summary>
+            <div className="recs">{recs.length ? recs.map(r => <div key={r.id} className="rec"><b>{r.status}</b> · {new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {r.by}{r.cause && <div>Cause: {r.cause}</div>}{r.action && <div>Action: {r.action}</div>}{r.notes && <div className="muted">{r.notes}</div>}</div>) : <div className="muted">Nothing recorded yet.</div>}</div></details>
           </div>
         )}
       </aside>

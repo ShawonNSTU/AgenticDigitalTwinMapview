@@ -234,6 +234,11 @@ export function readingsFrom(type: string, status: any, component = 'main'): Rec
   if (type === 'fan') { const s = v('fanSpeed', 'fanSpeed'); if (s != null) r.speed = s; }
   if (type === 'temphum') { const t = v('temperatureMeasurement', 'temperature'); if (t != null) r.temp = t; const h = v('relativeHumidityMeasurement', 'humidity'); if (h != null) r.hum = h; }
   if (type === 'vacuum') { const s = v('robotCleanerMovement', 'robotCleanerMovement'); if (s != null) r.state = s === 'cleaning' ? 'Cleaning' : 'Docked'; }
+  // any device with a power meter (smart plugs, Samsung appliances): the energy view uses the measured watts
+  const pw = v('powerMeter', 'power');
+  if (pw != null && Number.isFinite(Number(pw))) r.power = Number(pw);
+  const en = v('energyMeter', 'energy'), eu = m?.energyMeter?.energy?.unit;
+  if (en != null && Number.isFinite(Number(en))) r.energyKWh = eu === 'Wh' ? Number(en) / 1000 : Number(en);
   return r;
 }
 

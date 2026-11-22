@@ -77,6 +77,9 @@ func build(items: Array) -> void:
 			room = str(Store.room_at(Vector2(float(f.x), float(f.z))).get("key", ""))
 		_cur_cell = room if lit.has(room) else "*"
 		_item(str(f.get("kind", "")), Vector3(float(f.x), 0, float(f.z)), float(f.w), float(f.d), float(f.get("rot", 0.0)))
+		if GROUNDED.has(str(f.get("kind", ""))) and float(f.w) * float(f.d) < 14.0:
+			_shadows.append(Transform3D(Basis(Vector3.UP, float(f.get("rot", 0.0))) * Basis.from_scale(Vector3(float(f.w) * 1.25 + 0.2, 1, float(f.d) * 1.25 + 0.2)), Vector3(float(f.x), 0.012, float(f.z))))
+	_contact_shadows()
 	for key in _batches:
 		var parts: PackedStringArray = key.split("|").slice(1)
 		var xs: Array = _batches[key]
@@ -91,6 +94,49 @@ func build(items: Array) -> void:
 		mi.material_override = _mat(parts[1])
 		mi.name = key.replace("|", "_")
 		add_child(mi)
+
+
+## Furniture that stands on the floor gets a soft contact shadow under it (one instanced draw for the whole floor),
+## so it sits on the floor instead of floating, on every renderer and quality tier.
+const GROUNDED := ["bed", "bench", "bike", "bookcase_white", "cabinet", "chair", "coffee_table", "counter", "desk", "desk_one", "dispenser",
+	"elec_panel", "floor_lamp", "locker", "mesh_chair", "plant", "rack", "round_table", "shelf", "sofa", "stool", "table", "task_chair",
+	"toilet", "treadmill", "tufted_sofa", "tv_unit", "vending", "weight_rack", "workstation", "sink"]
+var _shadows: Array = []
+
+
+func _contact_shadows() -> void:
+	if _shadows.is_empty():
+		return
+	var g := Gradient.new()
+	g.set_color(0, Color(0, 0, 0, 0.42))
+	g.set_color(1, Color(0, 0, 0, 0.0))
+	g.add_point(0.55, Color(0, 0, 0, 0.28))
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 64
+	tex.height = 64
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = tex
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	var q := PlaneMesh.new()
+	q.size = Vector2(1, 1)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = q
+	mm.instance_count = _shadows.size()
+	for i in _shadows.size():
+		mm.set_instance_transform(i, _shadows[i])
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "ContactShadows"
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 
 func draw_calls() -> int:

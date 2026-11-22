@@ -22,6 +22,10 @@ signal scenario_changed(key: String)
 signal health_changed(id: String, health: String)
 signal device_data(id: String, data: Dictionary)
 signal live_updated  # Store.live refreshed from /api/floor (about once a second)
+signal experience_updated  # Store.experience refreshed (comfort, watts, journeys, predictions, dispatches)
+signal quality_requested(tier: String)  # auto | ultra | high | balanced | lite
+signal dispatch_requested(id: String)  # draw a technician's route from the entrance to this device
+signal welcome_requested(msg: Dictionary)  # guest arrival moment: {room, guest, state}
 signal layout_changed  # a floor plan was uploaded (or reset); rebuild the scene from Store
 signal devices_changed  # devices were placed, moved or removed on the same floor; rebuild only the devices
 

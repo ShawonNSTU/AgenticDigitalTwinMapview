@@ -18,6 +18,10 @@ var placer: Placer
 var _highlight: Array = []
 var _pending_focus := ""  # a device the host asked to focus before it arrived from the platform
 var env: Environment
+var quality: Quality
+var xp: ExperienceLayer   # comfort, energy, ops beacons, technician route, arrival auras
+var _layers := {"comfort": false, "energy": false, "ops": true}
+var _welcomed := {}       # room -> journey state already welcomed on the TV
 var walker: Walker        # first-person walk-through, or null on the map
 var _walk_saved := {}     # map wall height and plan furniture, restored when the walk ends
 var _walk_build := false  # the world is being rebuilt to enter or leave the walk
@@ -28,6 +32,17 @@ const WALK_AMBIENT := 0.5  # low enough that the room's own lights (and switchin
 func _ready() -> void:
 	get_viewport().physics_object_picking = true
 	_environment()
+	quality = Quality.new()
+	quality.name = "Quality"
+	quality.env = env
+	quality.sun = sun
+	add_child(quality)
+	Bus.quality_requested.connect(quality.request)
+	Bus.experience_updated.connect(_on_experience)
+	Bus.dispatch_requested.connect(func(id):
+		if xp:
+			xp.dispatch(id))
+	Bus.welcome_requested.connect(func(m): _welcome(str(m.get("room", "")), str(m.get("guest", "")), str(m.get("state", "ready"))))
 	rig = CameraRig.new()
 	add_child(rig)
 	_hud()
@@ -128,6 +143,10 @@ func _ready() -> void:
 			var ct := Node.new()
 			ct.set_script(load("res://tests/camera_test.gd"))
 			add_child(ct)
+		if a.begins_with("--xp-shots="):
+			var xs := Node.new()
+			xs.set_script(load("res://tests/experience_shots.gd"))
+			add_child(xs)
 		if a.begins_with("--demo-shots="):
 			var shots := Node.new()
 			shots.set_script(load("res://tests/demo_shots.gd"))
@@ -171,6 +190,12 @@ func _build_world(animate: bool) -> void:
 	placer.name = "Placer"
 	placer.rig = rig
 	world.add_child(placer)
+	xp = ExperienceLayer.new()
+	world.add_child(xp)
+	xp.comfort_on = _layers.comfort
+	xp.energy_on = _layers.energy
+	xp.ops_on = _layers.ops
+	xp.setup(self)
 	var fr: Rect2 = Store.floor_rect()
 	rig.set_bounds(fr)  # zoom range, pan limits and the home view follow the floor's size
 	_on_time(Store.t)
@@ -260,6 +285,10 @@ func _on_story(msg: Dictionary) -> void:
 			_story_heat(msg.get("values", {}) if msg.get("values") is Dictionary else {}, msg.get("labels", {}) if msg.get("labels") is Dictionary else {}, bool(msg.get("on", true)))
 		"night":
 			_story_night(bool(msg.get("on", true)))
+		"cast":  # the story's guest: other stays on the floor are not drawn while the story plays
+			Store.story_guest = str(msg.get("guest", ""))
+			if xp:
+				xp.refresh()
 
 
 func _story_wave(secs: float) -> void:
@@ -470,6 +499,45 @@ func _process(delta: float) -> void:
 	_track_tick(delta)
 
 
+## New experience data from the platform: the layers follow it, and a guest's room welcomes them on its TV when
+## their room becomes ready and when they arrive.
+func _on_experience() -> void:
+	if world == null or xp == null:
+		return
+	xp.refresh()
+	if Store.guest_token == "":
+		return
+	for j in Store.experience.get("journeys", []):
+		var st := str(j.get("state", ""))
+		if st in ["ready", "arrived"] and _welcomed.get(str(j.room), "") != st:
+			_welcomed[str(j.room)] = st
+			_welcome(str(j.room), str(j.get("guest", "")), st)
+
+
+## The welcome moment: the room's TV greets the guest by name and the room's lights pulse once.
+func _welcome(room: String, guest: String, state: String) -> void:
+	var tv := ""
+	for d in Store.devices:
+		if d.room == room and d.type == "tv":
+			tv = d.id
+			break
+	if tv == "":
+		return
+	var first := guest.split(" ")[0] if guest != "" else ""
+	var line := ("Welcome, %s" % first) if first != "" else "Welcome"
+	var sub := "Your room is ready" if state == "ready" else "Enjoy your stay"
+	var c: Dictionary = Store.experience.get("comfort", {}).get(room, {})
+	if not c.is_empty():
+		sub += "  ·  %.1f °C" % float(c.get("temp", 0))
+	_story_tv_text(tv, line, sub)
+	for d in Store.devices:
+		if d.room == room and devices.has(d.id) and d.type == "light":
+			devices[d.id].set_highlight(true, false)
+			get_tree().create_timer(1.6).timeout.connect(func():
+				if devices.has(d.id):
+					devices[d.id].set_highlight(false, false))
+
+
 func _track_tick(delta: float) -> void:
 	if _holo_ring and is_instance_valid(_holo_ring):
 		_holo_ring.rotation.y += delta * 0.8
@@ -640,6 +708,9 @@ func _environment() -> void:
 	env.ambient_light_color = Color("aab4c3")
 	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.adjustment_enabled = true
+	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 1.08
 	env.glow_enabled = true
 	env.glow_intensity = 0.6
 	env.ssao_enabled = true  # Forward+ only; ignored by the web (Compatibility) renderer
@@ -732,6 +803,8 @@ func _on_open(id: String, part: String) -> void:
 		devices[other].visible = other == id
 	dev.set_highlight(false, false)
 	piping.visible = false
+	if xp:
+		xp.visible = false    # beacons, routes and overlays step back too
 	interior.visible = false  # furniture and columns step back so nothing hides the twin
 	floor_builder.set_walls_faded(true)
 	detail.open(dev)
@@ -754,6 +827,8 @@ func _on_close() -> void:
 	for other in devices:
 		devices[other].visible = true
 	piping.visible = true
+	if xp:
+		xp.visible = true
 	interior.visible = true
 	floor_builder.set_walls_faded(false)
 	Store.open_id = ""
@@ -776,6 +851,15 @@ func _on_layer(layer: String, on: bool) -> void:
 		"temperature": floor_builder.tint_rooms(on)
 		"furniture": interior.visible = on
 		"exploded": detail.set_exploded(on)
+		"comfort":
+			_layers.comfort = on
+			xp.set_comfort(on)
+		"energy":
+			_layers.energy = on
+			xp.set_energy(on)
+		"ops":
+			_layers.ops = on
+			xp.set_ops(on)
 
 
 func _unhandled_input(e: InputEvent) -> void:

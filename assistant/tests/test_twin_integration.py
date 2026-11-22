@@ -503,3 +503,52 @@ def test_resolving_a_scenario_problem_repairs_it():
         assert ac
     finally:
         httpx.post(f"{TWIN}/api/sim", json={"scenario": "normal"}, timeout=10)
+
+
+# ---- hotel experience: comfort, energy, arrival, predictions, dispatch (through the twin's ops) ----
+
+def xstep(action: str, **kw) -> dict:
+    return {"action": action, "minutes": 0, "temp": 0, "scene": "", "curtain": -1, "room": "", "guest": "", "device_id": "", **kw}
+
+
+def test_staff_comfort_and_energy_come_from_the_twin(llm):
+    llm.script = {"router": [route("experience", "how comfortable is the zone?")], "experience": [xstep("comfort_status", room="smartthings-experience-zone")]}
+    events = chat("/api/chat", "how comfortable is the zone?")
+    text = " ".join(d.get("text", "") for e, d in events if e == "text")
+    assert "/100" in text and "°C" in text, text
+    assert ("ui_action", {"type": "setLayer", "layer": "comfort", "on": True}) in events
+    llm.script = {"router": [route("experience", "how much energy today?")], "experience": [xstep("energy")]}
+    text = " ".join(d.get("text", "") for e, d in chat("/api/chat", "how much energy today?") if e == "text")
+    assert " W** now" in text and "kWh" in text, text
+
+
+def test_guest_on_my_way_prepares_their_room(llm):
+    p = httpx.post(f"{TWIN}/api/guest", json={"room": "smartthings-experience-zone", "verify": False, "label": "Test Guest"}, timeout=10).json()
+    path = f"/api/guest/{p['token']}/chat"
+    llm.script = {"router": [route("experience", "I'll be there in 2 minutes")], "experience": [xstep("on_my_way", minutes=2)]}
+    text = " ".join(d.get("text", "") for e, d in chat(path, "I'll be there in 2 minutes") if e == "text")
+    assert "ready when you get there" in text, text
+    j = None
+    for _ in range(30):   # the room starts being prepared within the lead time (2 s experience loop)
+        j = httpx.get(f"{TWIN}/api/guest/{p['token']}/journey", timeout=10).json()["journey"]
+        if j["state"] in ("preparing", "ready"):
+            break
+        time.sleep(1)
+    assert j["state"] in ("preparing", "ready") and j["steps"], j["state"]
+    assert any(s.get("real") for s in j["steps"])     # the zone's real SmartThings devices are part of the welcome
+    httpx.post(f"{TWIN}/api/arrivals", json={"action": "checkout", "token": p["token"]}, timeout=30)
+
+
+def test_technician_predictions_and_dispatch(llm):
+    ac = zone_device("Ceiling AC")
+    httpx.post(f"{TWIN}/api/devices/{ac['id']}/fault", json={"key": "bearing", "level": "degrading"}, timeout=10)
+    try:
+        llm.script = {"router": [route("experience", "what will fail next?")], "experience": [xstep("predictions")]}
+        text = " ".join(d.get("text", "") for e, d in chat("/api/chat", "what will fail next?") if e == "text")
+        assert ac["id"] in text and "confidence" in text, text
+        llm.script = {"router": [route("experience", f"send a technician to {ac['id']}")], "experience": [xstep("dispatch", device_id=ac["id"])]}
+        events = chat("/api/chat", f"send a technician to {ac['id']}")
+        assert ("ui_action", {"type": "dispatchRoute", "id": ac["id"]}) in events
+        assert any(x["deviceId"] == ac["id"] for x in httpx.get(f"{TWIN}/api/predictions", timeout=10).json()["dispatches"])
+    finally:
+        httpx.delete(f"{TWIN}/api/devices/{ac['id']}/fault", timeout=10)

@@ -18,6 +18,10 @@ import { ROUTINES, savedFor } from '@/lib/sim/routines';
 import { link, links, version as stVersion } from '@/lib/integrations/smartthings';
 import { agentNames, allowedCommands, devicesInScope, ownerKey, type Scope } from '@/lib/integrations/stagent';
 import { events, journalVersion, type JEvent } from './journal';
+import { summary as energySummary } from '@/lib/experience/energy';
+import { comfort as comfortRooms } from '@/lib/experience/comfort';
+import { journeys as arrivalJourneys, housekeeping as arrivalHousekeeping } from '@/lib/experience/arrival';
+import { latest as latestPredictions, dispatches as techDispatches } from '@/lib/experience/predict';
 
 export type Doc = { id: string; kind: string; title: string; text: string; devices?: string[]; rooms?: string[] };
 export type Node = { id: string; kind: string; label: string };
@@ -190,6 +194,9 @@ export function knowledge(scope: Scope) {
     }
   }
 
+  /* ---- energy, comfort, guest journeys, predicted failures (lib/experience) ---- */
+  try { experienceDocs(scope, staff, docs, edges); } catch { /* the graph must build even if a service is not ready */ }
+
   /* ---- routines ---- */
   for (const r of ROUTINES) docs.push({ id: `routine:${r.id}`, kind: 'routine', title: `Routine ${r.name}`, text: `Built-in routine "${r.name}": ${r.about}. Runs on the devices of a chosen room.` });
   for (const r of savedFor(ownerKey(scope))) {
@@ -212,6 +219,57 @@ export function knowledge(scope: Scope) {
   const ver = `${LAYOUT.version}.${LAYOUT.devVersion}.${journalVersion()}.${stVersion()}`;
   return { version: ver, scope: staff ? `staff:${scope.role}` : `guest:${scope.pass.token.slice(0, 8)}`, docs, nodes, edges,
     stats: { rooms: all.length, devices: allDevs.length, real, docs: docs.length, events: visible.length, edges: edges.length } };
+}
+
+const money = (v: number, c: string) => `${v.toFixed(2)} ${c}`;
+
+/** Fact sheets for energy, comfort, guest journeys and predictions, cut to the asker's scope. */
+function experienceDocs(scope: Scope, staff: boolean, docs: Doc[], edges: Edge[]) {
+  const pass = scope.kind === 'guest' ? scope.pass : null;
+  const myRoom = pass?.room;
+  // energy
+  const e = energySummary(myRoom);
+  if (!e.empty) {
+    const T = e.tariff;
+    docs.push({ id: myRoom ? `energy:${myRoom}` : 'energy:floor', kind: 'energy', title: myRoom ? `Energy in ${roomName(myRoom)}` : `${rt.title}: energy today`, rooms: myRoom ? [myRoom] : e.rooms.slice(0, 6).map(r => r.key),
+      text: `${myRoom ? `${roomName(myRoom)} draws` : 'The floor draws'} ${Math.round(e.w)} W right now and used ${e.kwh.toFixed(2)} kWh today (${e.day}), about ${money(e.cost, T.currency)} at ${T.perKWh} ${T.currency}/kWh and ${e.co2Kg.toFixed(2)} kg CO2 at ${T.co2PerKWh} kg/kWh. `
+        + `The presence-aware automation (eco while guests are out or after checkout) avoided ${e.avoided.kwh.toFixed(3)} kWh (${money(e.avoided.cost, T.currency)}, ${e.avoided.co2Kg.toFixed(2)} kg CO2) today. `
+        + (e.eco.length ? `In eco now: ${e.eco.map(x => `${x.name} (${x.reason}, ${x.kwh.toFixed(3)} kWh avoided so far)`).join('; ')}. ` : 'No room is in eco now. ')
+        + `Biggest loads now: ${e.top.slice(0, 5).map(t => `${t.name} (${t.id}) ${Math.round(t.w)} W`).join(', ')}. `
+        + (myRoom ? '' : `By room: ${e.rooms.slice(0, 8).map(r => `${r.name} ${Math.round(r.w)} W / ${r.kwh.toFixed(2)} kWh`).join('; ')}. `)
+        + `Method: ${e.metered} device(s) measured by a power meter, ${e.modelled} from the power model of their live state.` });
+  }
+  // comfort
+  for (const c of comfortRooms(myRoom)) {
+    docs.push({ id: `comfort:${c.room}`, kind: 'comfort', title: `Comfort in ${c.name}`, rooms: [c.room],
+      text: `${c.name} comfort ${c.score}/100 (${c.grade}). Temperature ${c.temp} °C against a target of ${c.target} °C (${c.parts.thermal.label}, from ${c.parts.thermal.source}); humidity ${c.hum} %; `
+        + `air PM2.5 ${c.pm} (${c.parts.air.label}, ${c.parts.air.measured ? `measured by ${c.parts.air.source}` : c.parts.air.source}); light about ${c.lux} lux (${c.parts.light.label}, estimated); noise about ${c.db} dB (${c.parts.sound.label}, estimated). `
+        + (c.trend != null ? `Temperature trend ${c.trend} °C/min${c.etaToTargetMin ? `, target in about ${c.etaToTargetMin} min` : ''}. ` : '')
+        + (c.advice.length ? `To improve it: ${c.advice.map(a => a.text).join('; ')}.` : 'Nothing to improve right now.') });
+    edges.push({ from: `comfort:${c.room}`, rel: 'of', to: `room:${c.room}` });
+  }
+  // guest journeys
+  for (const j of arrivalJourneys().filter(j => staff || j.token === pass?.token)) {
+    const id = `journey:${j.token.slice(0, 8)}`;
+    docs.push({ id, kind: 'journey', title: `${staff ? `${j.guest || 'Guest'}'s` : 'Your'} arrival · ${j.roomName}`, rooms: [j.room],
+      text: `${staff ? `Guest ${j.guest || '(no name)'}` : 'Your stay'} in ${j.roomName}: ${j.state.replace('_', ' ')}. `
+        + (j.eta ? `Expected in about ${Math.max(0, Math.round((j.eta - Date.now()) / 60000))} min (from ${j.etaSource}). ` : '')
+        + `Preferences: ${j.prefs.temp} °C, ${j.prefs.scene} light, curtain ${j.prefs.curtain} % open${j.prefs.tvWelcome ? ', welcome on the TV' : ''}. `
+        + (j.steps.length ? `Welcome scene: ${j.steps.filter(s => s.status === 'done').length} of ${j.steps.length} steps done${j.steps.some(s => s.real) ? ` (${j.steps.filter(s => s.real).length} on real SmartThings devices)` : ''}${j.steps.some(s => s.status === 'failed') ? `; failed: ${j.steps.filter(s => s.status === 'failed').map(s => s.label).join(', ')}` : ''}. ` : '')
+        + `Timeline: ${j.timeline.slice(-5).map(t => `${when(t.at)} ${t.text}`).join('; ')}.` });
+    edges.push({ from: id, rel: 'for', to: `room:${j.room}` });
+  }
+  if (!staff) return;
+  for (const h of arrivalHousekeeping().slice(0, 6))
+    docs.push({ id: `housekeeping:${h.id}`, kind: 'housekeeping', title: `Housekeeping · ${h.roomName}`, rooms: [h.room], text: `Housekeeping for ${h.roomName} requested ${when(h.at)}: ${h.status.replace('_', ' ')}. Tasks: ${h.items.join('; ')}.` });
+  // predicted failures and dispatches
+  for (const p of latestPredictions()) {
+    docs.push({ id: `prediction:${p.key}`, kind: 'prediction', title: `Predicted: ${p.name} · ${p.title}`, devices: [p.deviceId], rooms: [p.room],
+      text: `Predicted failure on ${p.name} (${p.deviceId}) in ${p.roomName}: ${p.title}${p.etaMin != null ? `, in about ${p.etaText}` : ` (${p.etaText})`}. Basis: ${p.basis}, confidence ${Math.round(p.confidence * 100)} %. Evidence: ${p.evidence.join('; ')}. Recommended: ${p.action}.` });
+    edges.push({ from: `prediction:${p.key}`, rel: 'on', to: `device:${p.deviceId}` });
+  }
+  for (const d of techDispatches())
+    docs.push({ id: `dispatch:${d.deviceId}`, kind: 'dispatch', title: `Technician dispatch · ${d.deviceId}`, devices: [d.deviceId], text: `${d.tech?.name ?? 'A technician'} was dispatched ${when(d.at)} from ${d.fromName} to ${d.deviceId}: ${d.reason}. Status: ${d.status.replace('_', ' ')}.` });
 }
 
 /** Context for the agentic UI's empty state: counts and what needs attention. */

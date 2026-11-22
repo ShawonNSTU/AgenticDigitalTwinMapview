@@ -289,7 +289,9 @@ export const FAULTS: Record<string, Fault[]> = {
   ],
 };
 
-export const LEVELS = [{ key: 'early', name: 'Early', s: 0.35 }, { key: 'developing', name: 'Developing', s: 0.65 }, { key: 'severe', name: 'Severe', s: 1 }];
+// `degrading`: a fault that worsens steadily over rampMs (wear, clogging, a slow leak), so its failure can be predicted
+export const LEVELS: { key: string; name: string; s: number; rampMs?: number }[] = [{ key: 'early', name: 'Early', s: 0.35 }, { key: 'developing', name: 'Developing', s: 0.65 }, { key: 'severe', name: 'Severe', s: 1 },
+  { key: 'degrading', name: 'Degrading', s: 1, rampMs: Number(process.env.DEGRADE_MINUTES ?? 6) * 60_000 }];
 
 /** How a part looks under a fault: watch from weight × severity ≥ 0.25, fault from ≥ 0.6. */
 export function partHealthUnder(f: Fault | undefined, key: string, s: number): 'ok' | 'watch' | 'fault' {
