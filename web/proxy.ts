@@ -13,6 +13,7 @@ const guestApi = (path: string, method: string) =>
   || /^\/api\/guest\/[^/]+\/journey$/.test(path) && method === 'POST'
   || /^\/api\/guest\/[^/]+\/devices\/[^/]+\/commands$/.test(path) && method === 'POST'
   || /^\/api\/guest\/[^/]+\/(verify|chat|position)$/.test(path) && method === 'POST'
+  || /^\/api\/guest\/[^/]+\/chat\/history(\/[A-Za-z0-9_-]+)?$/.test(path) && ['GET', 'PUT', 'PATCH', 'DELETE'].includes(method)   // checked against the pass in the route
   || /^\/api\/guest\/[^/]+$/.test(path) && method === 'GET'
   || path === '/api/positioning/rtls' && method === 'POST'; // checked by its own key
 

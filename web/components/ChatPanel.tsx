@@ -53,6 +53,6 @@ export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void
     </div>
   );
 
-  return <AgentPanel endpoint="/api/chat" home={home} status={status} placeholder="Ask anything or tell me what to do…"
+  return <AgentPanel endpoint="/api/chat" history="/api/chat/history" home={home} status={status} placeholder="Ask anything or tell me what to do…"
     onUi={a => send(a as ToRenderer)} onSelect={onSelect} />;
 }
