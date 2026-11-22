@@ -118,3 +118,13 @@ def test_doors_open_to_the_side_their_swing_is_drawn(style, ppm):
         assert (leaf[1] if o == "h" else leaf[0]) > 0.9, (fx, fy, o, d["rot"])
         checked += 1
     assert checked >= 6
+
+
+@pytest.mark.skipif(not shutil.which("tesseract"), reason="needs tesseract for the printed numbers")
+@pytest.mark.parametrize("style,ppm", [("thick", 40), ("thin", 80), ("grey", 60)])
+def test_scale_from_the_printed_dimension(style, ppm):
+    # the synthetic plan prints "12000" over a dimension line the width of the flat: the scale is exact
+    img, truth = draw(style, ppm)
+    r = plan_cv.analyze(img)
+    assert "printed dimension 12000" in r["scale_note"]
+    assert abs(r["width_m"] - truth["width_m"]) < 0.2

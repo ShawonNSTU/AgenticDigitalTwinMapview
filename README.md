@@ -344,3 +344,11 @@ start makes a self-signed certificate in `web/.cert/` for this machine's name an
 warns once, so choose *Advanced -> Proceed* (or install `web/.cert/cert.pem` as trusted on those PCs). With a real
 certificate set `HTTPS_CERT` and `HTTPS_KEY`. Ports: `HTTPS_PORT` (3443), `HTTP_PORT` (3000, localhost only).
 Guest links and QR codes use the address you opened, so they work from other PCs and phones too.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request: the web app's type check, tests and build; the
+assistant's tests (with Tesseract for plan reading); then, against the running app, the renderer's
+walk-to-every-room check (`tools/check_routes.sh`: every room must be reachable through the plan's own doors) and
+the UI layout audits (`tools/ui_audit.js`, `tools/ui_audit_deep.js`: every page at desktop, tablet and phone sizes).
+Any issue fails the run; the audit screenshots are attached when it does.

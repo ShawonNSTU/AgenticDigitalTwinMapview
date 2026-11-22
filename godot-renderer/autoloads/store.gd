@@ -18,6 +18,9 @@ var show_ids := false       # the Device IDs layer
 var guest_token := ""      # set when the page was opened from a guest link (?guest=<token>)
 var guest: Dictionary = {}  # {room, entrance} from the platform for that link
 var guest_allowed: Dictionary = {}
+var locks_ignored := false  # reachability checks: as if every lock were open
+var step_free := false  # step-free routes: no stairs, no doorway narrower than 0.8 m
+var key_room := ""  # the room the walker holds the key for (their own room, or where a technician is sent)
 var comfort_metric := "thermal"  # comfort layer colours by: thermal | air | score
 var story_guest := ""  # story mode: only this guest's stay is drawn (other stays on the floor are not part of the story)
 var experience: Dictionary = {}  # comfort per room, live watts, eco rooms, journeys, predictions, dispatches (/api/floor)
@@ -100,6 +103,13 @@ func color_for(h: String) -> Color:
 	return HEALTH_COLORS.get(h, HEALTH_COLORS.ok)
 
 
+func device(id: String) -> Dictionary:
+	for d in devices:
+		if str(d.get("id", "")) == id:
+			return d
+	return {}
+
+
 func room(key: String) -> Dictionary:
 	for r in rooms:
 		if r.key == key:
@@ -110,6 +120,53 @@ func room(key: String) -> Dictionary:
 ## Platform endpoint: the guest-scoped one when opened from a guest link.
 func api(what: String) -> String:
 	return "/api/guest/%s/%s" % [guest_token, what] if guest_token != "" else "/api/" + what
+
+
+## The smart lock fitted at a door, or "": each lock belongs to the one door it sits beside (on that door's wall
+## line, within a hand's reach of its frame), the nearest when doors are close together.
+func door_lock(f: Dictionary) -> String:
+	var c := Vector2(float(f.get("x", 0)), float(f.get("z", 0)))
+	for d in devices:
+		if str(d.get("type", "")) != "lock":
+			continue
+		var pos: Array = d.get("position", [0, 0, 0])
+		var lp := Vector2(float(pos[0]), float(pos[2]))
+		if _lock_fit(lp, f) < 0.0:
+			continue
+		var best := f
+		var best_s := _lock_fit(lp, f)
+		for g in furniture:
+			if g.get("kind", "") == "door" and g != f and not g.get("opening", false):
+				var sg := _lock_fit(lp, g)
+				if sg >= 0.0 and sg < best_s:
+					best = g
+					best_s = sg
+		if best == f:
+			return str(d.id)
+	return ""
+
+
+## How well a lock at lp fits a door: the distance from the door's frame along its wall, or -1 if it isn't on that
+## wall or is too far from the frame.
+func _lock_fit(lp: Vector2, f: Dictionary) -> float:
+	var c := Vector2(float(f.get("x", 0)), float(f.get("z", 0)))
+	var rot := float(f.get("rot", 0.0))
+	var u := Vector2(cos(rot), -sin(rot))
+	var n := Vector2(sin(rot), cos(rot))
+	var off := absf((lp - c).dot(n))
+	var along := absf((lp - c).dot(u)) - float(f.get("w", 0.9)) / 2
+	if off > 0.35 or along > 0.9:
+		return -1.0
+	return maxf(along, 0.0) + off
+
+
+## Whether a door's smart lock is locked (a door without a lock never is). The walker holding the key (a guest
+## for their own room, a technician sent there) is let through by the caller.
+func door_locked(f: Dictionary) -> bool:
+	if f.get("opening", false) or locks_ignored:
+		return false
+	var id := door_lock(f)
+	return id != "" and bool(live.get(id, {}).get("locked", false))
 
 
 ## Whether a door may be open and walked through: always, except for a guest, who only gets doors

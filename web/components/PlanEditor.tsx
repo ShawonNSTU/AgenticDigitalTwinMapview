@@ -192,7 +192,7 @@ export default function PlanEditor() {
       if (j.width_m) setWidthM(j.width_m);
       if (j.location) setLocation(j.location);
       if (j.floor) setFloorName(j.floor);
-      setScaleNote(j.width_m && !j.known ? `Estimated ${j.scale_note ?? ''}.` : '');
+      setScaleNote(j.width_m && !j.known ? `${/printed dimension/.test(j.scale_note ?? '') ? 'Measured' : 'Estimated'} ${j.scale_note ?? ''}.` : '');
       setMode('rooms');
       const named = j.rooms.filter((x: { name: string }) => !/^Room \d+$/.test(x.name)).length;
       setMsg(j.rooms.length ? '' : 'No rooms found. Draw them with the Rooms tool.'); void named;
@@ -310,8 +310,19 @@ export default function PlanEditor() {
               )}
               {drag && <rect x={Math.min(drag.x, drag.x2)} y={Math.min(drag.y, drag.y2) * ar} width={Math.abs(drag.x2 - drag.x)} height={Math.abs(drag.y2 - drag.y) * ar} fill="#4c8dff" fillOpacity={0.25} stroke="#4c8dff" strokeWidth={0.003} />}
               {doors.map((d, i) => {
-                const ux = Math.cos(d.rot), uz = -Math.sin(d.rot), h = d.fw / 2;
-                return <line key={i} x1={d.fx - ux * h} y1={d.fy * ar - uz * h} x2={d.fx + ux * h} y2={d.fy * ar + uz * h} stroke="#22c55e" strokeWidth={0.006} strokeLinecap="round" style={{ cursor: mode === 'doors' ? 'pointer' : undefined }} />;
+                // the doorway, and its leaf and swing drawn as the 3D floor will open it (check them against the plan)
+                const ux = Math.cos(d.rot), uz = -Math.sin(d.rot), nx = Math.sin(d.rot), nz = Math.cos(d.rot), h = d.fw / 2, cy = d.fy * ar;
+                const leaves = d.fw * widthM > 1.2 ? 2 : 1, lw = d.fw / leaves;
+                const swing = d.opening ? null : Array.from({ length: leaves }, (_, k) => {
+                  const side = k === 0 ? -1 : 1, hx = d.fx + ux * side * h, hy = cy + uz * side * h;
+                  const tx = hx + nx * lw, ty = hy + nz * lw, ex = hx - ux * side * lw, ey = hy - uz * side * lw;
+                  const sweep = (tx - hx) * (ey - hy) - (ty - hy) * (ex - hx) > 0 ? 1 : 0;   // round the hinge, the short way
+                  return <g key={k}><line x1={hx} y1={hy} x2={tx} y2={ty} stroke="#16a34a" strokeWidth={0.0025} /><path d={`M ${tx} ${ty} A ${lw} ${lw} 0 0 ${sweep} ${ex} ${ey}`} fill="none" stroke="#16a34a" strokeWidth={0.0018} strokeDasharray="0.004 0.003" /></g>;
+                });
+                return <g key={i} style={{ cursor: mode === 'doors' ? 'pointer' : undefined }}>
+                  <line x1={d.fx - ux * h} y1={cy - uz * h} x2={d.fx + ux * h} y2={cy + uz * h} stroke="#22c55e" strokeWidth={0.006} strokeLinecap="round" strokeDasharray={d.opening ? '0.008 0.005' : undefined} />
+                  {swing}
+                </g>;
               })}
             </svg>
           </>)}

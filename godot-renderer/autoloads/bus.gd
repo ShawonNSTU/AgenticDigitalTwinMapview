@@ -24,6 +24,7 @@ signal device_data(id: String, data: Dictionary)
 signal live_updated  # Store.live refreshed from /api/floor (about once a second)
 signal experience_updated  # Store.experience refreshed (comfort, watts, journeys, predictions, dispatches)
 signal quality_requested(tier: String)  # auto | ultra | high | balanced | lite
+signal daylight_requested(hour: float)  # local hour 0-24 to show, or -1 for the real time
 signal dispatch_requested(id: String)  # draw a technician's route from the entrance to this device
 signal welcome_requested(msg: Dictionary)  # guest arrival moment: {room, guest, state}
 signal layout_changed  # a floor plan was uploaded (or reset); rebuild the scene from Store

@@ -263,10 +263,8 @@ func overview(on: bool) -> void:
 		fb.ceilings.visible = not on
 
 
-## Turn to face a point (guided tour of the room's devices).
-## Step to where the whole room is in view and turn to face it, as you would on walking in: of the open floor
-## (clear of furniture, at least 0.45 m from the walls), the spot farthest from the room's middle that still sees
-## the middle without looking through a wall. Standing just inside the door, a small room is all close-up.
+## Step into the room and take it in, as you would on walking in: just inside the door you came through, facing
+## across to its far side.
 func view_room(r: Dictionary) -> void:
 	if r.is_empty():
 		return
@@ -281,6 +279,8 @@ func view_room(r: Dictionary) -> void:
 		else:
 			arrived.connect(func(): if p.distance_to(spot) < 0.6: look_at_point(look), CONNECT_ONE_SHOT)
 		return
+	# any other room: as a person does on walking in, stop just inside the door you came through, clear of the
+	# leaf and the furniture, and look across to the far side of the room
 	var poly := PlanGeo.room_poly(r)
 	var c := PlanGeo.interior_point(poly)
 	var lo := Vector2(INF, INF)
@@ -288,38 +288,34 @@ func view_room(r: Dictionary) -> void:
 	for q in poly:
 		lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
 		hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
-	var best := Vector2.INF
-	var best_d := -1.0
-	var x := lo.x + 0.3
-	while x < hi.x:
-		var z := lo.y + 0.3
-		while z < hi.y:
-			var q := Vector2(x, z)
-			z += 0.2
-			if not Geometry2D.is_point_in_polygon(q, poly) or not nav.is_free(q) or q.distance_to(c) <= best_d:
-				continue
-			var near_wall := false
-			for i in poly.size():
-				if q.distance_to(Geometry2D.get_closest_point_to_segment(q, poly[i], poly[(i + 1) % poly.size()])) < 0.45:
-					near_wall = true
-					break
-			if near_wall:
-				continue
-			var sees := true
-			for k in range(1, 10):
-				if not Geometry2D.is_point_in_polygon(q.lerp(c, k / 10.0), poly):
-					sees = false
-					break
-			if sees:
-				best = q
-				best_d = q.distance_to(c)
-		x += 0.2
-	var at := Vector3(c.x, eye - 0.8, c.y)   # a little down: furniture and floor, not ceiling
-	if best == Vector2.INF or best.distance_to(p) < 0.5 or not go_to(best):
+	var centre := (lo + hi) / 2
+	if not Geometry2D.is_point_in_polygon(centre, poly):
+		centre = c
+	var door_at := Vector2.INF
+	var inward := Vector2.ZERO
+	for f in Store.furniture:
+		if f.get("kind", "") != "door":
+			continue
+		var dc := Vector2(float(f.x), float(f.z))
+		var nn := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))
+		for side in [1.0, -1.0]:
+			if Geometry2D.is_point_in_polygon(dc + nn * side * 0.5, poly) and not Geometry2D.is_point_in_polygon(dc - nn * side * 0.5, poly):
+				if door_at == Vector2.INF or dc.distance_to(p) < door_at.distance_to(p):
+					door_at = dc
+					inward = nn * side
+	var spot := c
+	if door_at != Vector2.INF:
+		var depth := clampf(minf(hi.x - lo.x, hi.y - lo.y) * 0.3, 0.9, 1.6)
+		spot = nav.nearest_free(door_at + inward * depth, 8)
+		if not Geometry2D.is_point_in_polygon(spot, poly):
+			spot = c
+	var far := centre + (centre - spot).normalized() * 0.35 * minf(hi.x - lo.x, hi.y - lo.y) if centre.distance_to(spot) > 0.3 else centre + inward * 2.0
+	var at := Vector3(far.x, eye - 0.45, far.y)   # eye level, a little down: the room, not the ceiling
+	if spot.distance_to(p) < 0.4 or not go_to(spot):
 		look_at_point(at)
 		return
 	# turn to the room once there; a tap elsewhere on the way cancels it (no turning round where you chose to go)
-	arrived.connect(func(): if p.distance_to(best) < 0.6: look_at_point(at), CONNECT_ONE_SHOT)
+	arrived.connect(func(): if p.distance_to(spot) < 0.6: look_at_point(at), CONNECT_ONE_SHOT)
 
 
 func look_at_point(q: Vector3) -> void:
@@ -332,6 +328,13 @@ func look_at_point(q: Vector3) -> void:
 
 ## Keeps the walker inside one room from now on (a guest who reached their room).
 var _confine := PackedVector2Array()
+
+
+## Re-plan the walkable floor (a door's lock changed), keeping the room the walker is held in.
+func rebuild_nav() -> void:
+	nav.build(_pieces, _lintels)
+	if not _confine.is_empty():
+		nav.restrict(_confine)
 
 
 func confine(r: Dictionary) -> void:

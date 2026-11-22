@@ -18,11 +18,20 @@ func _run() -> void:
 		await get_tree().create_timer(0.25).timeout
 	await get_tree().create_timer(2.0).timeout
 	if room == "*":  # every room: the walk from the lift lobby (where guests arrive), or NO WAY IN
+		for i in 40:  # device states too (smart locks close doors)
+			if not Store.live.is_empty():
+				break
+			await get_tree().create_timer(0.25).timeout
 		Store.furniture = Store.furniture + WalkNav.auto_doors(Store.rooms, Store.furniture)
 		for f in Store.furniture:
 			if f.get("kind", "") == "door" and f.get("auto", false):
 				print("AUTO DOOR (the plan gives no way in) ", Store.room_at(Vector2(float(f.x), float(f.z)) + Vector2(sin(float(f.rot)), cos(float(f.rot))) * 0.5).get("name", "?"), " / ", Store.room_at(Vector2(float(f.x), float(f.z)) - Vector2(sin(float(f.rot)), cos(float(f.rot))) * 0.5).get("name", "?"))
 		var nv := WalkNav.new()
+		nv.build(main.floor_builder.wall_pieces, main.floor_builder.lintels)
+		for f in nv.locked_doors:
+			print("LOCKED DOOR ", "%.1f,%.1f" % [float(f.x), float(f.z)], " (routes go round it)")
+		# reachability is about the plan's doors: a locked door still counts as a way in
+		Store.locks_ignored = true
 		nv.build(main.floor_builder.wall_pieces, main.floor_builder.lintels)
 		var lobby: Dictionary = Store.room("lift-lobby")
 		var from := nv.room_target(lobby, PlanGeo.interior_point(PlanGeo.room_poly(lobby)))

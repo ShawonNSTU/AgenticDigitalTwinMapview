@@ -22,7 +22,7 @@ const openAll = (p, scope) => p.evaluate(s => document.querySelectorAll(`${s} de
 const boot = async p => { await R(p, { type: 'ready', version: '0.8.0' }); await R(p, { type: 'floorBuilt', rooms: 29, devices: 21 }); await wait(600); };
 
 (async () => {
-  const br = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--no-proxy-server'], headless: 'new', protocolTimeout: 180000 });
+  const br = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox', '--no-proxy-server'], headless: 'new', protocolTimeout: 180000 });
   const post = (u, body) => fetch(B + u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
   const guest = await post('/api/guest', { room: 'smartthings-experience-zone', hours: 4, label: 'Ayesha Rahman' });
   const pinned = await post('/api/guest', { room: 'smartthings-experience-zone', hours: 4, label: 'PIN guest', verify: true });
@@ -92,4 +92,5 @@ const boot = async p => { await R(p, { type: 'ready', version: '0.8.0' }); await
   fs.writeFileSync(OUT + '/report.json', JSON.stringify({ report, errors }, null, 1));
   console.log(`\n${report.reduce((n, r) => n + r.issues.length, 0)} issues in ${report.filter(r => r.issues.length).length}/${report.length} screens; page errors: ${errors.length}`);
   await br.close();
+  process.exitCode = report.some(r => r.issues.length) || errors.length ? 1 : 0;   // CI fails on any issue
 })();

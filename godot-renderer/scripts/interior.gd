@@ -709,7 +709,9 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 				var side := -1.0 if li == 0 else 1.0  # hinge at -w/2 or +w/2; the leaf reaches towards the middle
 				var hinge := Vector3(side * w / 2, 0, 0)
 				# open 70° on the map; flat against the wall while walking, so the doorway is clear
-				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(92.0 if Store.walk or _cur.get("held_open", false) else 70.0) * side), hinge)
+				# shut across the opening when its smart lock is locked
+				var ang := 0.0 if _cur.get("locked", false) else (92.0 if Store.walk or _cur.get("held_open", false) else 70.0)
+				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(ang) * side), hinge)
 				var glass_door: bool = _cur.get("glass", false)
 				_emit("box", "frosted" if glass_door else "door", _ir * leaf * Transform3D(Basis.from_scale(Vector3(lw - 0.02, lh, 0.012 if glass_door else 0.04)), Vector3(-side * lw / 2, lh / 2, 0)))
 				if glass_door:  # pull handle and a frosted band

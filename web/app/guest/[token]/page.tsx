@@ -49,6 +49,7 @@ export default function GuestPage() {
   const [pin, setPin] = useState('');
   const [pinErr, setPinErr] = useState('');
   const [walk, setWalk] = useState<Walk>({ phase: 'loading' });
+  const [stepFree, setStepFree] = useState(false);   // route without stairs or narrow doorways
   const [ready, setReady] = useState(false);
   const [built, setBuilt] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
@@ -199,6 +200,7 @@ export default function GuestPage() {
               {view?.entrances.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
             </select>
             <button className={overview ? 'on' : ''} onClick={() => { send({ type: 'walk', action: 'overview', on: !overview }); setOverview(!overview); }}>{overview ? 'Back to walking' : 'See the way from above'}</button>
+            <button className={stepFree ? 'on' : ''} aria-pressed={stepFree} title="Avoid stairs and narrow doorways" onClick={() => { send({ type: 'walk', action: 'stepFree', on: !stepFree }); setStepFree(!stepFree); }}>Step-free</button>
             <button onClick={() => send({ type: 'walk', action: 'skip' })}>Skip</button>
           </div>
         )}

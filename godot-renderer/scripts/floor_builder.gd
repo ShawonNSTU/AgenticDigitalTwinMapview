@@ -38,6 +38,8 @@ func build() -> void:
 		if Store.room_allowed(r.key):
 			if not Store.walk:   # walking: no names painted on the floor
 				_room_label(r, poly)
+	if Store.walk:
+		_signs()
 	for n in Store.notes:
 		if Store.room_allowed(Store.room_at(Vector2(float(n.x), float(n.z))).get("key", "")) or Store.guest_allowed.is_empty():
 			_note(n)
@@ -949,3 +951,75 @@ static func _mineral_tile_tex() -> ImageTexture:
 	img.generate_mipmaps()
 	_tex_cache.mineral = ImageTexture.create_from_image(img)
 	return _tex_cache.mineral
+
+
+
+## Wayfinding while walking, as in a finished building: a name plate on the wall beside each room's door, read from
+## the side you come from, and a lit EXIT sign over every door into a stair. Corridors, passages and lobbies have
+## no plates.
+const _NO_PLATE := ["corridor", "passage", "lobby", "hall", "foyer", "recess"]
+
+func _signs() -> void:
+	var plate_mat := StandardMaterial3D.new()
+	plate_mat.albedo_color = Color("2b3446")
+	plate_mat.roughness = 0.4
+	var exit_mat := StandardMaterial3D.new()
+	exit_mat.albedo_color = Color("16a34a")
+	exit_mat.emission_enabled = true
+	exit_mat.emission = Color("22c55e")
+	exit_mat.emission_energy_multiplier = 1.4
+	for f in Store.furniture:
+		if f.get("kind", "") != "door" or f.get("opening", false) or not Store.door_open(f):
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		var rot := float(f.get("rot", 0.0))
+		var u := Vector2(cos(rot), -sin(rot))
+		var n := Vector2(sin(rot), cos(rot))
+		var w := float(f.w)
+		for side in [1.0, -1.0]:
+			var into: Dictionary = Store.room_at(c + n * side * 0.5)
+			var from: Dictionary = Store.room_at(c - n * side * 0.5)
+			if into.is_empty() or from.is_empty() or not Store.room_allowed(str(from.key)):
+				continue
+			var name := Store.room_label(into)
+			var low := name.to_lower()
+			var out_dir: Vector2 = -n * side   # facing the corridor side, where you read it
+			var face := atan2(out_dir.x, out_dir.y)
+			if low.contains("stair"):
+				var at := c + out_dir * (WALL / 2 + 0.03)
+				var y := minf(Walker.LINTEL + 0.14, Store.wall_height - 0.12)
+				var box := _box(Vector3(at.x, y, at.y), Vector3(0.36, 0.14, 0.04), exit_mat)
+				box.rotation.y = face
+				var ex := Label3D.new()
+				ex.text = "EXIT"
+				ex.font_size = 48
+				ex.pixel_size = 0.0022
+				ex.modulate = Color.WHITE
+				ex.outline_size = 0
+				ex.double_sided = false
+				ex.position = Vector3(at.x + out_dir.x * 0.025, y, at.y + out_dir.y * 0.025)
+				ex.rotation.y = face
+				add_child(ex)
+				continue
+			var skip := false
+			for k in _NO_PLATE:
+				if low.contains(k):
+					skip = true
+			if skip:
+				continue
+			# beside the door on the latch side (away from the hinge), at eye level
+			var along := u * (w / 2 + 0.32) * (1.0 if side > 0 else -1.0)
+			var at2 := c + along + out_dir * (WALL / 2 + 0.012)
+			var pw := clampf(0.1 + name.length() * 0.032, 0.3, 0.7)
+			var plate := _box(Vector3(at2.x, 1.5, at2.y), Vector3(pw, 0.13, 0.012), plate_mat)
+			plate.rotation.y = face
+			var lb := Label3D.new()
+			lb.text = name
+			lb.font_size = 48
+			lb.pixel_size = minf(0.0021, (pw - 0.06) / maxf(name.length() * 26.0, 1.0))
+			lb.modulate = Color("f1f5f9")
+			lb.outline_size = 0
+			lb.double_sided = false   # read from the corridor side only
+			lb.position = Vector3(at2.x + out_dir.x * 0.008, 1.5, at2.y + out_dir.y * 0.008)
+			lb.rotation.y = face
+			add_child(lb)
