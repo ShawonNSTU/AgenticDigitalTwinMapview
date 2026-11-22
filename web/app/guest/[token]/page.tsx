@@ -208,7 +208,8 @@ export default function GuestPage() {
           <div className="guest-walk glass arrived">
             <span className="walk-dot" />
             <span><b>You’re in {view?.room.name}</b><small>Tap a device to control it</small></span>
-            {stops.length > 0 && <button className="pri" onClick={() => setTour(0)}>Take the tour</button>}
+            {stops.length > 0 && <button className="pri" onClick={() => { setOverview(false); setTour(0); }}>Take the tour</button>}
+            <button className={overview ? 'on' : ''} aria-pressed={overview} onClick={() => { send({ type: 'walk', action: 'overview', on: !overview }); setOverview(!overview); }}>{overview ? 'Back to eye level' : 'See the whole room'}</button>
             <button className="hint-x" aria-label="Close" title="Close" onClick={() => setHintShown(false)}>✕</button>
           </div>
         )}

@@ -972,6 +972,7 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 				_on_highlight([str(msg.get("id", ""))], "")
 		"show":  # guided tour: go where the device can be seen, face it, then say so (the host opens its control)
 			if walker and devices.has(str(msg.get("id", ""))):
+				walker.overview(false)   # a tour stop is seen at eye level
 				_show_device(str(msg.get("id", "")))
 		"toggle":
 			if Store.guest_token != "":
