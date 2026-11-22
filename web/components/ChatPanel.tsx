@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { send, type ToRenderer } from '@/lib/bridge';
 import { AgentPanel, ErrorNote } from './agent/Agent';
+import AgentPopup from './agent/AgentPopup';
 
 type Brief = { stats: { rooms: number; devices: number; real: number; docs: number; events: number }; title: string; empty: boolean;
   alerts: { id: string; name: string; room: string; title: string; level: string }[]; guests: number; routines: string[] };
@@ -14,8 +15,8 @@ const TASKS = [
   { icon: '⚠', label: 'Which devices will fail next?' },
 ];
 
-/** The staff assistant (administrator, technician): one agent for the whole twin. */
-export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void }) {
+/** The staff assistant (administrator, technician): one agent for the whole twin, in a popup over the map. */
+export default function ChatPanel({ onSelect, role = 'Administrator', right = 392 }: { onSelect: (id: string) => void; role?: string; right?: number }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [brief, setBrief] = useState<Brief | null>(null);
   useEffect(() => {
@@ -28,12 +29,11 @@ export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void
     return () => { alive = false; clearInterval(t); };
   }, []);
 
-  const status = (
-    <div className="ag-status" title={health?.problem ?? (health?.model ? `Model ${health.model}` : '')}>
+  const subtitle = (
+    <span className="agp-state" title={health?.problem ?? (health?.model ? `Model ${health.model}` : '')}>
       <i className={`dot ${health ? (health.ready ? 'ok' : 'off') : ''}`} />
-      <b>Assistant</b>
-      <span>{health ? (health.ready ? health.model ?? 'ready' : 'not ready') : 'checking…'}</span>
-    </div>
+      {health ? (health.ready ? `Ready · ${role}` : 'Not ready') : 'Checking…'}
+    </span>
   );
 
   const home = (ask: (q: string) => void) => (
@@ -53,6 +53,10 @@ export default function ChatPanel({ onSelect }: { onSelect: (id: string) => void
     </div>
   );
 
-  return <AgentPanel endpoint="/api/chat" history="/api/chat/history" home={home} status={status} placeholder="Ask anything or tell me what to do…"
-    onUi={a => send(a as ToRenderer)} onSelect={onSelect} />;
+  return (
+    <AgentPopup right={right} top={64}>
+      {ctl => <AgentPanel endpoint="/api/chat" history="/api/chat/history" home={home} title="Twin Assistant" subtitle={subtitle} ctl={ctl} placeholder="Ask anything or tell me what to do…"
+        onUi={a => send(a as ToRenderer)} onSelect={onSelect} />}
+    </AgentPopup>
+  );
 }

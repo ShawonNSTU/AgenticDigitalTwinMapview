@@ -935,7 +935,7 @@ button.small { padding:4px 9px; font-size:12px; }
 }
 
 /* ---- map navigation: two columns when the stage is not tall enough for one ---- */
-.map-nav { top:72px; bottom:14px; flex-wrap:wrap-reverse; align-content:flex-start; justify-content:flex-start; pointer-events:none; flex-direction:column; }
+.map-nav { top:72px; bottom:84px; flex-wrap:wrap-reverse; align-content:flex-start; justify-content:flex-start; pointer-events:none; flex-direction:column; }
 .map-nav > * { pointer-events:auto; }
 .map-nav .nav-help { pointer-events:auto; }
 
@@ -994,7 +994,7 @@ button.small { padding:4px 9px; font-size:12px; }
 .guest-walk .hint-x { width:34px; padding:0; justify-content:center; }
 @media (pointer: coarse) { .guest-walk > button { height:38px; } .guest-walk .hint-x { width:38px; } }
 /* the tour card: bottom right, beside "Find me", when the map is wide; at the top when it is narrow */
-@container (min-width: 900px) { .tour { top:auto; bottom:14px; left:auto; right:14px; transform:none; width:min(460px, calc(100% - 422px)); } }
+@container (min-width: 900px) { .tour { top:auto; bottom:84px; left:auto; right:14px; transform:none; width:min(460px, calc(100% - 422px)); } }
 /* narrow map and the tour running: the tour is at the top, the device's control docks at the bottom right */
 @container (max-width: 899px) { .guest-stage:has(.tour) .holo:not(.moved) { left:auto !important; right:8px; top:auto !important; bottom:8px; transform:none !important; max-width:calc(100% - 16px); } }
 .pin-card .seg { align-self:stretch; }
@@ -1014,6 +1014,20 @@ button.small { padding:4px 9px; font-size:12px; }
 .plan-hint { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); z-index:3; padding:7px 14px; font-size:12.5px; color:var(--text2); white-space:nowrap; }
 .plan-reading { position:absolute; z-index:3; top:50%; left:50%; transform:translate(-50%, -50%); display:flex; align-items:center; gap:12px; padding:14px 20px; font-weight:600; }
 .plan-reading .spinner { width:22px; height:22px; margin:0; border-width:2.5px; border-color:var(--line2); border-top-color:var(--acc); }
+.plan-reading span:last-child { display:flex; flex-direction:column; gap:2px; } .plan-reading small { font-weight:500; color:var(--muted); font-size:12px; }
+.plan-scan { position:absolute; inset:0; z-index:2; pointer-events:none; overflow:hidden; border-radius:inherit; }
+.plan-scan::after { content:""; position:absolute; left:0; right:0; height:120px; top:-120px; background:linear-gradient(180deg, rgba(37,99,235,0), rgba(37,99,235,.10) 70%, rgba(37,99,235,.38) 100%); animation:plan-scan 2.4s ease-in-out infinite; }
+@keyframes plan-scan { 0% { top:-120px; } 100% { top:100%; } }
+.setup-wait h3 { margin:4px 0 6px; font-size:17px; color:var(--text); }
+.setup-wait p { margin:0 0 14px; font-size:13px; }
+.read-steps { list-style:none; margin:0 0 16px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.read-steps li { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text2); }
+.read-steps li::before { content:""; width:14px; height:14px; border-radius:50%; border:2px solid var(--acc-line); border-top-color:var(--acc); animation:spin 1s linear infinite; flex:none; }
+.skel-rows { display:flex; flex-direction:column; gap:8px; }
+.skel-rows span { height:36px; border-radius:10px; background:linear-gradient(90deg, var(--bg2) 0%, #f8fafc 50%, var(--bg2) 100%); background-size:200% 100%; animation:skel 1.4s ease-in-out infinite; }
+@keyframes skel { 0% { background-position:100% 0; } 100% { background-position:-100% 0; } }
+.btn-spin { display:inline-block; width:14px; height:14px; margin-right:8px; vertical-align:-2px; border-radius:50%; border:2px solid rgba(255,255,255,.45); border-top-color:#fff; animation:spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .plan-scan::after, .skel-rows span, .read-steps li::before, .btn-spin { animation:none; } }
 .plan svg.view { cursor:default; }
 .setup .side { display:flex; flex-direction:column; }
 .setup-side .panel { flex:1; overflow:auto; gap:12px; padding:18px; }
@@ -1023,7 +1037,7 @@ button.small { padding:4px 9px; font-size:12px; }
 .setup-side .room-list { max-height:none; }
 .setup-foot { padding:12px 18px 16px; border-top:1px solid var(--line); background:#fff; display:flex; flex-direction:column; gap:6px; }
 .setup-foot .ghost-file.small { font-size:12px; padding:4px 9px; }
-.setup-wait { padding:30px 4px; text-align:center; }
+.setup-wait { padding:8px 2px; text-align:left; }
 /* map toolbar: Layers menu (layers and quality) + Whole floor, on every screen */
 .layers-menu { display:block !important; }
 .layers-inline { display:none !important; }
@@ -1079,3 +1093,76 @@ details.lab[open] { gap:12px; }
 
 /* plan editor: a room with no door into it */
 .room-list .row .nodoor { flex:none; font-size:11px; color:var(--warn, #b45309); background:rgba(245,158,11,.12); border-radius:6px; padding:2px 6px; white-space:nowrap; }
+
+/* ---------------- AI agent popup (components/agent/AgentPopup.tsx) ---------------- */
+.agp { position:fixed; right:0; bottom:0; width:0; height:0; z-index:1100; pointer-events:none; --agp-x:calc(var(--agp-right, 0px) + 20px); }
+@media (max-width: 900px) { .agp { --agp-x:20px; --agp-top:0px; } }
+.agp-card { position:absolute; right:var(--agp-x); bottom:88px; width:420px; height:640px; max-height:calc(100vh - 108px - var(--agp-top, 0px)); max-height:calc(100dvh - 108px - var(--agp-top, 0px)); display:flex; flex-direction:column;
+  background:#fff; border:1px solid rgba(15,23,42,.08); border-radius:20px; overflow:hidden;
+  box-shadow:0 2px 6px rgba(15,23,42,.08), 0 24px 60px rgba(15,23,42,.28);
+  opacity:0; visibility:hidden; transform:translateY(14px) scale(.98); transform-origin:bottom right;
+  transition:opacity .18s ease, transform .22s cubic-bezier(.2,.8,.2,1), visibility 0s linear .22s, width .22s ease, height .22s ease, top .22s ease; }
+.agp.open .agp-card { opacity:1; visibility:visible; transform:none; pointer-events:auto; transition:opacity .18s ease, transform .22s cubic-bezier(.2,.8,.2,1), visibility 0s, width .22s ease, height .22s ease; }
+.agp.expanded .agp-card { height:calc(100vh - var(--agp-top, 0px) - 104px); height:calc(100dvh - var(--agp-top, 0px) - 104px); width:min(480px, calc(100vw - 40px)); max-height:none; }
+.agp-card { translate:var(--agp-dx, 0px) var(--agp-dy, 0px); }
+.agp-card.dragging { transition:none; user-select:none; box-shadow:0 2px 6px rgba(15,23,42,.1), 0 30px 70px rgba(15,23,42,.36); }
+.agp-head { cursor:grab; touch-action:none; } .agp-card.dragging .agp-head { cursor:grabbing; } .agp-head button { cursor:pointer; }
+.agp-card .ag { flex:1; min-height:0; }
+.agp-card .ag-feed { background:#fbfcfe; }
+.agp-handle { display:none; }
+.agp-head { display:flex; align-items:center; gap:6px; padding:12px 10px 12px 14px; border-bottom:1px solid #eef2f7; background:#fff; }
+.agp-mark { width:34px; height:34px; border-radius:10px; background:var(--acc-bg); color:var(--acc); display:flex; align-items:center; justify-content:center; flex:none; margin-right:4px; }
+.agp-title { display:flex; flex-direction:column; min-width:0; flex:1; }
+.agp-title b { font-size:15px; line-height:1.25; }
+.agp-title > span { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.agp-state { display:inline-flex; align-items:center; gap:6px; }
+.agp-state .dot { width:7px; height:7px; border-radius:50%; background:#cbd5e1; flex:none; }
+.agp-state .dot.ok { background:#22c55e; } .agp-state .dot.off { background:#ef4444; }
+.agp-icon { width:36px; height:36px; padding:0; border:0; border-radius:10px; background:transparent; box-shadow:none; color:#475569; display:flex; align-items:center; justify-content:center; flex:none; }
+.agp-icon:hover { background:var(--bg2); color:var(--text); border:0; }
+.agp-icon.on { background:var(--acc-bg); color:var(--acc-dark); }
+.agp-fab { position:absolute; right:var(--agp-x); bottom:20px; pointer-events:auto; width:52px; height:52px; padding:0; display:flex; align-items:center; justify-content:center;
+  border-radius:50%; border:0; background:linear-gradient(180deg, #3b82f6, var(--acc)); color:#fff;
+  box-shadow:0 6px 20px rgba(37,99,235,.45); transition:transform .15s, box-shadow .15s; }
+.agp-fab:hover { background:linear-gradient(180deg, #2f76f0, var(--acc-dark)); color:#fff; border:0; transform:translateY(-1px); box-shadow:0 10px 26px rgba(37,99,235,.5); }
+.agp-fab:focus-visible { outline:3px solid #93c5fd; outline-offset:3px; }
+.agp-ring { position:absolute; inset:-5px; border-radius:50%; border:3px solid rgba(37,99,235,.18); border-top-color:var(--acc); animation:spin 1s linear infinite; pointer-events:none; }
+.agp-badge.prog { background:#0f172a; }
+.agp-badge { position:absolute; top:-4px; right:-4px; min-width:20px; height:20px; padding:0 6px; box-sizing:border-box; border-radius:999px; background:#f97316; border:2px solid #fff; font-size:11px; line-height:16px; text-align:center; }
+@media (prefers-reduced-motion: reduce) { .agp-card, .agp.open .agp-card { transition:none; } .agp-ring { animation:none; } }
+
+/* phone: a bottom sheet over the whole screen, a round launcher */
+@media (max-width: 640px) {
+  .agp-card, .agp.expanded .agp-card { right:0; bottom:0; width:100vw; height:84vh; height:84dvh; max-height:none; border-radius:22px 22px 0 0; transform-origin:bottom center; transform:translateY(40px); }
+  .agp.open .agp-card { transform:none; box-shadow:0 -12px 40px rgba(15,23,42,.35); }
+  .agp-handle { display:block; width:40px; height:5px; border-radius:3px; background:#cbd5e1; margin:8px auto 0; flex:none; }
+  .agp-head { border-bottom-color:#eef2f7; }
+  .agp-expand { display:none; }
+  .agp-icon { width:44px; height:44px; }
+  .agp-fab { right:14px; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .agp-card, .agp.open .agp-card { translate:none; }
+  .agp-head { cursor:auto; }
+  .agp.open .agp-fab { display:none; }
+  body:has(.holo) .agp:not(.open) .agp-fab { display:none; }   /* a device's controls take the bottom of the screen for now */
+}
+
+/* the bottom-centre cards rise above the AI agent launcher where the map is too narrow for both side by side */
+@container (max-width: 1000px) { .room-card { bottom:84px; } }
+
+/* ---------------- right panel folded away (components/SidePanel.tsx) ---------------- */
+.app.side-closed, .guest.side-closed { grid-template-columns:1fr 0; }
+.side[hidden], .guest-panel[hidden] { display:none !important; }
+.tabs .side-fold { flex:0 0 34px; width:34px; padding:0; display:flex; align-items:center; justify-content:center; color:var(--muted); background:transparent; border:0; box-shadow:none; }
+.tabs .side-fold:hover { color:var(--text); background:rgba(255,255,255,.7); }
+.side-tab { position:absolute; right:0; bottom:96px; z-index:6; display:flex; flex-direction:column; align-items:center; gap:8px;
+  padding:12px 7px; border-radius:12px 0 0 12px; border-right:0; color:var(--text); }
+.side-tab b { writing-mode:vertical-rl; transform:rotate(180deg); font-size:13px; font-weight:600; white-space:nowrap; }
+.side-tab i { font-style:normal; font-size:11px; color:var(--muted); }
+.side-tab:hover { background:#fff; }
+@media (max-width: 900px) {
+  .app.side-closed { grid-template: 'h' auto 'stage' 1fr / 1fr; }
+  .guest.side-closed { grid-template: 'h' auto 'stage' 1fr / 1fr; height:100vh; height:100dvh; min-height:0; }
+  .side-tab { bottom:20px; right:84px; flex-direction:row; padding:0 14px; height:44px; border-radius:12px; border-right:1px solid var(--line); }   /* beside the AI agent launcher */
+  .guest-stage:has(.holo) .side-tab, .stage:has(.holo) .side-tab { display:none; }   /* a device's controls are open over the map bottom */
+  .side-tab b { writing-mode:horizontal-tb; transform:none; }
+}

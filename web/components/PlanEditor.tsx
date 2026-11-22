@@ -52,6 +52,11 @@ export default function PlanEditor() {
   const [vtx, setVtx] = useState<{ room: number; i: number; at: Pt; moved: boolean } | null>(null); // corner pressed: click adds it, drag moves it
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);   // a chosen file is being opened (large photos take a moment)
+  const [since, setSince] = useState(0);           // when the current read or build started
+  const [, tick] = useState(0);
+  useEffect(() => { if (!busy && !opening) return; const t = setInterval(() => tick(n => n + 1), 500); return () => clearInterval(t); }, [busy, opening]);
+  const secs = since ? Math.max(0, Math.round((Date.now() - since) / 1000)) : 0;
   const [editing, setEditing] = useState(false);                     // the plan's drawing tools are open
   const [hasFloor, setHasFloor] = useState(false);                    // a floor is built already (else this is the first step)
   useEffect(() => { fetch('/api/building').then(r => r.json()).then(b => setHasFloor(!b.empty)).catch(() => {}); }, []);
@@ -161,7 +166,7 @@ export default function PlanEditor() {
    *  The reader sends back the drawing cropped to the building with its text removed: that is what the 3D floor shows. */
   async function detect(src = img, straightened = false) {
     if (!src) return;
-    setBusy(true); setMsg('');
+    setBusy(true); setMsg(''); setSince(Date.now());
     try {
       const r = await fetch('/api/floorplan/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: src.url }) });
       const j = await r.json();
@@ -201,7 +206,7 @@ export default function PlanEditor() {
 
   async function build() {
     if (!img || !rooms.length) return;
-    setBusy(true); setMsg('');
+    setBusy(true); setMsg(''); setSince(Date.now());
     const title = [location.trim(), floorName.trim()].filter(Boolean).join(' · ') || 'Uploaded floor plan';
     // a recognised floor is built from its checked model; any other plan from what was read (no devices yet:
     // they are dragged onto the 3D map afterwards)
@@ -218,8 +223,10 @@ export default function PlanEditor() {
 
   /** A new file: guess the floor from its name, then read it straight away. */
   async function upload(f: File) {
+    setOpening(true); setSince(Date.now()); setMsg('');
     try {
       const im = await loadImage(f);
+      setOpening(false);
       const base = f.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim();
       const fl = /\b(ground|basement|mezzanine|roof|\d+(st|nd|rd|th)?)\s*(floor|fl|level)\b|\b(level|floor)\s*\d+\b/i.exec(base)?.[0] ?? '';
       setImg(im); setKnown(null);
@@ -227,7 +234,7 @@ export default function PlanEditor() {
       setFloorName(fl ? fl.replace(/\b\w/, c => c.toUpperCase()) : 'Ground floor');
       setRooms([]); setDoors([]); setFurniture([]); setNotes([]); setScaleNote('');
       await detect(im);
-    } catch (err) { setMsg((err as Error).message); }
+    } catch (err) { setMsg((err as Error).message); } finally { setOpening(false); }
   }
   const rename = (i: number, name: string) => setRooms(rs => rs.map((r, j) => j === i ? { ...r, name } : r));
   const fs = 0.016;
@@ -249,7 +256,9 @@ export default function PlanEditor() {
       <div className={`setup-body ${stage}`}>
         <section className="plan">
           {!img ? (
-            <label className="drop">
+            opening ? (
+              <div className="drop" role="status" aria-live="polite"><span className="spinner" /><b>Opening your plan…</b><span className="muted">Large photos and scans take a few seconds</span></div>
+            ) : <label className="drop">
               <span className="drop-ico" aria-hidden>⬆</span>
               <b>Upload a floor plan</b>
               <span className="muted">An image, a scan or a photo of a printed plan</span>
@@ -267,7 +276,10 @@ export default function PlanEditor() {
               </div>
             )}
             {stage === 'review' && editing && <div className="plan-hint glass">{tool.hint}</div>}
-            {stage === 'reading' && <div className="plan-reading glass"><span className="spinner" />Reading your plan…</div>}
+            {stage === 'reading' && <>
+              <div className="plan-scan" aria-hidden />
+              <div className="plan-reading glass" role="status" aria-live="polite"><span className="spinner" /><span><b>Reading your plan…</b><small>{secs} s · a detailed sheet can take up to a minute</small></span></div>
+            </>}
             <svg ref={svg} tabIndex={0} viewBox={`${-PAD} ${-PAD} ${1 + 2 * PAD} ${ar + 2 * PAD}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={closeDraft} onKeyDown={key} className={editing ? mode : 'view'}>
               <rect x={-PAD} y={-PAD} width={1 + 2 * PAD} height={ar + 2 * PAD} fill="#eef2f7" />
               <image href={img.url} x={0} y={0} width={1} height={ar} preserveAspectRatio="none" />
@@ -330,7 +342,16 @@ export default function PlanEditor() {
         {img && (
           <aside className="side setup-side">
             <div className="panel">
-              {stage === 'reading' ? <div className="setup-wait muted">Finding rooms, doors and names…</div> : <>
+              {stage === 'reading' ? (
+                <div className="setup-wait">
+                  <h3>Reading your plan</h3>
+                  <p className="muted">The 3D map can be made as soon as this finishes. You can check and edit what was found next.</p>
+                  <ul className="read-steps">
+                    <li>Walls and rooms</li><li>Doors and openings</li><li>Room names</li><li>Real size from the printed scale</li>
+                  </ul>
+                  <div className="skel-rows" aria-hidden><span /><span /><span /><span /></div>
+                </div>
+              ) : <>
                 <div className="setup-head">
                   <h3>Check your floor</h3>
                   <span className="muted">{rooms.length} rooms · {doors.length} doors · {widthM} m wide</span>
@@ -350,7 +371,7 @@ export default function PlanEditor() {
               </>}
             </div>
             <div className="setup-foot">
-              <button className="pri wide" disabled={!rooms.length || busy} onClick={build}>{busy && rooms.length ? 'Creating…' : 'Create 3D map'}</button>
+              <button className="pri wide" disabled={!rooms.length || busy} onClick={build}>{stage === 'reading' ? <><span className="btn-spin" aria-hidden />Reading plan… {secs} s</> : busy && rooms.length ? <><span className="btn-spin" aria-hidden />Creating 3D map…</> : 'Create 3D map'}</button>
               <div className="row between">
                 <button className="ghost small" disabled={busy} onClick={() => detect()}>Read again</button>
                 <label className="ghost-file small"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />Another plan</label>

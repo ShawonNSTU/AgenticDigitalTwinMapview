@@ -45,7 +45,7 @@ const boot = async p => { await R(p, { type: 'ready', version: '0.8.0' }); await
       ['guest-qr-form', async p => { await click(p, '.room-card button', /^Furniture$/); await click(p, '.room-card button', /Check in a guest/); await wait(800); }],
       ['guest-qr-more', async p => { await openAll(p, '.modal'); }],
       ['guest-qr-made', async p => { await click(p, '.modal button', /Create QR code/); await wait(1500); }],
-      ['agent-reply', async p => { await click(p, '.modal .hint-close'); await click(p, '.tabs button', /AI agent/); await wait(600); await p.evaluate(() => { const t = document.querySelector('.ag textarea, .ag input[type=text]'); if (t) { const set = Object.getOwnPropertyDescriptor(t.__proto__, 'value').set; set.call(t, 'How many rooms are on this floor?'); t.dispatchEvent(new Event('input', { bubbles: true })); } }); await p.keyboard.press('Enter').catch(() => {}); await click(p, '.ag button[type=submit], .ag-send'); await wait(8000); }],
+      ['agent-reply', async p => { await click(p, '.modal .hint-close'); await click(p, '.agp-fab'); await wait(600); await p.evaluate(() => { const t = document.querySelector('.ag textarea, .ag input[type=text]'); if (t) { const set = Object.getOwnPropertyDescriptor(t.__proto__, 'value').set; set.call(t, 'How many rooms are on this floor?'); t.dispatchEvent(new Event('input', { bubbles: true })); } }); await p.keyboard.press('Enter').catch(() => {}); await click(p, '.ag button[type=submit], .ag-send'); await wait(8000); }],
     ]],
     ['tech', '/tech', boot, [
       ['alert-folds', async p => { await click(p, '.alert-row:not(.predicted)'); await wait(1000); await openAll(p, '.side'); }],
