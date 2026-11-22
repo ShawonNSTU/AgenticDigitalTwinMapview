@@ -101,3 +101,20 @@ def test_straightened_photo_with_dark_margins():
     r = plan_cv.analyze(flat)
     assert r["photo_corners"] is None
     assert len(truth["rooms"]) <= len(r["rooms"]) <= len(truth["rooms"]) + 1
+
+
+@pytest.mark.parametrize("style,ppm", [("thick", 60), ("thin", 80), ("grey", 60)])
+def test_doors_open_to_the_side_their_swing_is_drawn(style, ppm):
+    # the synthetic plan draws every swing south of a horizontal wall and east of a vertical one
+    img, truth = draw(style, ppm)
+    r = plan_cv.analyze(img)
+    W = truth["width_m"]
+    checked = 0
+    for fx, fy, w, o in truth["doors"]:
+        if fx * W > W - 1.6:   # the front door's swing is drawn outside the building: no wall beyond to read against
+            continue
+        d = min(r["doors"], key=lambda d: math.hypot(d["fx"] - fx, d["fy"] - fy))
+        leaf = (math.sin(d["rot"]), math.cos(d["rot"]))   # the renderer opens the leaf this way
+        assert (leaf[1] if o == "h" else leaf[0]) > 0.9, (fx, fy, o, d["rot"])
+        checked += 1
+    assert checked >= 6

@@ -108,6 +108,8 @@ export default function GuestPage() {
       if (m.guest === 'walking') { setWalk({ phase: 'walking', from: m.from, to: m.to, metres: m.metres }); if (m.route) setRoute(m.route); if (m.metres) journey({ action: 'walking', metres: m.metres }); }
       else if (m.guest === 'arrived') { setWalk(w => ({ ...w, phase: 'arrived', here: m.roomName })); setOverview(false); journey({ action: 'arrived', via: 'walk' }); }
       else if (m.roomName) setWalk(w => ({ ...w, here: m.roomName }));
+      // the tour's device is in sight: now its control can appear on it
+      if (m.viewing && m.viewing === pendingShow.current) { pendingShow.current = null; inView(m.viewing); }
     }
     if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); openHolo(m.id); reveal(m.id); }
     if (m.type === 'anchor') setAnchor(m);
@@ -141,16 +143,26 @@ export default function GuestPage() {
     const seen = new Set<string>();
     return devs.filter(d => TOUR[d.type] && !seen.has(d.type) && seen.add(d.type)).sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
   }, [view]);
+  // Each stop: first get the device in sight (the renderer walks to a spot that sees it, clear of walls and tall
+  // furniture, and turns to it), then show its control on it. A phone has room for the tour card or the control in
+  // the 3D view, not both: there the device is highlighted and the control stays one tap away in the list.
+  const pendingShow = useRef<string | null>(null);
+  const inView = useCallback((id: string) => {
+    if (window.matchMedia('(min-width: 600px)').matches) openHolo(id);
+    else send({ type: 'highlight', ids: [id] });
+  }, [openHolo]);
+  // keyed on the stop's device (the room's devices reload every few seconds; that must not restart the stop)
+  const stopId = tour != null ? stops[tour]?.id ?? null : null;
   useEffect(() => {
-    if (tour == null || !stops[tour]) return;
-    const d = stops[tour];
-    setFocus(d.id); setTab('room');
-    // a phone has room for the tour card or the device's control in the 3D view, not both: the tour turns to the
-    // device and highlights it there, and the control stays one tap away in the list
-    if (window.matchMedia('(min-width: 600px)').matches) openHolo(d.id);
-    else { send({ type: 'walk', action: 'look', id: d.id }); send({ type: 'highlight', ids: [d.id] }); }
-    reveal(d.id);
-  }, [tour, stops, openHolo, reveal]);
+    if (!stopId) return;
+    setFocus(stopId); setTab('room'); reveal(stopId);
+    openHolo(null);
+    pendingShow.current = stopId;
+    send({ type: 'walk', action: 'show', id: stopId });
+    // an older renderer never answers: show it after a moment anyway
+    const t = setTimeout(() => { if (pendingShow.current === stopId) { pendingShow.current = null; inView(stopId); } }, 9000);
+    return () => clearTimeout(t);
+  }, [stopId, openHolo, reveal, inView]);
 
   if (denied) return (
     <main className="guest-denied"><div className="glass"><span className="logo" /><h2>Guest access</h2><p>{denied}</p><p className="muted">Please ask the front desk for a new QR code.</p></div></main>

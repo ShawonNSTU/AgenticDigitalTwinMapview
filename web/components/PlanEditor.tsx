@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { straighten } from '@/lib/homography';
 import { useRouter } from 'next/navigation';
-import { interior, rect, roomColor, roomKey, toBuilding, type PlanFurniture, type PlanNote, type PlanRoom, type Pt } from '@/lib/layout';
+import { interior, noWayIn, rect, roomColor, roomKey, toBuilding, type PlanFurniture, type PlanNote, type PlanRoom, type Pt } from '@/lib/layout';
 import { furnish } from '@/lib/furnish';
 
 type Img = { url: string; w: number; h: number };
@@ -56,6 +56,8 @@ export default function PlanEditor() {
   const [hasFloor, setHasFloor] = useState(false);                    // a floor is built already (else this is the first step)
   useEffect(() => { fetch('/api/building').then(r => r.json()).then(b => setHasFloor(!b.empty)).catch(() => {}); }, []);
   const ar = img ? img.h / img.w : 0.6;
+  // rooms the plan's doors give no way into (pointed out in the room list)
+  const shut = useMemo(() => noWayIn(rooms, doors, ar), [rooms, doors, ar]);
   // suggested interiors depend on the real size, so they follow the plan width
   const suggested = useMemo(() => (suggest ? furnish(rooms, furniture, doors, widthM, ar) : []), [suggest, rooms, furniture, doors, widthM, ar]);
 
@@ -329,8 +331,9 @@ export default function PlanEditor() {
                   <label className="field" title={scaleNote ? `${scaleNote} Correct it if you know a real dimension.` : ''}>Width (m)<input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} /></label>
                 </div>
                 <div className="sec-title">Rooms</div>
+                {!known && shut.size > 0 && <div className="note">No door found into {shut.size === 1 ? 'one room' : `${shut.size} rooms`}. Add {shut.size === 1 ? 'it' : 'them'} with <b>Doors</b>, or the 3D walk will guess.</div>}
                 {rooms.length ? <div className="room-list">{rooms.map((r, i) => (
-                  <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input aria-label="Room name" value={r.name} onChange={e => rename(i, e.target.value)} /><button className="icon" title="Remove room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
+                  <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input aria-label="Room name" value={r.name} onChange={e => rename(i, e.target.value)} />{!known && shut.has(r.key) && <span className="nodoor" title="No door into this room">no door</span>}<button className="icon" title="Remove room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
                 ))}</div> : <div className="muted">None yet. Use <b>Edit plan</b> to draw them.</div>}
                 <label className="switch"><input type="checkbox" checked={suggest} onChange={e => setSuggest(e.target.checked)} /><span /> Furnish rooms by type</label>
               </>}

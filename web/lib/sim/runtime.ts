@@ -1,5 +1,6 @@
 // Runtime state of the simulated device platform: scenario, clock and device overrides.
 // Kept on globalThis so it survives hot reloads in development. One process = one demo.
+import { sheet4F } from './sheet4f';
 import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, setDevices, scenarioName, scenarioAvailable, activeFault } from './engine';
 import building from './data/building.json';
 import sampleDevices from './data/devices.json';
@@ -311,6 +312,7 @@ export function defaultPreset() {
   const file = existsSync(priv) ? priv : existsSync(pub) ? pub : null;
   if (!file) return null;
   const pre = JSON.parse(readFileSync(file, 'utf8'));
+  sheet4F(pre.rooms, pre.furniture ?? (pre.furniture = []));   // rooms and doors as the sheet draws them
   const img = pre.image ? path.join(process.cwd(), 'public', pre.image) : null;
   const imgData = img && existsSync(img) ? readFileSync(img) : null;
   const taken = new Set<string>();
@@ -397,6 +399,7 @@ export function knownFloorPlan(id: string) {
   const file = existsSync(priv) ? priv : existsSync(pub) ? pub : null;
   if (!file) return null;
   const pre = JSON.parse(readFileSync(file, 'utf8'));
+  sheet4F(pre.rooms, pre.furniture ?? (pre.furniture = []));   // rooms and doors as the sheet draws them
   const img = pre.image ? path.join(process.cwd(), 'public', pre.image) : null;
   const image = img && existsSync(img) ? `data:image/jpeg;base64,${readFileSync(img).toString('base64')}` : null;
   const [location, floorName] = String(pre.title).replace(/\s*\(.*\)\s*$/, '').split(/\s*·\s*/);

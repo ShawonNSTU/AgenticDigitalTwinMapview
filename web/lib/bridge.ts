@@ -20,7 +20,7 @@ export type ToRenderer =
   | { type: 'dragEnd'; u: number; v: number; drop: boolean }
   | { type: 'startMove'; id: string }
   | { type: 'refreshDevices' }
-  | { type: 'walk'; action: 'start' | 'stop' | 'toggle' | 'goto' | 'stick' | 'skip' | 'restart' | 'overview' | 'look' | 'live'; room?: string; x?: number; y?: number; from?: string; on?: boolean; id?: string }
+  | { type: 'walk'; action: 'start' | 'stop' | 'toggle' | 'goto' | 'stick' | 'skip' | 'restart' | 'overview' | 'look' | 'show' | 'live'; room?: string; x?: number; y?: number; from?: string; on?: boolean; id?: string }
   | { type: 'selectRoom'; room: string }
   // guest 3D controls: show a value in the room while it is being dragged, and report a device's screen position
   | { type: 'preview'; id: string; readings: Record<string, unknown>; text?: string }
@@ -46,7 +46,7 @@ export type FromRenderer =
   | ({ type: 'dropDevice'; deviceType: string } & Placement)
   | ({ type: 'moveDevice'; id: string } & Placement)
   | { type: 'placeHover'; room: string; roomName: string; valid: boolean; mount: string }
-  | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string; guest?: 'walking' | 'arrived'; from?: string; to?: string; metres?: number; route?: [number, number][]; live?: { x: number; z: number; room: string; toRoom?: number; atDoor?: boolean } }
+  | { type: 'walk'; on: boolean; room?: string; roomName?: string; note?: string; guest?: 'walking' | 'arrived'; from?: string; to?: string; metres?: number; route?: [number, number][]; viewing?: string; live?: { x: number; z: number; room: string; toRoom?: number; atDoor?: boolean } }
   | { type: 'roomClicked'; room: string; roomName: string }
   | { type: 'guestDenied'; code: number }
   | { type: 'anchor'; id: string; x: number; y: number; visible: boolean }

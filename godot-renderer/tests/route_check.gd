@@ -13,10 +13,34 @@ func _run() -> void:
 		if a.begins_with("--routes="):
 			room = a.get_slice("=", 1)
 	for i in 240:  # wait for the platform's floor (not the built-in demo)
-		if main.world != null and not Store.room(room).is_empty():
+		if main.world != null and (not Store.room(room).is_empty() or (room == "*" and Store.rooms.size() > 5)):
 			break
 		await get_tree().create_timer(0.25).timeout
 	await get_tree().create_timer(2.0).timeout
+	if room == "*":  # every room: the walk from the lift lobby (where guests arrive), or NO WAY IN
+		Store.furniture = Store.furniture + WalkNav.auto_doors(Store.rooms, Store.furniture)
+		for f in Store.furniture:
+			if f.get("kind", "") == "door" and f.get("auto", false):
+				print("AUTO DOOR (the plan gives no way in) ", Store.room_at(Vector2(float(f.x), float(f.z)) + Vector2(sin(float(f.rot)), cos(float(f.rot))) * 0.5).get("name", "?"), " / ", Store.room_at(Vector2(float(f.x), float(f.z)) - Vector2(sin(float(f.rot)), cos(float(f.rot))) * 0.5).get("name", "?"))
+		var nv := WalkNav.new()
+		nv.build(main.floor_builder.wall_pieces, main.floor_builder.lintels)
+		var lobby: Dictionary = Store.room("lift-lobby")
+		var from := nv.room_target(lobby, PlanGeo.interior_point(PlanGeo.room_poly(lobby)))
+		for r in Store.rooms:
+			var dest := nv.room_target(r, from)
+			var path := nv.path(from, dest, false) if dest != Vector2.INF else PackedVector2Array()
+			var seen: Array = []
+			var length := 0.0
+			for i in path.size():
+				if i > 0:
+					length += path[i].distance_to(path[i - 1])
+				var rr: Dictionary = Store.room_at(path[i])
+				if not rr.is_empty() and (seen.is_empty() or seen[seen.size() - 1] != rr.name):
+					seen.append(rr.name)
+			var ok: bool = r.key == "lift-lobby" or length > 0.5
+			print("%s %s | %.1f m | %s" % ["WALK" if ok else "NO WAY IN", r.name, length, " > ".join(seen)])
+		get_tree().quit()
+		return
 	var target: Dictionary = Store.room(room)
 	Store.furniture = Store.furniture + WalkNav.auto_doors(Store.rooms, Store.furniture)
 	var nav := WalkNav.new()

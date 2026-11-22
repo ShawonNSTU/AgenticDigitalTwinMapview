@@ -73,7 +73,7 @@ POST body (all optional): `{ scenario, t, playing, speed, fix }`. Changing scena
 
 ## POST /api/building
 Body: `{ title?, rooms: [{key, name, x:[x0,x1], z:[z0,z1], poly?: [[x,z]...], color, label?, labelAt?, zone?}], furniture?: [{kind, x, z, w, d, rot?, h?}], notes?: [{text, x, z, size?, rot?}], devices: [{id, type, room, name, position:[x,y,z], rotationY?}], outdoorPad?, plan?: {dataUrl, x0, x1, z0, z1} }`.
-`title` is the floor name shown in the header (GET returns it as `title`). Doors are furniture items of kind `door`.
+`title` is the floor name shown in the header (GET returns it as `title`). Doors are furniture items of kind `door` (`w` the opening, `rot` the wall's direction; the leaf opens towards (sin rot, cos rot)); `opening: true` is a doorway without a leaf, where two rooms are open to each other.
 Replaces the layout, clears command overrides and the fix time, bumps `version`. 400 with a message on invalid input (unknown type, duplicate id, bad image).
 
 ## DELETE /api/building

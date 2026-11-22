@@ -135,6 +135,10 @@ func _ready() -> void:
 			var lc := Node.new()
 			lc.set_script(load("res://tests/live_check.gd"))
 			add_child(lc)
+		if a.begins_with("--navmap="):
+			var nm := Node.new()
+			nm.set_script(load("res://tests/nav_map.gd"))
+			add_child(nm)
 		if a.begins_with("--routes="):
 			var rc := Node.new()
 			rc.set_script(load("res://tests/route_check.gd"))
@@ -926,6 +930,9 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 			if walker and devices.has(str(msg.get("id", ""))):
 				walker.look_at_point(devices[str(msg.get("id", ""))].global_position)
 				_on_highlight([str(msg.get("id", ""))], "")
+		"show":  # guided tour: go where the device can be seen, face it, then say so (the host opens its control)
+			if walker and devices.has(str(msg.get("id", ""))):
+				_show_device(str(msg.get("id", "")))
 		"toggle":
 			if Store.guest_token != "":
 				return
@@ -1378,3 +1385,80 @@ func _guest_skip() -> void:
 	walker.teleport(_guest_target)
 	walker._track_room()
 	_guest_arrived()
+
+
+## Guided tour stop: the device must be in sight before its control appears on it. If it can't be seen well from
+## here (a wall or a tall cupboard in the way, too close under it, too far), walk to the nearest open spot in the
+## room that sees it from a comfortable distance, turn to it, and only then tell the host ({viewing: id}).
+const _TALL := ["cabinet", "shelf", "rack", "locker", "column", "workstation", "lift_shaft", "vending", "partition", "wardrobe", "bookcase", "fridge"]
+var _show_seq := 0
+
+func _show_device(id: String) -> void:
+	_show_seq += 1
+	var seq := _show_seq
+	var dev: Node3D = devices[id]
+	var at3 := dev.global_position
+	var t := Vector2(at3.x, at3.z)
+	var here := walker.p
+	var r: Dictionary = Store.room(_guest_room) if _guest_room != "" else Store.room_at(here)
+	var done := func():
+		if seq != _show_seq or walker == null:
+			return
+		walker.look_at_point(at3)
+		_on_highlight([id], "")
+		Bus.walk_changed.emit({"on": true, "viewing": id})
+	if _sees(here, t, at3.y):
+		done.call()
+		return
+	var poly := PlanGeo.room_poly(r) if not r.is_empty() else PackedVector2Array()
+	var best := Vector2.INF
+	var best_s := INF
+	if not poly.is_empty():
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for q in poly:
+			lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
+			hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
+		var x := lo.x + 0.3
+		while x < hi.x:
+			var z := lo.y + 0.3
+			while z < hi.y:
+				var q := Vector2(x, z)
+				z += 0.25
+				if not Geometry2D.is_point_in_polygon(q, poly) or not walker.nav.is_free(q) or not _sees(q, t, at3.y):
+					continue
+				# nearest to where the guest stands, at a comfortable distance from the device
+				var s := q.distance_to(here) + absf(q.distance_to(t) - 2.4) * 1.5
+				if s < best_s:
+					best_s = s
+					best = q
+			x += 0.25
+	if best == Vector2.INF or not walker.go_to(best):
+		done.call()
+		return
+	walker.arrived.connect(func(): done.call(), CONNECT_ONE_SHOT)
+
+
+## Whether a device at t (height y) is in plain view from q: a comfortable distance (not straight overhead, not
+## across the floor), no wall between, and no tall furniture standing in the line of sight.
+func _sees(q: Vector2, t: Vector2, y: float) -> bool:
+	var d := q.distance_to(t)
+	if d < (1.3 if y > 1.9 else 1.0) or d > 4.5:
+		return false
+	var a := q
+	var b := t.lerp(q, 0.25 / maxf(d, 0.01))   # stop just short of the device (it sits on its wall)
+	if floor_builder:
+		for wp in floor_builder.wall_pieces:
+			if Geometry2D.segment_intersects_segment(a, b, wp[0], wp[1]) != null:
+				return false
+	for f in Store.furniture:
+		if not _TALL.has(str(f.get("kind", ""))):
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		if c.distance_to(q) > d + 1.5:
+			continue
+		var rect := Placer._rect(c, Vector2(float(f.w), float(f.d)), float(f.get("rot", 0.0)))
+		for k in range(1, 12):
+			if Geometry2D.is_point_in_polygon(a.lerp(b, k / 12.0), rect):
+				return false
+	return true

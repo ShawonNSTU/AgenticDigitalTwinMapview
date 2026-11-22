@@ -34,6 +34,7 @@ const PALETTE := {
 	"shade": [Color("17181b"), 0.1, 0.55], "shade_glow": [Color("ffcf8a"), 0.0, 0.5], "shade_inner": [Color("c9a46a"), 0.3, 0.45], "gloss_white": [Color("f4f4f2"), 0.0, 0.18],
 	"book_red": [Color("c0392b"), 0.0, 0.6], "walnut": [Color("6e4a2f"), 0.0, 0.5], "poster": [Color("d8343f"), 0.0, 0.6],
 	"frosted": [Color(0.86, 0.9, 0.93, 0.5), 0.05, 0.15],
+	"door_frame": [Color("4a3a2e"), 0.0, 0.45],
 	"steel_door": [Color("b9bdc3"), 0.55, 0.28], "box_blue": [Color("b9d3ea"), 0.0, 0.5], "exit_green": [Color("33e07a"), 0.0, 0.4],
 	"bottle": [Color(0.32, 0.5, 0.85, 0.55), 0.1, 0.1], "bottle_cap": [Color("1d4fd1"), 0.0, 0.4],
 }
@@ -48,6 +49,31 @@ const GLOW := ["led", "console", "display", "slide", "drinks", "shade_glow", "ex
 const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6, "maple": 0.6}
 
 var counts := {}         # kind -> number of items built (for the HUD / tests)
+
+
+## Oak veneer for door leaves: fine vertical grain with a broad figure, made once.
+static var _grain: ImageTexture
+static func _door_grain() -> ImageTexture:
+	if _grain:
+		return _grain
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var wander := FastNoiseLite.new()
+	wander.seed = 9
+	wander.frequency = 0.006
+	var tone := FastNoiseLite.new()
+	tone.seed = 13
+	tone.frequency = 0.02
+	var light := Color("c79a6b")
+	var dark := Color("8c6240")
+	for y in n:
+		for x in n:
+			var t := float(x) / n * 30.0 + wander.get_noise_2d(x * 0.5, y * 0.25) * 4.0
+			var line := pow(0.5 + 0.5 * sin(t * TAU), 10.0)
+			img.set_pixel(x, y, light.lerp(dark, clampf(line * 0.3 + (tone.get_noise_2d(x * 0.3, y) * 0.5 + 0.5) * 0.25, 0.0, 1.0)))
+	img.generate_mipmaps()
+	_grain = ImageTexture.create_from_image(img)
+	return _grain
 var _batches := {}       # "mesh|material" -> Array[Transform3D]
 var _it := Transform3D() # item frame, scaled to its footprint (x, z in fractions of w, d; y in metres)
 var _ir := Transform3D() # item frame, unscaled (metres)
@@ -189,7 +215,15 @@ func _mat(k: String) -> StandardMaterial3D:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	if k == "arc":
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	if TEXTURED.has(k):
+	if k == "door":
+		# veneered door leaf: oak grain running up the leaf (triplanar: stripes vary across, so they stand upright)
+		m.albedo_color = Color.WHITE
+		m.albedo_texture = _door_grain()
+		m.uv1_triplanar = true
+		m.uv1_world_triplanar = true
+		m.uv1_scale = Vector3.ONE / 0.9
+		m.roughness = 0.4
+	elif TEXTURED.has(k):
 		# subtle grain/weave so large surfaces don't look flat; world triplanar keeps scale constant on instanced parts
 		var n := FastNoiseLite.new()
 		n.frequency = 0.08 if k in ["wood", "walnut"] else 0.4
@@ -663,8 +697,12 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 		"door":
 			# frame jambs, one or two leaves standing open 70 degrees towards +z, handle, and the swing drawn on the floor
 			var lh := minf(h, 2.05) - 0.02
+			# the zone's glass door keeps its aluminium frame; every other door has a painted hardwood frame and head
+			var fm := "frame" if _cur.get("glass", false) else "door_frame"
 			for sx in [-1, 1]:
-				_bm("frame", Vector3(sx * (w / 2 + 0.025), lh / 2, 0), Vector3(0.05, lh, 0.14))
+				_bm(fm, Vector3(sx * (w / 2 + 0.025), lh / 2, 0), Vector3(0.05, lh, 0.14))
+			if fm == "door_frame":
+				_bm(fm, Vector3(0, lh + 0.03, 0), Vector3(w + 0.1, 0.06, 0.14))
 			var leaves := 2 if w > 1.2 else 1
 			var lw := w / leaves
 			for li in leaves:

@@ -56,7 +56,7 @@ func build(wall_pieces: Array, door_gaps: Array = []) -> void:
 	for s in wall_pieces:
 		_mark_segment(s[0], s[1])
 	for f in Store.furniture:
-		if f.get("kind", "") != "door":
+		if f.get("kind", "") != "door" or f.get("opening", false):  # an open doorway has no leaf
 			continue
 		var c := Vector2(float(f.x), float(f.z))
 		var rot := float(f.get("rot", 0.0))
@@ -430,7 +430,7 @@ func room_target(r: Dictionary, from: Vector2) -> Vector2:
 	var mid := PlanGeo.interior_point(poly)
 	var cands: Array = [nearest_free(mid, 30)]
 	for f in Store.furniture:
-		if f.get("kind", "") != "door":
+		if f.get("kind", "") != "door" or f.get("opening", false):  # an open doorway has no leaf
 			continue
 		var c := Vector2(float(f.x), float(f.z))
 		var nn := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))

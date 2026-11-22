@@ -25,3 +25,15 @@ and are named "(position assumed)".
 Interiors (428 items) come from the drawing: 23 columns and 207 cafeteria + 6 small-cafeteria seats detected
 automatically (the facility table says 208 and 6), tables derived from seat-row spacing, the 56 + 32 classroom seats
 and desks from the drawn grid, and the gym, pods, sanitary ware, stairs and room furniture read off the sheet.
+
+## Rooms and doors as the sheet draws them
+
+The trace gets the outlines right but not every door. `web/lib/sim/sheet4f.ts` applies the sheet's survey on top of
+whichever preset is installed (public or private): every door where the sheet draws it, with its leaf on the side the
+sheet swings it; open-plan connections as leafless openings; the lobbies and passages the sheet shows (the gym lobby,
+the Zone B lobby for the Experience Zone and Medical Room, the passages round the lift blocks, the hub room's recess).
+`godot-renderer` checks that every room can be walked to from the lift lobby:
+
+```
+godot --path godot-renderer -- --routes=*     # WALK <room> | metres | rooms passed, or NO WAY IN
+```

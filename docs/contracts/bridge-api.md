@@ -31,7 +31,7 @@ Every message is `{ source: "twin-host", type, ...fields }`. The page queues mes
 | `setQuality` | `tier: auto \| ultra \| high \| balanced \| lite` | rendering quality; `auto` (default) starts from the platform (mobile web lite, web balanced, desktop high) and follows the frame rate; `ultra` is Forward+ only (SDFGI, SSIL, SSR, volumetric fog) |
 | `dispatchRoute` | `id` | a technician's route from the lift lobby (or the floor's entrance) to the device, with the technician walking it; reports `techRoute` |
 | `welcome` | `room`, `guest?`, `state?: ready \| arrived` | the room's TV greets the guest by name and the room's lights pulse (also played automatically in a guest's view when their journey reaches ready / arrived) |
-| `walk` | `action`: `start`, `stop`, `toggle`, `goto` (`room`), `stick` (`x`, `y` in −1..1), and for guests `skip`, `restart` (`from` room), `overview` (`on`), `look` (`id`: turn to a device), `live` (`on`: follow the live position) | first-person walk-through: `start` drops to eye height where the view is centred (or in `room`); walls reach the ceiling and rooms are entered through doorways; `goto` walks the route to a room; `stick` is the on-screen joystick (`y` −1 walks forward, `x` turns) |
+| `walk` | `action`: `start`, `stop`, `toggle`, `goto` (`room`), `stick` (`x`, `y` in −1..1), and for guests `skip`, `restart` (`from` room), `overview` (`on`), `look` (`id`: turn to a device), `show` (`id`: guided tour: walk to a spot in the room that sees the device, clear of walls and tall furniture, turn to it, then answer `viewing`), `live` (`on`: follow the live position) | first-person walk-through: `start` drops to eye height where the view is centred (or in `room`); walls reach the ceiling and rooms are entered through doorways; `goto` walks the route to a room; `stick` is the on-screen joystick (`y` −1 walks forward, `x` turns) |
 
 ## Renderer → host
 
@@ -50,7 +50,7 @@ Every message is `{ source: "twin-renderer", type, ...fields }`.
 | `guestDenied` | `code` | the guest link stopped working (404/410) |
 | `quality` | `tier`, `auto`, `fps`, `scale`, `renderer: forward_plus \| compatibility` | the rendering tier now (on start and whenever auto changes it) |
 | `techRoute` | `id`, `metres`, `from`, `phase: started \| arrived \| failed` | a technician's route was drawn, or the walking technician reached the device |
-| `walk` | `on`, `room`, `roomName`, `note`, and for guests `guest: walking·arrived`, `from`, `to`, `metres` | walk-through started (`on: true`), entered another room, or ended (`on: false`); `note` when a room can't be reached |
+| `walk` | `on`, `room`, `roomName`, `note`, and for guests `guest: walking·arrived`, `from`, `to`, `metres`, `viewing` | walk-through started (`on: true`), entered another room, or ended (`on: false`); `note` when a room can't be reached; `viewing` (a device id) once a `show` has the device in sight, so the host opens its control only then |
 | `placeHover` | `room`, `roomName`, `valid`, `mount` | while dragging: the room under the pointer and how the device would be mounted |
 | `dropDevice` | `deviceType`, `x`, `y`, `z`, `rotationY`, `room` | a device was dropped; the page adds it with `POST /api/devices` |
 | `moveDevice` | `id`, `x`, `y`, `z`, `rotationY`, `room` | a placed device was put down somewhere else; the page saves it with `PATCH /api/devices/:id` |

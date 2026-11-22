@@ -14,7 +14,7 @@ const COLORS = ['#8fb4f2', '#a8d8a0', '#c7b7ef', '#f2dc8f', '#8fd8d0', '#f2b8c6'
 export type Pt = [number, number];
 export type PlanRoom = { key: string; name: string; pts: Pt[]; color: string; label?: string; labelAt?: Pt; zone?: string };
 /** Interior item: centre in image fractions, size (w across, d front-to-back) as fractions of image width, rot = facing in radians (0 faces down the image). */
-export type PlanFurniture = { kind: string; fx: number; fy: number; fw: number; fd: number; rot: number; suggested?: boolean };
+export type PlanFurniture = { kind: string; fx: number; fy: number; fw: number; fd: number; rot: number; suggested?: boolean; opening?: boolean };
 export const FURNITURE_KINDS = ['column', 'chair', 'task_chair', 'table', 'round_table', 'desk', 'workstation', 'sofa', 'armchair', 'bed', 'cabinet', 'shelf', 'rack', 'counter', 'sink', 'toilet', 'shower', 'stair', 'screen', 'railing', 'treadmill', 'bike', 'weight_rack', 'door', 'plant', 'locker', 'bench', 'stool', 'dispenser', 'vending', 'elec_panel'] as const;
 export type PlanNote = { text: string; fx: number; fy: number; size?: number; rot?: number };
 
@@ -82,6 +82,28 @@ export function pullInside(pts: Pt[], x: number, y: number): Pt {
 }
 
 /** Point-in-polygon in metres (x, z), for rooms of the 3D layout. */
+/**
+ * Rooms a person can't walk into through the plan's doors (fractions of the image; aspect = height / width).
+ * Each door links the rooms on its two sides (or a room and the outside); rooms not linked to the entrance
+ * (an outside door), or else to the best-connected room, have no way in. The 3D walk then has to guess a doorway
+ * for them, so the editor points them out.
+ */
+export function noWayIn(rooms: { key: string; pts: Pt[] }[], doors: { fx: number; fy: number; rot: number; fw?: number }[], aspect: number): Set<string> {
+  const at = (x: number, y: number) => rooms.find(r => inside(r.pts, x, y))?.key ?? 'outside';
+  const adj = new Map<string, Set<string>>([['outside', new Set()], ...rooms.map(r => [r.key, new Set<string>()] as [string, Set<string>])]);
+  for (const d of doors) {
+    const off = Math.max(0.006, (d.fw ?? 0.015) * 0.4);
+    const nx = Math.sin(d.rot) * off, ny = (Math.cos(d.rot) * off) / (aspect || 1);
+    const a = at(d.fx + nx, d.fy + ny), b = at(d.fx - nx, d.fy - ny);
+    if (a !== b) { adj.get(a)!.add(b); adj.get(b)!.add(a); }
+  }
+  let start = adj.get('outside')!.size ? 'outside' : rooms[0]?.key;
+  for (const r of rooms) if (start !== 'outside' && adj.get(r.key)!.size > adj.get(start)!.size) start = r.key;
+  const seen = new Set<string>(start ? [start] : []), todo = start ? [start] : [];
+  while (todo.length) for (const n of adj.get(todo.pop()!)!) if (!seen.has(n)) { seen.add(n); todo.push(n); }
+  return new Set(rooms.map(r => r.key).filter(k => !seen.has(k)));
+}
+
 export function insideXZ(poly: [number, number][], x: number, z: number) { return inside(poly as Pt[], x, z); }
 
 export function roomAt(rooms: PlanRoom[], fx: number, fy: number) {
@@ -139,7 +161,7 @@ export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: num
       return { id: d.id, type: d.type, room: r?.key ?? 'out', name: `${d.name ?? label} · ${r?.name ?? 'Outside'}${d.assumed ? ' (position assumed)' : ''}`, position: [x, MOUNT[d.type] ?? 1, z], rotationY: +rot.toFixed(4) };
     }),
     // rot in the image: 0 faces down = +z in the scene, so it carries over unchanged
-    furniture: furniture.map(f => ({ kind: f.kind, x: X(f.fx), z: Z(f.fy), w: +(f.fw * W).toFixed(3), d: +(f.fd * W).toFixed(3), rot: +f.rot.toFixed(4) })),
+    furniture: furniture.map(f => ({ kind: f.kind, x: X(f.fx), z: Z(f.fy), w: +(f.fw * W).toFixed(3), d: +(f.fd * W).toFixed(3), rot: +f.rot.toFixed(4), ...(f.opening ? { opening: true } : {}) })),
     notes: notes.map(n => ({ text: n.text, x: X(n.fx), z: Z(n.fy), size: n.size ?? 1, rot: n.rot ?? 0 })),
     plan: dataUrl ? { dataUrl, x0: -W / 2, x1: W / 2, z0: -H / 2, z1: H / 2 } : null,
   };
