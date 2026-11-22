@@ -14,6 +14,8 @@ extends Node3D
 ## handful of draw calls (Forward+ and the web build alike).
 
 const PALETTE := {
+	"col_paint": [Color("efede8"), 0.0, 0.9], "col_skirt": [Color("4b5058"), 0.1, 0.55], "col_guard": [Color("d5d9de"), 0.25, 0.38],
+	"col_gap": [Color("8c9096"), 0.0, 0.8],
 	"concrete": [Color("9aa0a6"), 0.0, 0.85], "chair": [Color("5f7d8c"), 0.0, 0.6], "metal": [Color("b7bcc2"), 0.8, 0.3],
 	"wood": [Color("c8a27a"), 0.0, 0.55], "fabric": [Color("3d5a99"), 0.0, 0.8], "dark": [Color("2a2d33"), 0.2, 0.5],
 	"desk_top": [Color("ece7de"), 0.0, 0.45], "desk_frame": [Color("8c9198"), 0.5, 0.4], "partition": [Color("9fb3c8"), 0.0, 0.7],
@@ -405,7 +407,14 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 	counts[kind] = counts.get(kind, 0) + 1
 	match kind:
 		"column":
-			_b("concrete", Vector3(0, h / 2, 0), Vector3(1, h, 1))
+			# a finished structural column: painted plaster on all four faces, a skirting band at the floor like the
+			# walls', brushed-steel corner guards to waist height (they take the knocks), a shadow gap at the ceiling
+			_bm("col_paint", Vector3(0, h / 2, 0), Vector3(w, h, d))
+			_bm("col_skirt", Vector3(0, 0.05, 0), Vector3(w + 0.024, 0.1, d + 0.024))
+			_bm("col_gap", Vector3(0, h - 0.025, 0), Vector3(w - 0.02, 0.05, d - 0.02))
+			for sx in [-1.0, 1.0]:
+				for sz in [-1.0, 1.0]:
+					_bm("col_guard", Vector3(sx * (w / 2 - 0.016), 0.75, sz * (d / 2 - 0.016)), Vector3(0.05, 1.3, 0.05))
 		"chair":
 			# meeting / training chair: cushioned seat and back on a wooden frame
 			_swap = {"carpet": "chair"}

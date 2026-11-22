@@ -132,8 +132,24 @@ export function sheet4F(rooms: PresetRoom[], furniture: PresetItem[]) {
   }
   // the duct itself: a closed box, not a hole in the floor
   if (!furniture.some(f => f.duct)) furniture.push({ kind: 'cabinet', fx: 0.25182, fy: 0.34643, fw: 0.0286, fd: 0.0625, rot: 0, duct: true });
+  // the structural columns, as the sheet draws them (solid squares on a 7.8 m grid)
+  for (let i = furniture.length - 1; i >= 0; i--) if (furniture[i].kind === 'column') furniture.splice(i, 1);
+  for (const [fx, fy, wm, dm] of COLUMNS_4F) furniture.push({ kind: 'column', fx, fy, fw: wm / SHEET_W_M, fd: dm / SHEET_W_M, rot: 0 });
   return { rooms, furniture, applied: true };
 }
+
+/** The sheet's width in metres (the preset's widthM): sizes below are in metres. */
+const SHEET_W_M = 54.04;
+/** Structural columns traced from the 4F sheet: [centre x, centre y (fractions of the sheet), width, depth (m)].
+ *  Found as the solid black squares on a photo of the printed sheet, mapped onto this floor by fitting its walls
+ *  (a perspective fit, about 0.1 m off), then put on the 7.8 m structural grid they stand on. */
+const COLUMNS_4F: [number, number, number, number][] = [
+  [0.1248, 0.1528, 1.4, 1.3], [0.2720, 0.1528, 1.2, 1.8], [0.4161, 0.1528, 1.2, 1.8], [0.5593, 0.1528, 1.2, 1.8], [0.7045, 0.1528, 1.0, 1.6],
+  [0.1248, 0.3557, 1.4, 1.2], [0.2720, 0.3557, 1.2, 1.2], [0.4161, 0.3557, 1.2, 1.2], [0.5593, 0.3557, 1.2, 1.2],
+  [0.1248, 0.5520, 1.4, 1.2], [0.2720, 0.5520, 1.2, 1.2], [0.4161, 0.5520, 1.2, 1.0], [0.5593, 0.5520, 1.2, 1.0],
+  [0.1248, 0.7455, 1.4, 1.4], [0.2720, 0.7455, 1.2, 1.3], [0.4161, 0.7455, 1.2, 1.2], [0.5593, 0.7455, 1.2, 1.3], [0.7045, 0.7455, 1.2, 1.1], [0.8490, 0.7455, 1.2, 1.1],
+  [0.4161, 0.8912, 1.0, 1.0], [0.5593, 0.8912, 1.0, 1.0], [0.7045, 0.8912, 1.0, 1.0], [0.8490, 0.8912, 1.0, 1.0],
+];
 
 function centre(pts: Pt[]): Pt {
   // the middle of the largest axis-aligned piece is good enough for a label: the bounding box centre, nudged inside

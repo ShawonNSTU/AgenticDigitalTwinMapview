@@ -155,14 +155,16 @@ def _raster(points: list, S: int = 400) -> np.ndarray:
 def merge(cvr: dict, ai: dict | None) -> dict:
     """Combine the image-processing result with the vision model's. Geometry from plan_cv, names and items from both."""
     rooms = [{k: v for k, v in r.items() if k != "id"} for r in cvr.get("rooms", [])]
-    out = {"rooms": rooms, "doors": cvr.get("doors", []), "furniture": [], "outdoor": None,
+    cols = list(cvr.get("columns") or [])
+    out = {"rooms": rooms, "doors": cvr.get("doors", []), "furniture": cols, "outdoor": None,
            "photo_corners": cvr.get("photo_corners"), "width_m": cvr.get("width_m"), "scale_note": cvr.get("scale_note"),
            "method": "image processing"}
     if not ai:
         return out
     out["method"] = "image processing + Claude vision"
     out["outdoor"] = ai.get("outdoor")
-    out["furniture"] = [f for f in ai.get("furniture", []) if f["kind"] != "door"]
+    # columns as the image processing measured them (exact to the pixel); the vision model's only when it found none
+    out["furniture"] = cols + [f for f in ai.get("furniture", []) if f["kind"] != "door" and not (cols and f["kind"] == "column")]
     if not out["photo_corners"] and ai.get("photo_corners"):
         out["photo_corners"] = ai["photo_corners"]
     if out["photo_corners"]:

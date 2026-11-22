@@ -144,6 +144,10 @@ func _ready() -> void:
 			var gs := Node.new()
 			gs.set_script(load("res://tests/guest_stress.gd"))
 			add_child(gs)
+		if a.begins_with("--eye-shots"):
+			var es := Node.new()
+			es.set_script(load("res://tests/eye_shots.gd"))
+			add_child(es)
 		if a.begins_with("--walk="):
 			var wt := Node.new()
 			wt.set_script(load("res://tests/walk_test.gd"))
