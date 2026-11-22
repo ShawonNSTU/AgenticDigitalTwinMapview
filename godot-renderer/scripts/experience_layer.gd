@@ -348,6 +348,8 @@ func _refresh_auras() -> void:
 	var want := {}
 	for j in _xp("journeys", []):
 		var st := str(j.get("state", ""))
+		if Store.story_guest != "" and str(j.get("guest", "")) != Store.story_guest:
+			continue
 		if st in ["en_route", "preparing", "ready", "arrived"]:
 			want[str(j.room)] = j
 	for r in _auras.keys():

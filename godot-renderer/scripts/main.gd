@@ -285,6 +285,10 @@ func _on_story(msg: Dictionary) -> void:
 			_story_heat(msg.get("values", {}) if msg.get("values") is Dictionary else {}, msg.get("labels", {}) if msg.get("labels") is Dictionary else {}, bool(msg.get("on", true)))
 		"night":
 			_story_night(bool(msg.get("on", true)))
+		"cast":  # the story's guest: other stays on the floor are not drawn while the story plays
+			Store.story_guest = str(msg.get("guest", ""))
+			if xp:
+				xp.refresh()
 
 
 func _story_wave(secs: float) -> void:

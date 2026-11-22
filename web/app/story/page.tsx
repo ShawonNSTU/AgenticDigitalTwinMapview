@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TwinView from '@/components/TwinView';
 import { send, type FromRenderer } from '@/lib/bridge';
-import { CHAPTERS, resetStory, type ChatLine, type Ctx, type Dev, type Phone } from '@/lib/story';
+import { CHAPTERS, GUEST, resetStory, type ChatLine, type Ctx, type Dev, type Phone } from '@/lib/story';
+import { Rich, useTyped } from '@/components/agent/Rich';
 
 class Stop extends Error {}
 
@@ -80,6 +81,7 @@ export default function Story() {
     const id = ++runId.current;
     setCh(c); setPlaying(true); setBusy(true);
     const x = ctx(id);
+    send({ type: 'story', action: 'cast', guest: GUEST });   // only the story's guest is drawn; other stays are not part of it
     try {
       if (from === 0 && (c === 0 || !chain)) { await loadDevs(); if (c === 0) await resetStory(x); }
       const steps = CHAPTERS[c].steps;
@@ -210,7 +212,8 @@ export default function Story() {
   );
 }
 
-/** The phone's conversation: the person, the assistant's reasoning (live while it thinks), what it changed, its answer. */
+/** The phone's conversation: the person, the assistant thinking (live), its answer (formatted, typed in) and the
+ *  checklist of what it changed in the room. */
 function PhoneChat({ lines }: { lines: ChatLine[] }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [lines]);
@@ -219,12 +222,28 @@ function PhoneChat({ lines }: { lines: ChatLine[] }) {
       {lines.map((l, i) => (
         <div key={i} className={`ph-msg ph-${l.who} ${l.thinking ? 'thinking' : ''}`}>
           {l.thinking && <em className="ph-think">✦ {l.thinking}</em>}
-          {l.reasoning && <em className="ph-reason">✦ {l.reasoning}</em>}
-          {l.plan && <ul>{l.plan.map((p, j) => <li key={j} className={p.ok === false ? 'bad' : ''}><i>{p.ok === false ? '✕' : '✓'}</i> <b>{p.label}</b> {p.summary}</li>)}</ul>}
-          {l.text && <span>{l.text}</span>}
+          {l.who === 'guest' ? <span>{l.text}</span> : <Said line={l} fresh={i === lines.length - 1} grow={() => end.current?.scrollIntoView({ block: 'end' })} />}
         </div>
       ))}
       <div ref={end} />
     </div>
+  );
+}
+
+/** An assistant or system message: Markdown (bold, lists, tables, links, codes), typed in while it is the newest,
+ *  then the checklist of what changed. */
+function Said({ line, fresh, grow }: { line: ChatLine; fresh: boolean; grow: () => void }) {
+  const first = useRef(fresh);   // only a message that arrives now types in; earlier ones show whole
+  const { shown, typing } = useTyped(line.text, first.current && fresh && !/^\s*\|/m.test(line.text));   // a table shows whole
+  useEffect(() => { if (fresh) grow(); }, [shown, typing, fresh, grow]);
+  return (
+    <>
+      {line.text && <Rich text={shown} caret={typing} />}
+      {line.plan && !typing && (
+        <ul className="ph-plan">
+          {line.plan.map((p, j) => <li key={j} className={p.ok === false ? 'bad' : ''}><i>{p.ok === false ? '✕' : '✓'}</i><b>{p.label}</b><span>{p.summary}</span></li>)}
+        </ul>
+      )}
+    </>
   );
 }

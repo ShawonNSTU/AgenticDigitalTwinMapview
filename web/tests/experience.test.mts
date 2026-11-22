@@ -6,6 +6,7 @@ import { powerOf, sample, startEco, endEco, summary, resetEnergy } from '../lib/
 import { roomComfort, setTarget } from '../lib/experience/comfort';
 import { predictions } from '../lib/experience/predict';
 import { welcomeScene } from '../lib/experience/arrival';
+import { humanize, checklist } from '../lib/story';
 
 let fails = 0, passes = 0;
 const ok = (c: unknown, what: string) => { if (c) passes++; else { fails++; console.log('FAIL', what); } };
@@ -102,6 +103,13 @@ ok(warm.some(x => x.id === 'BL-T' && x.command === 'setPosition' && x.args.perce
 ok(warm.some(x => x.id === 'TV-T' && x.command === 'setInput'), 'TV shows the welcome screen');
 const off = welcomeScene(ROOM, { temp: 24, scene: 'off', curtain: 0, tvWelcome: false });
 ok(!off.some(x => x.id === 'LT-T') && !off.some(x => x.id === 'TV-T'), 'lights-off scene leaves the lights and the TV alone');
+
+// ---- story phone: what the assistant changed, in words ----
+ok(humanize('setShadeLevel 100') === 'fully open' && humanize('setShadeLevel 0') === 'closed', 'curtain levels in words');
+ok(humanize('on · setColor {"hue":75,"saturation":100} · setLevel 25') === 'purple, 25 %', 'a colour bulb: colour and level, "on" dropped');
+ok(humanize('setCoolingSetpoint 26') === '26 °C' && humanize('off') === 'off', 'AC set point and power');
+const cl = checklist([{ label: 'Light 2', summary: '10 %', ok: true }, { label: 'Light 3', summary: '10 %', ok: true }, { label: 'Aqara Roller Shade Controller', summary: 'closed', ok: true }, { label: 'Light 4', summary: 'off', ok: false }]);
+ok(cl.length === 3 && cl[0].label === 'Light 2, 3' && cl[1].label === 'Curtain' && cl[2].ok === false, `checklist groups the same change and names the shade (${JSON.stringify(cl)})`);
 
 console.log(`experience checks: ${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);

@@ -30,7 +30,7 @@ export type ToRenderer =
   | { type: 'setQuality'; tier: 'auto' | 'ultra' | 'high' | 'balanced' | 'lite' }
   | { type: 'dispatchRoute'; id: string }
   | { type: 'welcome'; room: string; guest?: string; state?: string }
-  | { type: 'story'; action: 'build' | 'shot' | 'room' | 'wave' | 'walk' | 'endWalk' | 'tv' | 'heat' | 'night'; [k: string]: unknown };
+  | { type: 'story'; action: 'build' | 'shot' | 'room' | 'wave' | 'walk' | 'endWalk' | 'tv' | 'heat' | 'night' | 'cast'; [k: string]: unknown };
 
 /** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */
 export type Placement = { x: number; y: number; z: number; rotationY: number; room: string };

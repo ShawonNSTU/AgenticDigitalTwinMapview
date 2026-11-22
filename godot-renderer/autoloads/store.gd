@@ -19,6 +19,7 @@ var guest_token := ""      # set when the page was opened from a guest link (?gu
 var guest: Dictionary = {}  # {room, entrance} from the platform for that link
 var guest_allowed: Dictionary = {}
 var comfort_metric := "thermal"  # comfort layer colours by: thermal | air | score
+var story_guest := ""  # story mode: only this guest's stay is drawn (other stays on the floor are not part of the story)
 var experience: Dictionary = {}  # comfort per room, live watts, eco rooms, journeys, predictions, dispatches (/api/floor)
 var me: Dictionary = {}  # the guest's live position fix {x, z, accuracy, source, at} (guest links only)  # rooms a guest may see and walk through (empty = no limit)  # first-person walk-through: full-height walls, ceilings, lights under the ceiling
 

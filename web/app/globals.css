@@ -586,8 +586,21 @@ button.icon { padding:5px 9px; color:var(--faint); box-shadow:none; } button.ico
 .ph-msg.ph-guest { align-self:flex-end; background:#2f6fe0; color:#fff; border-bottom-right-radius:4px; }
 .ph-msg.ph-assistant { align-self:flex-start; background:#1b2330; border-bottom-left-radius:4px; }
 .ph-msg.ph-system { align-self:center; background:rgba(126,226,168,.12); color:#bff0d3; font-size:13px; text-align:center; }
-.ph-msg ul { margin:8px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px; }
-.ph-msg li { font-size:13px; background:rgba(255,255,255,.05); border-radius:8px; padding:5px 8px; } .ph-msg li b { color:#9fd4ff; font-weight:600; }
+.ph-plan { margin:8px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px; }
+.ph-plan li { display:flex; align-items:baseline; gap:8px; font-size:12.5px; line-height:1.35; background:rgba(255,255,255,.05); border-radius:8px; padding:5px 8px; }
+.ph-plan li b { color:#9fd4ff; font-weight:600; flex:1 1 auto; min-width:0; }
+.ph-plan li span { color:#dbe4ee; flex:0 0 auto; max-width:60%; text-align:right; }
+.ph-plan { animation:capIn .3s ease-out; }
+.ph-msg .rich { font-size:14px; line-height:1.45; color:inherit; }
+.ph-msg .rich p { margin:0 0 6px; } .ph-msg .rich p:last-child { margin:0; }
+.ph-msg .rich ul, .ph-msg .rich ol { margin:4px 0 6px; padding-left:18px; } .ph-msg .rich li { margin:2px 0; }
+.ph-msg .rich strong { color:#fff; }
+.ph-msg .rich .rc-table { margin:6px 0; overflow-x:auto; } .ph-msg .rich table { font-size:12px; border-collapse:collapse; } .ph-msg .rich th, .ph-msg .rich td { padding:3px 6px; border-bottom:1px solid rgba(255,255,255,.08); text-align:left; }
+.story-phone .rc-table { border-color:rgba(255,255,255,.12); } .story-phone .rich th { background:rgba(255,255,255,.06); color:#9fb3c8; }
+.story-phone .rich th, .story-phone .rich td { border-bottom-color:rgba(255,255,255,.08); color:inherit; }
+.story-phone .rc-link { color:#9fd4ff; text-decoration-color:rgba(159,212,255,.5); }
+.story-phone .rc-code { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.16); color:#fff; }
+.ph-msg.ph-system .rich { font-size:13px; } .ph-msg.ph-system .rich strong { color:#dff7e8; }
 .ph-alert { margin-top:14px; padding:14px; border-radius:16px; background:#1d1410; border:1px solid rgba(255,140,60,.45); box-shadow:0 0 30px rgba(255,120,40,.15); animation:capIn .4s ease-out; }
 .ph-alert .sev { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:#e5533d; color:#fff; margin-bottom:6px; }
 .ph-alert b { display:block; font-size:16px; margin-bottom:6px; } .ph-alert p { margin:0 0 8px; font-size:13px; color:#e2cdbd; line-height:1.4; } .ph-alert .parts { color:#ffd2a8; }
@@ -752,11 +765,11 @@ body.has-pseudo-full { overflow:hidden; }
 .ag-card-body { display:flex; flex-direction:column; gap:4px; min-width:0; } .ag-card-body small { color:var(--muted); }
 .ag-card-body .rc-code { align-self:flex-start; margin:4px 0; } .ag-card-body .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .ph-pin { font-size:13px; color:#374151; } .ph-pin b { font:700 20px ui-monospace, monospace; letter-spacing:.2em; color:#1d4ed8; margin-left:6px; }
-.ph-think, .ph-reason { display:block; font-size:12px; line-height:1.4; color:#9fb3c8; margin-bottom:6px; }
+.ph-think { display:block; font-size:12px; line-height:1.4; color:#9fb3c8; margin-bottom:6px; }
 .ph-msg.thinking { background:#16202c; border:1px dashed rgba(159,212,255,.35); }
 .ph-msg.thinking .ph-think { margin:0; animation:ag-pulse-text 1.4s ease-in-out infinite; }
 @keyframes ag-pulse-text { 50% { opacity:.55; } }
-.ph-msg li i { font-style:normal; color:#7ee2a8; } .ph-msg li.bad i, .ph-msg li.bad { color:#ffb3a6; }
+.ph-plan li i { font-style:normal; color:#7ee2a8; } .ph-plan li.bad i, .ph-plan li.bad span { color:#ffb3a6; }
 .ph-tech .ph-chat { height:auto; max-height:46%; }
 .ag-todo { border:1px solid var(--line); border-radius:12px; background:#fff; box-shadow:var(--shadow-sm); overflow:hidden; }
 .ag-todo-head { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); background:var(--panel2); font-size:12.5px; position:relative; }
