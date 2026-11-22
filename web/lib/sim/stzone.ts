@@ -345,7 +345,12 @@ function furnishLobby(rt: { furniture: any[] }, north: any[], south: any[], zx0:
   for (const row of [north, south]) for (const f of row) {
     const isNorth = row === north;
     // the shaft itself (solid), and its door on the lobby wall
-    items.push({ kind: 'lift_shaft', x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, room: 'lift-lobby' });
+    // the shaft stops behind the lobby wall, so its doors and call panels stand in the lobby (the traced boxes can
+    // run a little past the wall line the sheet's survey gives the lobby)
+    const far = isNorth ? f.z - f.d / 2 : f.z + f.d / 2;
+    const near = isNorth ? Math.min(f.z + f.d / 2, lz0 - 0.06) : Math.max(f.z - f.d / 2, lz1 + 0.06);
+    const sd = Math.abs(near - far);
+    items.push({ kind: 'lift_shaft', x: f.x, z: +((near + far) / 2).toFixed(3), w: f.w, d: +sd.toFixed(3), rot: 0, room: 'lift-lobby' });
     items.push({ kind: 'lift_door', x: f.x, z: +(isNorth ? lz0 + 0.09 : lz1 - 0.09).toFixed(3), w: 1.1, d: 0.12, rot: isNorth ? 0 : Math.PI, ...(isNorth ? {} : { panel: true }), room: 'lift-lobby' });
   }
   // the lobby's west door stands open; the cafeteria's glass doors face it across the passage

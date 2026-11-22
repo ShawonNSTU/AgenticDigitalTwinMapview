@@ -132,6 +132,10 @@ func _ready() -> void:
 			var gt := Node.new()
 			gt.set_script(load("res://tests/guest_test.gd"))
 			add_child(gt)
+		if a.begins_with("--guest-stress="):
+			var gs := Node.new()
+			gs.set_script(load("res://tests/guest_stress.gd"))
+			add_child(gs)
 		if a.begins_with("--walk="):
 			var wt := Node.new()
 			wt.set_script(load("res://tests/walk_test.gd"))
@@ -791,9 +795,7 @@ func _on_health(id: String, h: String) -> void:
 func _on_highlight(ids: Array, _reason: String) -> void:
 	if world == null:
 		return
-	_highlight = ids
-	for id in devices:
-		devices[id].set_highlight(ids.has(id), not ids.is_empty())
+	_mark(ids)
 	if ids.size() == 1:
 		_on_focus(ids[0])
 	elif ids.size() > 1:
@@ -802,6 +804,13 @@ func _on_highlight(ids: Array, _reason: String) -> void:
 			if devices.has(id):
 				box = box.expand(devices[id].global_position)
 		rig.fly_to(box.get_center(), clampf(box.size.length() * 1.3 + 4.0, 6.0, 22.0))
+
+
+## Rings the devices without moving the view (a tour stop that already stands where the device is seen).
+func _mark(ids: Array) -> void:
+	_highlight = ids
+	for id in devices:
+		devices[id].set_highlight(ids.has(id), not ids.is_empty())
 
 
 func _on_focus(id: String) -> void:
@@ -950,9 +959,10 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 		"stepFree":  # step-free route on or off: a guest still on the way is routed again from where they came in
 			Store.step_free = bool(msg.get("on", true))
 			if walker:
-				walker.rebuild_nav()
 				if Store.guest_token != "" and not _guest_settled:
-					_guest_restart(str(Store.guest.get("entrance", "")))
+					_guest_restart(str(Store.guest.get("entrance", "")))   # builds a fresh walk (and its routes)
+				else:
+					walker.rebuild_nav()
 		"overview":
 			if walker:
 				walker.overview(bool(msg.get("on", true)))
@@ -1443,9 +1453,10 @@ func _show_device(id: String) -> void:
 		if seq != _show_seq or walker == null:
 			return
 		walker.look_at_point(at3)
-		_on_highlight([id], "")
+		_mark([id])   # not _on_highlight: that focuses, which comes back here
 		Bus.walk_changed.emit({"on": true, "viewing": id})
-	if _sees(here, t, at3.y):
+	var near := _obstacles(t)
+	if _sees(here, t, at3.y, near):
 		done.call()
 		return
 	var poly := PlanGeo.room_poly(r) if not r.is_empty() else PackedVector2Array()
@@ -1463,7 +1474,7 @@ func _show_device(id: String) -> void:
 			while z < hi.y:
 				var q := Vector2(x, z)
 				z += 0.25
-				if not Geometry2D.is_point_in_polygon(q, poly) or not walker.nav.is_free(q) or not _sees(q, t, at3.y):
+				if not Geometry2D.is_point_in_polygon(q, poly) or q.distance_to(t) > 4.5 or not walker.nav.is_free(q) or not _sees(q, t, at3.y, near):
 					continue
 				# nearest to where the guest stands, at a comfortable distance from the device
 				var s := q.distance_to(here) + absf(q.distance_to(t) - 2.4) * 1.5
@@ -1479,27 +1490,40 @@ func _show_device(id: String) -> void:
 
 ## Whether a device at t (height y) is in plain view from q: a comfortable distance (not straight overhead, not
 ## across the floor), no wall between, and no tall furniture standing in the line of sight.
-func _sees(q: Vector2, t: Vector2, y: float) -> bool:
+func _sees(q: Vector2, t: Vector2, y: float, near := []) -> bool:
 	var d := q.distance_to(t)
 	if d < (1.3 if y > 1.9 else 1.0) or d > 4.5:
 		return false
 	var a := q
 	var b := t.lerp(q, 0.25 / maxf(d, 0.01))   # stop just short of the device (it sits on its wall)
-	if floor_builder:
-		for wp in floor_builder.wall_pieces:
-			if Geometry2D.segment_intersects_segment(a, b, wp[0], wp[1]) != null:
-				return false
-	for f in Store.furniture:
-		if not _TALL.has(str(f.get("kind", ""))):
-			continue
-		var c := Vector2(float(f.x), float(f.z))
-		if c.distance_to(q) > d + 1.5:
-			continue
-		var rect := Placer._rect(c, Vector2(float(f.w), float(f.d)), float(f.get("rot", 0.0)))
+	var obs: Array = near if not near.is_empty() else _obstacles(t)
+	for wp in obs[0]:
+		if Geometry2D.segment_intersects_segment(a, b, wp[0], wp[1]) != null:
+			return false
+	for rect in obs[1]:
 		for k in range(1, 12):
 			if Geometry2D.is_point_in_polygon(a.lerp(b, k / 12.0), rect):
 				return false
 	return true
+
+
+## The walls and tall furniture within sight range of t (5 m), prepared once for a tour stop's many checks.
+func _obstacles(t: Vector2) -> Array:
+	var walls: Array = []
+	var rects: Array = []
+	if floor_builder:
+		for wp in floor_builder.wall_pieces:
+			var p0: Vector2 = wp[0]
+			var p1: Vector2 = wp[1]
+			if Geometry2D.get_closest_point_to_segment(t, p0, p1).distance_to(t) < 5.0:
+				walls.append(wp)
+	for f in Store.furniture:
+		if not _TALL.has(str(f.get("kind", ""))):
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		if c.distance_to(t) < 6.0:
+			rects.append(Placer._rect(c, Vector2(float(f.w), float(f.d)), float(f.get("rot", 0.0))))
+	return [walls, rects]
 
 
 
