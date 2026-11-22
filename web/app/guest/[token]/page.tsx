@@ -49,6 +49,7 @@ export default function GuestPage() {
   const [pin, setPin] = useState('');
   const [pinErr, setPinErr] = useState('');
   const [walk, setWalk] = useState<Walk>({ phase: 'loading' });
+  const [stepFree, setStepFree] = useState(false);   // route without stairs or narrow doorways
   const [ready, setReady] = useState(false);
   const [built, setBuilt] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
@@ -108,6 +109,8 @@ export default function GuestPage() {
       if (m.guest === 'walking') { setWalk({ phase: 'walking', from: m.from, to: m.to, metres: m.metres }); if (m.route) setRoute(m.route); if (m.metres) journey({ action: 'walking', metres: m.metres }); }
       else if (m.guest === 'arrived') { setWalk(w => ({ ...w, phase: 'arrived', here: m.roomName })); setOverview(false); journey({ action: 'arrived', via: 'walk' }); }
       else if (m.roomName) setWalk(w => ({ ...w, here: m.roomName }));
+      // the tour's device is in sight: now its control can appear on it
+      if (m.viewing && m.viewing === pendingShow.current) { pendingShow.current = null; inView(m.viewing); }
     }
     if (m.type === 'deviceClicked') { setFocus(m.id); setTab('room'); openHolo(m.id); reveal(m.id); }
     if (m.type === 'anchor') setAnchor(m);
@@ -141,16 +144,26 @@ export default function GuestPage() {
     const seen = new Set<string>();
     return devs.filter(d => TOUR[d.type] && !seen.has(d.type) && seen.add(d.type)).sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
   }, [view]);
+  // Each stop: first get the device in sight (the renderer walks to a spot that sees it, clear of walls and tall
+  // furniture, and turns to it), then show its control on it. A phone has room for the tour card or the control in
+  // the 3D view, not both: there the device is highlighted and the control stays one tap away in the list.
+  const pendingShow = useRef<string | null>(null);
+  const inView = useCallback((id: string) => {
+    if (window.matchMedia('(min-width: 600px)').matches) openHolo(id);
+    else send({ type: 'highlight', ids: [id] });
+  }, [openHolo]);
+  // keyed on the stop's device (the room's devices reload every few seconds; that must not restart the stop)
+  const stopId = tour != null ? stops[tour]?.id ?? null : null;
   useEffect(() => {
-    if (tour == null || !stops[tour]) return;
-    const d = stops[tour];
-    setFocus(d.id); setTab('room');
-    // a phone has room for the tour card or the device's control in the 3D view, not both: the tour turns to the
-    // device and highlights it there, and the control stays one tap away in the list
-    if (window.matchMedia('(min-width: 600px)').matches) openHolo(d.id);
-    else { send({ type: 'walk', action: 'look', id: d.id }); send({ type: 'highlight', ids: [d.id] }); }
-    reveal(d.id);
-  }, [tour, stops, openHolo, reveal]);
+    if (!stopId) return;
+    setFocus(stopId); setTab('room'); reveal(stopId);
+    openHolo(null);
+    pendingShow.current = stopId;
+    send({ type: 'walk', action: 'show', id: stopId });
+    // an older renderer never answers: show it after a moment anyway
+    const t = setTimeout(() => { if (pendingShow.current === stopId) { pendingShow.current = null; inView(stopId); } }, 9000);
+    return () => clearTimeout(t);
+  }, [stopId, openHolo, reveal, inView]);
 
   if (denied) return (
     <main className="guest-denied"><div className="glass"><span className="logo" /><h2>Guest access</h2><p>{denied}</p><p className="muted">Please ask the front desk for a new QR code.</p></div></main>
@@ -187,6 +200,7 @@ export default function GuestPage() {
               {view?.entrances.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
             </select>
             <button className={overview ? 'on' : ''} onClick={() => { send({ type: 'walk', action: 'overview', on: !overview }); setOverview(!overview); }}>{overview ? 'Back to walking' : 'See the way from above'}</button>
+            <button className={stepFree ? 'on' : ''} aria-pressed={stepFree} title="Avoid stairs and narrow doorways" onClick={() => { send({ type: 'walk', action: 'stepFree', on: !stepFree }); setStepFree(!stepFree); }}>Step-free</button>
             <button onClick={() => send({ type: 'walk', action: 'skip' })}>Skip</button>
           </div>
         )}
@@ -194,7 +208,8 @@ export default function GuestPage() {
           <div className="guest-walk glass arrived">
             <span className="walk-dot" />
             <span><b>You’re in {view?.room.name}</b><small>Tap a device to control it</small></span>
-            {stops.length > 0 && <button className="pri" onClick={() => setTour(0)}>Take the tour</button>}
+            {stops.length > 0 && <button className="pri" onClick={() => { setOverview(false); setTour(0); }}>Take the tour</button>}
+            <button className={overview ? 'on' : ''} aria-pressed={overview} onClick={() => { send({ type: 'walk', action: 'overview', on: !overview }); setOverview(!overview); }}>{overview ? 'Back to eye level' : 'See the whole room'}</button>
             <button className="hint-x" aria-label="Close" title="Close" onClick={() => setHintShown(false)}>✕</button>
           </div>
         )}

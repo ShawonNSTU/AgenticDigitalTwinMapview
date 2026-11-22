@@ -7,6 +7,8 @@ import { roomComfort, setTarget } from '../lib/experience/comfort';
 import { predictions } from '../lib/experience/predict';
 import { welcomeScene } from '../lib/experience/arrival';
 import { humanize, checklist } from '../lib/story';
+import { sheet4F } from '../lib/sim/sheet4f';
+import { readFileSync } from 'node:fs';
 
 let fails = 0, passes = 0;
 const ok = (c: unknown, what: string) => { if (c) passes++; else { fails++; console.log('FAIL', what); } };
@@ -110,6 +112,25 @@ ok(humanize('on · setColor {"hue":75,"saturation":100} · setLevel 25') === 'pu
 ok(humanize('setCoolingSetpoint 26') === '26 °C' && humanize('off') === 'off', 'AC set point and power');
 const cl = checklist([{ label: 'Light 2', summary: '10 %', ok: true }, { label: 'Light 3', summary: '10 %', ok: true }, { label: 'Aqara Roller Shade Controller', summary: 'closed', ok: true }, { label: 'Light 4', summary: 'off', ok: false }]);
 ok(cl.length === 3 && cl[0].label === 'Light 2, 3' && cl[1].label === 'Curtain' && cl[2].ok === false, `checklist groups the same change and names the shade (${JSON.stringify(cl)})`);
+
+// ---- 4th floor rooms and doors as the sheet draws them ----
+{
+  const pre = JSON.parse(readFileSync(new URL('../lib/presets/samsung-rnd-4f.json', import.meta.url), 'utf8'));
+  const { rooms, furniture, applied } = sheet4F(pre.rooms, pre.furniture);
+  const doors = furniture.filter((f: any) => f.kind === 'door');
+  const at = (x: number, y: number) => doors.some((d: any) => Math.abs(d.fx - x) < 0.006 && Math.abs(d.fy - y) < 0.006);
+  const room = (n: string) => rooms.find((r: any) => r.name === n);
+  ok(applied && !!room('Zone B Lobby') && !!room('Lift Lobby') && !!room('Zone D North Passage') && !room('Service Passage'), 'rooms the sheet draws (lobbies, passages round the lifts)');
+  ok(at(0.23679, 0.2385) && !at(0.23316, 0.22286), 'gym entered from its lobby (east wall), not from the small cafeteria');
+  ok(at(0.25, 0.22286) && !at(0.26684, 0.21429), 'small cafeteria opens onto the gym lobby');
+  ok(at(0.626, 0.64643) && at(0.626, 0.76071) && at(0.61625, 0.68643) && !at(0.63575, 0.63214), 'experience zone and medical room through their lobby');
+  ok(at(0.8245, 0.74643) && at(0.82383, 0.605) && at(0.682, 0.67857), 'male toilet from the corridor, core stair from the toilet passage, utility from the west passage');
+  ok(at(0.6735, 0.092) && at(0.67047, 0.2982) && doors.some((d: any) => d.opening && Math.abs(d.fx - 0.62435) < 0.001), 'ablution door, hand-washing area open to the cafeteria and double door to Zone D');
+  ok(at(0.8, 0.8268) && at(0.7499, 0.79286), 'hub room door in its north wall; store room door at the east end');
+  const n = doors.length;
+  sheet4F(rooms, furniture);
+  ok(furniture.filter((f: any) => f.kind === 'door').length === n && rooms.length === pre.rooms.length, 'applying it again changes nothing');
+}
 
 console.log(`experience checks: ${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);

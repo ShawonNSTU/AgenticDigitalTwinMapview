@@ -1,5 +1,6 @@
 // Runtime state of the simulated device platform: scenario, clock and device overrides.
 // Kept on globalThis so it survives hot reloads in development. One process = one demo.
+import { sheet4F } from './sheet4f';
 import { DEV, SCEN, TYPES, ROOMS, byId, snapshot, state as engineState, health, LBL, LAYOUT, setLayout, setDevices, scenarioName, scenarioAvailable, activeFault } from './engine';
 import building from './data/building.json';
 import sampleDevices from './data/devices.json';
@@ -311,6 +312,7 @@ export function defaultPreset() {
   const file = existsSync(priv) ? priv : existsSync(pub) ? pub : null;
   if (!file) return null;
   const pre = JSON.parse(readFileSync(file, 'utf8'));
+  sheet4F(pre.rooms, pre.furniture ?? (pre.furniture = []));   // rooms and doors as the sheet draws them
   const img = pre.image ? path.join(process.cwd(), 'public', pre.image) : null;
   const imgData = img && existsSync(img) ? readFileSync(img) : null;
   const taken = new Set<string>();
@@ -353,8 +355,9 @@ export function resetBuilding() {
 }
 
 /* ---------------- which floor is showing, kept across restarts ---------------- */
-// The app starts with no floor and asks for a plan. The floor last built (an upload, or the recognised 4th floor)
-// is saved in .data/floor.json and comes back after a restart. Devices placed later are not saved.
+// Every fresh start of the server begins at floor setup: no floor is shown until a plan is uploaded (or the
+// recognised 4th floor is picked), so each demo runs plan → 3D from the start. The floor last built is still saved
+// in .data/floor.json; set KEEP_FLOOR=1 to bring it back after a restart instead. Devices placed later are not saved.
 const SAVE = path.join(process.cwd(), '.data', 'floor.json');
 function save(x: object | null) {
   try {
@@ -397,6 +400,7 @@ export function knownFloorPlan(id: string) {
   const file = existsSync(priv) ? priv : existsSync(pub) ? pub : null;
   if (!file) return null;
   const pre = JSON.parse(readFileSync(file, 'utf8'));
+  sheet4F(pre.rooms, pre.furniture ?? (pre.furniture = []));   // rooms and doors as the sheet draws them
   const img = pre.image ? path.join(process.cwd(), 'public', pre.image) : null;
   const image = img && existsSync(img) ? `data:image/jpeg;base64,${readFileSync(img).toString('base64')}` : null;
   const [location, floorName] = String(pre.title).replace(/\s*\(.*\)\s*$/, '').split(/\s*·\s*/);
@@ -408,13 +412,13 @@ export function knownFloorPlan(id: string) {
   };
 }
 
-// Start (once per server process): the saved floor, or none yet (the reference floor is loaded underneath so every
-// API keeps working, but the pages ask for a plan).
+// Start (once per server process): no floor yet, so the pages ask for a plan (the reference floor is loaded
+// underneath so every API keeps working); with KEEP_FLOOR=1, the floor saved by the last run.
 if (!(globalThis as { __twinBooted?: boolean }).__twinBooted) {
   (globalThis as { __twinBooted?: boolean }).__twinBooted = true;
   try { if (defaultPreset()) resetBuilding(); } catch (e) { console.warn('default floor not loaded:', (e as Error).message); }
   try {
-    const saved = existsSync(SAVE) ? JSON.parse(readFileSync(SAVE, 'utf8')) : null;
+    const saved = process.env.KEEP_FLOOR === '1' && existsSync(SAVE) ? JSON.parse(readFileSync(SAVE, 'utf8')) : null;
     if (saved?.preset) loadKnownFloor(saved.preset, false);
     else if (saved?.upload) uploadBuilding(saved.upload, false);
   } catch (e) { console.warn('saved floor not loaded:', (e as Error).message); }

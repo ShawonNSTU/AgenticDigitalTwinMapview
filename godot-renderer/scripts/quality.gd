@@ -4,10 +4,10 @@ extends Node
 ##
 ## Tiers (the renderer picks what it can: Forward+ on desktop, GL Compatibility on the web):
 ##   ultra     Forward+ only: SDFGI global illumination, SSIL, SSAO, SSR, volumetric fog, 4x MSAA, 4K shadows
-##   high      full resolution, 4x MSAA (2x on the web), soft sun shadows, glow, SSAO where supported
+##   high      full resolution, 4x MSAA, soft sun shadows, glow, SSAO where supported
 ##   balanced  85 % resolution, 2x MSAA, shadows, glow
 ##   lite      70 % resolution, no MSAA, no glow, small shadow atlas (phones, software rendering)
-## "auto" starts from what the platform suggests (mobile web: lite, web: balanced, desktop: high) and then follows
+## "auto" starts from what the platform suggests (mobile web: lite, desktop web and desktop: high) and then follows
 ## the measured frame rate: below 26 fps for 4 s steps down, above 55 fps for 12 s steps up (never above the tier
 ## it had to leave, so it can't oscillate). The host page is told every change (`quality` event).
 
@@ -31,7 +31,7 @@ func _ready() -> void:
 	var start := "high"
 	if OS.has_feature("web"):
 		var mobile = JavaScriptBridge.eval("/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)", true)
-		start = "lite" if mobile else "balanced"
+		start = "lite" if mobile else "high"   # desktop browsers: full resolution; auto steps down if it can't keep up
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--quality="):
 			var q := a.substr(10)
@@ -66,7 +66,7 @@ func apply(t: String, report := true) -> void:
 	var vp := get_viewport()
 	var i := TIERS.find(t)
 	vp.scaling_3d_scale = float([0.7, 0.85, 1.0, 1.0][i])
-	var msaa: int = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X if _forward else Viewport.MSAA_2X, Viewport.MSAA_4X][i]
+	var msaa: int = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_4X][i]
 	vp.msaa_3d = msaa as Viewport.MSAA
 	if _forward:
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if i == 0 else Viewport.SCREEN_SPACE_AA_DISABLED

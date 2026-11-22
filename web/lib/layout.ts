@@ -14,7 +14,7 @@ const COLORS = ['#8fb4f2', '#a8d8a0', '#c7b7ef', '#f2dc8f', '#8fd8d0', '#f2b8c6'
 export type Pt = [number, number];
 export type PlanRoom = { key: string; name: string; pts: Pt[]; color: string; label?: string; labelAt?: Pt; zone?: string };
 /** Interior item: centre in image fractions, size (w across, d front-to-back) as fractions of image width, rot = facing in radians (0 faces down the image). */
-export type PlanFurniture = { kind: string; fx: number; fy: number; fw: number; fd: number; rot: number; suggested?: boolean };
+export type PlanFurniture = { kind: string; fx: number; fy: number; fw: number; fd: number; rot: number; suggested?: boolean; opening?: boolean };
 export const FURNITURE_KINDS = ['column', 'chair', 'task_chair', 'table', 'round_table', 'desk', 'workstation', 'sofa', 'armchair', 'bed', 'cabinet', 'shelf', 'rack', 'counter', 'sink', 'toilet', 'shower', 'stair', 'screen', 'railing', 'treadmill', 'bike', 'weight_rack', 'door', 'plant', 'locker', 'bench', 'stool', 'dispenser', 'vending', 'elec_panel'] as const;
 export type PlanNote = { text: string; fx: number; fy: number; size?: number; rot?: number };
 
@@ -82,6 +82,28 @@ export function pullInside(pts: Pt[], x: number, y: number): Pt {
 }
 
 /** Point-in-polygon in metres (x, z), for rooms of the 3D layout. */
+/**
+ * Rooms a person can't walk into through the plan's doors (fractions of the image; aspect = height / width).
+ * Each door links the rooms on its two sides (or a room and the outside); rooms not linked to the entrance
+ * (an outside door), or else to the best-connected room, have no way in. The 3D walk then has to guess a doorway
+ * for them, so the editor points them out.
+ */
+export function noWayIn(rooms: { key: string; pts: Pt[] }[], doors: { fx: number; fy: number; rot: number; fw?: number }[], aspect: number): Set<string> {
+  const at = (x: number, y: number) => rooms.find(r => inside(r.pts, x, y))?.key ?? 'outside';
+  const adj = new Map<string, Set<string>>([['outside', new Set()], ...rooms.map(r => [r.key, new Set<string>()] as [string, Set<string>])]);
+  for (const d of doors) {
+    const off = Math.max(0.006, (d.fw ?? 0.015) * 0.4);
+    const nx = Math.sin(d.rot) * off, ny = (Math.cos(d.rot) * off) / (aspect || 1);
+    const a = at(d.fx + nx, d.fy + ny), b = at(d.fx - nx, d.fy - ny);
+    if (a !== b) { adj.get(a)!.add(b); adj.get(b)!.add(a); }
+  }
+  let start = adj.get('outside')!.size ? 'outside' : rooms[0]?.key;
+  for (const r of rooms) if (start !== 'outside' && adj.get(r.key)!.size > adj.get(start)!.size) start = r.key;
+  const seen = new Set<string>(start ? [start] : []), todo = start ? [start] : [];
+  while (todo.length) for (const n of adj.get(todo.pop()!)!) if (!seen.has(n)) { seen.add(n); todo.push(n); }
+  return new Set(rooms.map(r => r.key).filter(k => !seen.has(k)));
+}
+
 export function insideXZ(poly: [number, number][], x: number, z: number) { return inside(poly as Pt[], x, z); }
 
 export function roomAt(rooms: PlanRoom[], fx: number, fy: number) {
@@ -121,17 +143,92 @@ export function autoPlace(rooms: PlanRoom[], keep: PlanDevice[], outdoor: { x: n
   return out;
 }
 
-/** Convert the editor state to the POST /api/building body. widthM is the real width of the image in metres. */
-export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: number, aspect: number, dataUrl: string, furniture: PlanFurniture[] = [], notes: PlanNote[] = [], title?: string) {
-  const W = widthM, H = widthM * aspect;
+/** How much roomier the 3D floor is than the drawing: every room grows by this factor in both directions (its
+ *  proportions kept), while furniture, doors and devices keep their real size. FLOOR_SPREAD=1 is the drawing as
+ *  measured. */
+export const FLOOR_SPREAD = (() => {
+  const v = Number(typeof process !== 'undefined' ? process.env.FLOOR_SPREAD ?? process.env.NEXT_PUBLIC_FLOOR_SPREAD : NaN);
+  return Number.isFinite(v) && v >= 1 && v <= 2.5 ? v : 1.4;
+})();
+
+// pieces that run along a room (long tables, desk rows, counters, rails, stairs, lift shafts): their long sides grow
+// with the room; everything else keeps its real size
+const SPANS = new Set(['table', 'desk', 'counter', 'railing', 'stair', 'workstation', 'lift_shaft', 'partition', 'shelf']);
+const SPAN_MIN = 2.2;
+// small things that belong to a table or desk (seats, screens, lamps) move with it, keeping their place around it
+const ANCHORS = new Set(['table', 'desk', 'round_table', 'counter', 'coffee_table', 'desk_one', 'desk_plain', 'bed']);
+const SATELLITES = new Set(['chair', 'task_chair', 'stool', 'mesh_chair', 'armchair', 'screen', 'monitor', 'desk_lamp', 'desk_flowers', 'nightstand']);
+const NEAR_WALL = 0.3;
+
+/**
+ * Plan positions to metres on the spread floor. A point is scaled about the plan's centre, except that something
+ * standing against a wall of its room keeps its distance to that wall (so cupboards, counters and wall devices stay
+ * on their wall instead of drifting into the room).
+ */
+function spreader(rooms: PlanRoom[], W: number, H: number, k: number) {
+  const boxes = rooms.map(r => ({ r, b: bbox(r.pts) }));
+  const m = (fx: number, fy: number) => [(fx - 0.5) * W, (fy - 0.5) * H] as const;
+  return (fx: number, fy: number, ex: number, ez: number): [number, number] => {
+    const [ux, uz] = m(fx, fy);
+    const r = roomAt(rooms, fx, fy);
+    if (!r || k === 1) return [ux * k, uz * k];
+    const b = boxes.find(o => o.r === r)!.b;
+    const [x0, z0] = m(b.x0, b.y0), [x1, z1] = m(b.x1, b.y1);
+    const along = (u: number, lo: number, hi: number, e: number) =>
+      u - e - lo < NEAR_WALL && hi - (u + e) < NEAR_WALL ? (lo + hi) / 2 * k + (u - (lo + hi) / 2)   // fills the room across: stays centred
+        : u - e - lo < NEAR_WALL ? lo * k + (u - lo)
+        : hi - (u + e) < NEAR_WALL ? hi * k - (hi - u)
+        : u * k;
+    return [along(ux, x0, x1, ex), along(uz, z0, z1, ez)];
+  };
+}
+
+/** Convert the editor state to the POST /api/building body. widthM is the real width of the image in metres;
+ *  spread makes the rooms roomier (FLOOR_SPREAD). */
+export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: number, aspect: number, dataUrl: string, furniture: PlanFurniture[] = [], notes: PlanNote[] = [], title?: string, spread = FLOOR_SPREAD) {
+  const k = spread;
+  const W0 = widthM, H0 = widthM * aspect;
+  const W = W0 * k, H = H0 * k;
   const X = (f: number) => +((f - 0.5) * W).toFixed(3), Z = (f: number) => +((f - 0.5) * H).toFixed(3);
+  const place = spreader(rooms, W0, H0, k);
+  const r3 = (v: number) => +v.toFixed(3);
+  // furniture in metres: real sizes, long runs grown with the room, positions spread
+  const items = furniture.map(f => {
+    const w0 = f.fw * W0, d0 = f.fd * W0;
+    const grow = SPANS.has(f.kind) && f.kind !== 'door';
+    const w = grow && w0 >= SPAN_MIN ? w0 * k : w0, d = grow && d0 >= SPAN_MIN ? d0 * k : d0;
+    const c = Math.abs(Math.cos(f.rot)), s = Math.abs(Math.sin(f.rot));
+    const ex = (c * w0 + s * d0) / 2, ez = (s * w0 + c * d0) / 2;
+    // a door sits on its wall: scaled with the wall line, its opening keeps its width
+    const [x, z] = f.kind === 'door' ? [(f.fx - 0.5) * W, (f.fy - 0.5) * H] : place(f.fx, f.fy, ex, ez);
+    return { f, x, z, w, d, ux: (f.fx - 0.5) * W0, uz: (f.fy - 0.5) * H0, ex, ez };
+  });
+  // seats and desk things keep their place around the table or desk they belong to
+  const anchors = items.filter(i => ANCHORS.has(i.f.kind));
+  for (const it of items) {
+    if (!SATELLITES.has(it.f.kind)) continue;
+    let best: (typeof items)[number] | null = null, bd = 0.9;
+    for (const a of anchors) {
+      const gx = Math.max(0, Math.abs(it.ux - a.ux) - a.ex), gz = Math.max(0, Math.abs(it.uz - a.uz) - a.ez);
+      const g = Math.hypot(gx, gz);
+      if (g < bd) { bd = g; best = a; }
+    }
+    if (!best) continue;
+    // along a run that grew, the seat's offset grows with it; across it, it stays
+    const sx = best.ex * 2 >= SPAN_MIN && (Math.abs(Math.cos(best.f.rot)) > 0.7 ? best.w : best.d) > best.ex * 2 + 1e-6 ? k : 1;
+    const sz = best.ez * 2 >= SPAN_MIN && (Math.abs(Math.cos(best.f.rot)) > 0.7 ? best.d : best.w) > best.ez * 2 + 1e-6 ? k : 1;
+    const dx = it.ux - best.ux, dz = it.uz - best.uz;
+    it.x = best.x + (Math.abs(dx) <= best.ex ? dx * sx : Math.sign(dx) * (best.ex * sx + (Math.abs(dx) - best.ex)));
+    it.z = best.z + (Math.abs(dz) <= best.ez ? dz * sz : Math.sign(dz) * (best.ez * sz + (Math.abs(dz) - best.ez)));
+  }
   return {
     ...(title ? { title } : {}),
     rooms: rooms.map(r => { const b = bbox(r.pts); return { key: r.key, name: r.name, x: [X(b.x0), X(b.x1)], z: [Z(b.y0), Z(b.y1)], poly: r.pts.map(([x, y]) => [X(x), Z(y)]), color: r.color,
       ...(r.label ? { label: r.label } : {}), ...(r.labelAt ? { labelAt: [X(r.labelAt[0]), Z(r.labelAt[1])] } : {}), ...(r.zone ? { zone: r.zone } : {}) }; }),
     devices: devices.map(d => {
       const r = roomAt(rooms, d.fx, d.fy);
-      const x = X(d.fx), z = Z(d.fy);
+      const [px, pz] = place(d.fx, d.fy, 0.1, 0.1);
+      const x = r3(px), z = r3(pz);
       // Face the device towards the deepest point of its room (rotationY 0 faces +z).
       const c = r ? interior(r.pts) : null;
       const rot = c ? Math.atan2(X(c[0]) - x, Z(c[1]) - z) : 0;
@@ -139,7 +236,7 @@ export function toBuilding(rooms: PlanRoom[], devices: PlanDevice[], widthM: num
       return { id: d.id, type: d.type, room: r?.key ?? 'out', name: `${d.name ?? label} · ${r?.name ?? 'Outside'}${d.assumed ? ' (position assumed)' : ''}`, position: [x, MOUNT[d.type] ?? 1, z], rotationY: +rot.toFixed(4) };
     }),
     // rot in the image: 0 faces down = +z in the scene, so it carries over unchanged
-    furniture: furniture.map(f => ({ kind: f.kind, x: X(f.fx), z: Z(f.fy), w: +(f.fw * W).toFixed(3), d: +(f.fd * W).toFixed(3), rot: +f.rot.toFixed(4) })),
+    furniture: items.map(({ f, x, z, w, d }) => ({ kind: f.kind, x: r3(x), z: r3(z), w: r3(w), d: r3(d), rot: +f.rot.toFixed(4), ...(f.opening ? { opening: true } : {}) })),
     notes: notes.map(n => ({ text: n.text, x: X(n.fx), z: Z(n.fy), size: n.size ?? 1, rot: n.rot ?? 0 })),
     plan: dataUrl ? { dataUrl, x0: -W / 2, x1: W / 2, z0: -H / 2, z1: H / 2 } : null,
   };

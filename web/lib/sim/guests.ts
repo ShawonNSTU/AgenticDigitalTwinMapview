@@ -1,6 +1,7 @@
 // Guest passes: a link (shown as a QR code) that lets a visitor walk from an entrance to one room and
 // see and control only the devices in that room. Everything a guest's browser loads goes through
 // /api/guest/<token>/..., which filters by the pass; nothing else is reachable with a token.
+import { dropOwner, guestOwner } from '@/lib/chatlog';
 import { guestReady, GUEST_HIDDEN, ST_PROFILE, ST_KIND_COMMANDS, ARRIVAL } from './stzone';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { DEV, ROOMS, TYPES, LAYOUT, byId } from './engine';
@@ -114,6 +115,7 @@ export function revoke(token: string, by = 'host') {
   if (!p) return false;
   if (p.revoked) return true;
   p.revoked = true;
+  dropOwner(guestOwner(p.token));   // their assistant conversations go with the stay
   for (const fn of checkoutHooks) { try { fn(p, by); } catch { /* never block a checkout */ } }
   journal({ kind: 'guest', room: p.room, guest: p.token, text: `Guest ${p.label || '(no name)'} checked out of ${roomName(roomOf(p.room))} (pass withdrawn)` });
   return true;

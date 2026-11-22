@@ -263,10 +263,8 @@ func overview(on: bool) -> void:
 		fb.ceilings.visible = not on
 
 
-## Turn to face a point (guided tour of the room's devices).
-## Step to where the whole room is in view and turn to face it, as you would on walking in: of the open floor
-## (clear of furniture, at least 0.45 m from the walls), the spot farthest from the room's middle that still sees
-## the middle without looking through a wall. Standing just inside the door, a small room is all close-up.
+## Step into the room and take it in, as you would on walking in: just inside the door you came through, facing
+## across to its far side.
 func view_room(r: Dictionary) -> void:
 	if r.is_empty():
 		return
@@ -281,6 +279,8 @@ func view_room(r: Dictionary) -> void:
 		else:
 			arrived.connect(func(): if p.distance_to(spot) < 0.6: look_at_point(look), CONNECT_ONE_SHOT)
 		return
+	# any other room: as a person does on walking in, stop just inside the door you came through, clear of the
+	# leaf and the furniture, and look across to the far side of the room
 	var poly := PlanGeo.room_poly(r)
 	var c := PlanGeo.interior_point(poly)
 	var lo := Vector2(INF, INF)
@@ -288,38 +288,34 @@ func view_room(r: Dictionary) -> void:
 	for q in poly:
 		lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
 		hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
-	var best := Vector2.INF
-	var best_d := -1.0
-	var x := lo.x + 0.3
-	while x < hi.x:
-		var z := lo.y + 0.3
-		while z < hi.y:
-			var q := Vector2(x, z)
-			z += 0.2
-			if not Geometry2D.is_point_in_polygon(q, poly) or not nav.is_free(q) or q.distance_to(c) <= best_d:
-				continue
-			var near_wall := false
-			for i in poly.size():
-				if q.distance_to(Geometry2D.get_closest_point_to_segment(q, poly[i], poly[(i + 1) % poly.size()])) < 0.45:
-					near_wall = true
-					break
-			if near_wall:
-				continue
-			var sees := true
-			for k in range(1, 10):
-				if not Geometry2D.is_point_in_polygon(q.lerp(c, k / 10.0), poly):
-					sees = false
-					break
-			if sees:
-				best = q
-				best_d = q.distance_to(c)
-		x += 0.2
-	var at := Vector3(c.x, eye - 0.8, c.y)   # a little down: furniture and floor, not ceiling
-	if best == Vector2.INF or best.distance_to(p) < 0.5 or not go_to(best):
+	var centre := (lo + hi) / 2
+	if not Geometry2D.is_point_in_polygon(centre, poly):
+		centre = c
+	var door_at := Vector2.INF
+	var inward := Vector2.ZERO
+	for f in Store.furniture:
+		if f.get("kind", "") != "door":
+			continue
+		var dc := Vector2(float(f.x), float(f.z))
+		var nn := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))
+		for side in [1.0, -1.0]:
+			if Geometry2D.is_point_in_polygon(dc + nn * side * 0.5, poly) and not Geometry2D.is_point_in_polygon(dc - nn * side * 0.5, poly):
+				if door_at == Vector2.INF or dc.distance_to(p) < door_at.distance_to(p):
+					door_at = dc
+					inward = nn * side
+	var spot := c
+	if door_at != Vector2.INF:
+		var depth := clampf(minf(hi.x - lo.x, hi.y - lo.y) * 0.3, 0.9, 1.6)
+		spot = nav.nearest_free(door_at + inward * depth, 8)
+		if not Geometry2D.is_point_in_polygon(spot, poly):
+			spot = c
+	var far := centre + (centre - spot).normalized() * 0.35 * minf(hi.x - lo.x, hi.y - lo.y) if centre.distance_to(spot) > 0.3 else centre + inward * 2.0
+	var at := Vector3(far.x, eye - 0.45, far.y)   # eye level, a little down: the room, not the ceiling
+	if spot.distance_to(p) < 0.4 or not go_to(spot):
 		look_at_point(at)
 		return
 	# turn to the room once there; a tap elsewhere on the way cancels it (no turning round where you chose to go)
-	arrived.connect(func(): if p.distance_to(best) < 0.6: look_at_point(at), CONNECT_ONE_SHOT)
+	arrived.connect(func(): if p.distance_to(spot) < 0.6: look_at_point(at), CONNECT_ONE_SHOT)
 
 
 func look_at_point(q: Vector3) -> void:
@@ -332,6 +328,13 @@ func look_at_point(q: Vector3) -> void:
 
 ## Keeps the walker inside one room from now on (a guest who reached their room).
 var _confine := PackedVector2Array()
+
+
+## Re-plan the walkable floor (a door's lock changed), keeping the room the walker is held in.
+func rebuild_nav() -> void:
+	nav.build(_pieces, _lintels)
+	if not _confine.is_empty():
+		nav.restrict(_confine)
 
 
 func confine(r: Dictionary) -> void:
@@ -382,7 +385,7 @@ func _fit_fov() -> void:
 	var across := deg_to_rad(106.0)
 	var v := rad_to_deg(2.0 * atan(tan(across / 2.0) / aspect))
 	cam.keep_aspect = Camera3D.KEEP_HEIGHT
-	cam.fov = clampf(v, 74.0, 104.0)
+	cam.fov = clampf(v, 74.0, 112.0)   # tall phone screens: a little wider still
 
 
 # ---- arriving by lift: inside the car with the doors shut, the doors slide open, step out into the lobby, turn
@@ -631,7 +634,14 @@ func _apply() -> void:
 		if absf(wrapf(yaw - _look_goal[0], -PI, PI)) < 0.01 and absf(pitch - _look_goal[1]) < 0.01:
 			_look_goal = null
 	var bob := sin(_bob) * 0.02
-	var t := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch), Vector3(p.x, eye + bob, p.y))
+	# standing still in their own room, the view steps back to the wall behind and rises a little, as a photographer
+	# takes in a whole room from its corner; walking again brings it back to the eyes
+	var still := _path.is_empty() and _push <= 0.0 and joy.length() < 0.05 and not _down and not _keys.values().has(true)
+	var goal := _room_back() if still and not _confine.is_empty() and not live else 0.0
+	_back = lerpf(_back, goal, 0.06 if goal > _back else 0.25)
+	var behind := Vector2(sin(yaw), cos(yaw)) * _back
+	var lift := 0.12 * clampf(_back / ROOM_BACK, 0.0, 1.0)
+	var t := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch), Vector3(p.x + behind.x, eye + bob + lift, p.y + behind.y))
 	if _over or _over_t < 1.0:
 		_over_t = minf(_over_t + get_process_delta_time() / 1.2, 1.0)
 		var top := _overview_xform()
@@ -645,8 +655,52 @@ func _apply() -> void:
 		cam.global_transform = t
 
 
-## Straight down over the walker and the way to the destination.
+const ROOM_BACK := 1.6   # furthest the room view steps back, metres
+var _back := 0.0
+
+
+## How far the camera can step back from the guest (straight behind, level) and stay inside the room, clear of its
+## walls by a hand's width.
+func _room_back() -> float:
+	var dir := Vector2(sin(yaw), cos(yaw))
+	var far := p + dir * (ROOM_BACK + 0.15)
+	var best := ROOM_BACK
+	var n := _confine.size()
+	for i in n:
+		var hit = Geometry2D.segment_intersects_segment(p, far, _confine[i], _confine[(i + 1) % n])
+		if hit != null:
+			best = minf(best, p.distance_to(hit) - 0.15)
+	# and short of any furniture behind (a lamp shade or a cupboard would fill the view): only floor the guest could
+	# stand on, in steps of 10 cm
+	var d := 0.0
+	while d + 0.1 <= best and nav.is_free(p + dir * (d + 0.1)):
+		d += 0.1
+	return d
+
+
+## Straight down over the walker and the way to the destination; in the guest's own room, the whole room from above
+## at a steep angle from the side they look from (ceiling lifted off), every piece at its true size.
 func _overview_xform() -> Transform3D:
+	if not _confine.is_empty():
+		var rb := Rect2(_confine[0], Vector2.ZERO)
+		for q in _confine:
+			rb = rb.expand(q)
+		var c := rb.get_center()
+		var pitch_r := deg_to_rad(-62.0)
+		var vs := get_viewport().get_visible_rect().size
+		var aspect := vs.x / maxf(vs.y, 1.0)
+		var half_v := deg_to_rad(cam.fov) / 2.0
+		var half_h := atan(tan(half_v) * aspect)
+		# far enough that the room's longest side fits across, and its depth fits from top to bottom
+		var span := maxf(rb.size.x, rb.size.y) + 0.8
+		var dist := maxf(span / 2.0 / tan(half_h), (minf(rb.size.x, rb.size.y) + 0.8) / 2.0 / tan(half_v) / sin(-pitch_r)) + 1.0
+		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch_r)
+		var at := Vector3(c.x, 0.6, c.y) + basis.z * dist
+		return Transform3D(basis, at)
+	return _overview_top()
+
+
+func _overview_top() -> Transform3D:
 	var box := Rect2(p, Vector2.ZERO)
 	if _route_node:
 		for c in _route_node.get_children():

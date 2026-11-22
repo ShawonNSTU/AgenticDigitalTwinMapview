@@ -38,6 +38,15 @@ func _ready() -> void:
 	quality.sun = sun
 	add_child(quality)
 	Bus.quality_requested.connect(quality.request)
+	Bus.daylight_requested.connect(func(hr: float):
+		_day_hour = hr
+		_apply_daylight())
+	var clock := Timer.new()   # daylight follows the time of day
+	clock.wait_time = 60.0
+	clock.autostart = true
+	clock.timeout.connect(_apply_daylight)
+	add_child(clock)
+	_apply_daylight.call_deferred()
 	Bus.experience_updated.connect(_on_experience)
 	Bus.dispatch_requested.connect(func(id):
 		if xp:
@@ -123,6 +132,10 @@ func _ready() -> void:
 			var gt := Node.new()
 			gt.set_script(load("res://tests/guest_test.gd"))
 			add_child(gt)
+		if a.begins_with("--guest-stress="):
+			var gs := Node.new()
+			gs.set_script(load("res://tests/guest_stress.gd"))
+			add_child(gs)
 		if a.begins_with("--walk="):
 			var wt := Node.new()
 			wt.set_script(load("res://tests/walk_test.gd"))
@@ -135,6 +148,10 @@ func _ready() -> void:
 			var lc := Node.new()
 			lc.set_script(load("res://tests/live_check.gd"))
 			add_child(lc)
+		if a.begins_with("--navmap="):
+			var nm := Node.new()
+			nm.set_script(load("res://tests/nav_map.gd"))
+			add_child(nm)
 		if a.begins_with("--routes="):
 			var rc := Node.new()
 			rc.set_script(load("res://tests/route_check.gd"))
@@ -228,9 +245,12 @@ func _on_layout() -> void:
 
 
 ## Every device shows its live state in the room (lights, airflow, screens, blinds...).
+var _locks_sig := ""
+
 func _apply_live() -> void:
 	if world == null:
 		return
+	_apply_locks()
 	if _live:
 		_live_fix()
 	for id in devices:
@@ -418,6 +438,8 @@ func _story_night(on: bool) -> void:
 	tw.tween_property(env, "ambient_light_energy", 0.22 if on else 0.55, 1.5)
 	tw.tween_property(sun, "light_energy", 0.02 if on else SUN, 1.5)
 	tw.tween_property(env, "glow_intensity", 1.2 if on else 0.6, 1.5)
+	if not on:
+		get_tree().create_timer(1.6).timeout.connect(_apply_daylight)
 
 
 # ---- 3D device control for guests: previews while a control is dragged, a pinned anchor, a hologram value --------
@@ -584,7 +606,7 @@ func _room_light() -> void:
 		if d.type == "light":
 			levels.append(float(l.get("lv", 0.0)) / 100.0)
 		elif d.type == "blinds":
-			day = maxf(day, float(l.get("pos", 0.0)) / 100.0)
+			day = maxf(day, float(l.get("pos", 0.0)) / 100.0 * _daylight())   # an open curtain lets in only what daylight there is
 		elif d.type == "tv" and bool(l.get("on", false)):
 			day = maxf(day, 0.15)
 	var target := WALK_AMBIENT
@@ -729,11 +751,11 @@ func _hud() -> void:
 	add_child(layer)
 	hud = Label.new()
 	hud.position = Vector2(14, 10)
-	hud.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.85))
+	_readable(hud, 1.0)
 	layer.add_child(hud)
 	legend = Label.new()
 	legend.position = Vector2(14, 34)
-	legend.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.7))
+	_readable(legend, 0.95)
 	layer.add_child(legend)
 	if OS.has_feature("web"):
 		# the page shows the clock and its own panels on the left; keep only the flow legend, clear of the palette
@@ -742,11 +764,19 @@ func _hud() -> void:
 	if not OS.has_feature("web"):
 		var help := Label.new()
 		help.text = "Click a device to focus · double-click to open · P piping · Esc back · drag orbit · right-drag pan · wheel zoom"
-		help.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.55))
+		_readable(help, 0.85)
 		help.anchor_top = 1.0
 		help.anchor_bottom = 1.0
 		help.position = Vector2(14, -30)
 		layer.add_child(help)
+
+
+## Light text on a dark outline reads over both the daylight floor and the night view.
+func _readable(l: Label, alpha: float) -> void:
+	l.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, alpha))
+	l.add_theme_color_override("font_outline_color", Color(0.04, 0.06, 0.1, 0.9))
+	l.add_theme_constant_override("outline_size", 6)
+	l.add_theme_font_size_override("font_size", 17)
 
 
 ## The clock no longer moves the sun: the map keeps one fixed evening light (see SUN).
@@ -765,9 +795,7 @@ func _on_health(id: String, h: String) -> void:
 func _on_highlight(ids: Array, _reason: String) -> void:
 	if world == null:
 		return
-	_highlight = ids
-	for id in devices:
-		devices[id].set_highlight(ids.has(id), not ids.is_empty())
+	_mark(ids)
 	if ids.size() == 1:
 		_on_focus(ids[0])
 	elif ids.size() > 1:
@@ -778,10 +806,19 @@ func _on_highlight(ids: Array, _reason: String) -> void:
 		rig.fly_to(box.get_center(), clampf(box.size.length() * 1.3 + 4.0, 6.0, 22.0))
 
 
+## Rings the devices without moving the view (a tour stop that already stands where the device is seen).
+func _mark(ids: Array) -> void:
+	_highlight = ids
+	for id in devices:
+		devices[id].set_highlight(ids.has(id), not ids.is_empty())
+
+
 func _on_focus(id: String) -> void:
 	if world == null:
 		return
-	if devices.has(id):
+	if devices.has(id) and walker:
+		_show_device(id)   # walking: go where it can be seen (the agent's "show me", a technician at the unit)
+	elif devices.has(id):
 		rig.fly_to(devices[id].global_position, 4.0)
 	else:
 		_pending_focus = id  # not here yet: it was just placed and is on its way from the platform
@@ -919,6 +956,13 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 				walker.set_live(_live)
 				if _live:
 					_live_fix()
+		"stepFree":  # step-free route on or off: a guest still on the way is routed again from where they came in
+			Store.step_free = bool(msg.get("on", true))
+			if walker:
+				if Store.guest_token != "" and not _guest_settled:
+					_guest_restart(str(Store.guest.get("entrance", "")))   # builds a fresh walk (and its routes)
+				else:
+					walker.rebuild_nav()
 		"overview":
 			if walker:
 				walker.overview(bool(msg.get("on", true)))
@@ -926,6 +970,10 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 			if walker and devices.has(str(msg.get("id", ""))):
 				walker.look_at_point(devices[str(msg.get("id", ""))].global_position)
 				_on_highlight([str(msg.get("id", ""))], "")
+		"show":  # guided tour: go where the device can be seen, face it, then say so (the host opens its control)
+			if walker and devices.has(str(msg.get("id", ""))):
+				walker.overview(false)   # a tour stop is seen at eye level
+				_show_device(str(msg.get("id", "")))
 		"toggle":
 			if Store.guest_token != "":
 				return
@@ -937,7 +985,9 @@ func _on_walk(action: String, msg: Dictionary) -> void:
 			if walker == null:
 				start_walk(str(msg.get("room", "")))
 			elif not walker.go_to_room(str(msg.get("room", ""))):
-				Bridge.emit_event({"type": "walk", "on": true, "room": walker.room_key, "roomName": Store.room_label(Store.room_at(walker.p)), "note": "No way in from here"})
+				var shut: Array = walker.nav.locked_names()
+				var why := ("Locked: " + ", ".join(shut)) if not shut.is_empty() else "No way in from here"
+				Bridge.emit_event({"type": "walk", "on": true, "room": walker.room_key, "roomName": Store.room_label(Store.room_at(walker.p)), "note": why})
 		"stick":
 			if walker:
 				walker.joy = Vector2(float(msg.get("x", 0)), float(msg.get("y", 0))).limit_length(1.0)
@@ -1021,6 +1071,8 @@ func _end_walk_state(restore := true) -> void:
 	if walker == null:
 		return
 	walker = null
+	Store.key_room = ""
+	_apply_locks(false)
 	for f in Store.furniture:  # the arrival lift's doors and shaft go back to normal
 		f.erase("arrival")
 	if Store.walk:
@@ -1031,8 +1083,7 @@ func _end_walk_state(restore := true) -> void:
 	_walk_saved = {}
 	rig.set_process_unhandled_input(true)
 	rig.cam.current = true
-	env.ambient_light_energy = 0.55
-	sun.light_energy = SUN
+	_apply_daylight()
 	_walk_look(false)
 	Bus.walk_changed.emit({"on": false})
 
@@ -1079,6 +1130,8 @@ func _start_guest(from_key := "") -> void:
 		return
 	_arrival_lift = {}
 	_guest_room = str(Store.guest.get("room", ""))
+	Store.key_room = _guest_room   # their pass (or work order) opens this room's lock
+	_apply_locks(false)   # its door is drawn open for them (the world is rebuilt below)
 	var target_room: Dictionary = Store.room(_guest_room)
 	if target_room.is_empty():
 		return
@@ -1378,3 +1431,170 @@ func _guest_skip() -> void:
 	walker.teleport(_guest_target)
 	walker._track_room()
 	_guest_arrived()
+
+
+## Guided tour stop: the device must be in sight before its control appears on it. If it can't be seen well from
+## here (a wall or a tall cupboard in the way, too close under it, too far), walk to the nearest open spot in the
+## room that sees it from a comfortable distance, turn to it, and only then tell the host ({viewing: id}).
+const _TALL := ["cabinet", "shelf", "rack", "locker", "column", "workstation", "lift_shaft", "vending", "partition", "wardrobe", "bookcase", "fridge"]
+var _show_seq := 0
+
+func _show_device(id: String) -> void:
+	_show_seq += 1
+	var seq := _show_seq
+	var dev: Node3D = devices[id]
+	var at3 := dev.global_position
+	var t := Vector2(at3.x, at3.z)
+	var here := walker.p
+	# the room the device is in (walking there first when it's elsewhere), else the guest's room
+	var r: Dictionary = Store.room(str(Store.device(id).get("room", ""))) if not Store.device(id).is_empty() else {}
+	if r.is_empty():
+		r = Store.room(_guest_room) if _guest_room != "" else Store.room_at(here)
+	var done := func():
+		if seq != _show_seq or walker == null:
+			return
+		walker.look_at_point(at3)
+		_mark([id])   # not _on_highlight: that focuses, which comes back here
+		Bus.walk_changed.emit({"on": true, "viewing": id})
+	var near := _obstacles(t)
+	if _sees(here, t, at3.y, near):
+		done.call()
+		return
+	var poly := PlanGeo.room_poly(r) if not r.is_empty() else PackedVector2Array()
+	var best := Vector2.INF
+	var best_s := INF
+	if not poly.is_empty():
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for q in poly:
+			lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
+			hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
+		var x := lo.x + 0.3
+		while x < hi.x:
+			var z := lo.y + 0.3
+			while z < hi.y:
+				var q := Vector2(x, z)
+				z += 0.25
+				if not Geometry2D.is_point_in_polygon(q, poly) or q.distance_to(t) > 4.5 or not walker.nav.is_free(q) or not _sees(q, t, at3.y, near):
+					continue
+				# nearest to where the guest stands, at a comfortable distance from the device
+				var s := q.distance_to(here) + absf(q.distance_to(t) - 2.4) * 1.5
+				if s < best_s:
+					best_s = s
+					best = q
+			x += 0.25
+	if best == Vector2.INF or not walker.go_to(best):
+		done.call()
+		return
+	walker.arrived.connect(func(): done.call(), CONNECT_ONE_SHOT)
+
+
+## Whether a device at t (height y) is in plain view from q: a comfortable distance (not straight overhead, not
+## across the floor), no wall between, and no tall furniture standing in the line of sight.
+func _sees(q: Vector2, t: Vector2, y: float, near := []) -> bool:
+	var d := q.distance_to(t)
+	if d < (1.3 if y > 1.9 else 1.0) or d > 4.5:
+		return false
+	var a := q
+	var b := t.lerp(q, 0.25 / maxf(d, 0.01))   # stop just short of the device (it sits on its wall)
+	var obs: Array = near if not near.is_empty() else _obstacles(t)
+	for wp in obs[0]:
+		if Geometry2D.segment_intersects_segment(a, b, wp[0], wp[1]) != null:
+			return false
+	for rect in obs[1]:
+		for k in range(1, 12):
+			if Geometry2D.is_point_in_polygon(a.lerp(b, k / 12.0), rect):
+				return false
+	return true
+
+
+## The walls and tall furniture within sight range of t (5 m), prepared once for a tour stop's many checks.
+func _obstacles(t: Vector2) -> Array:
+	var walls: Array = []
+	var rects: Array = []
+	if floor_builder:
+		for wp in floor_builder.wall_pieces:
+			var p0: Vector2 = wp[0]
+			var p1: Vector2 = wp[1]
+			if Geometry2D.get_closest_point_to_segment(t, p0, p1).distance_to(t) < 5.0:
+				walls.append(wp)
+	for f in Store.furniture:
+		if not _TALL.has(str(f.get("kind", ""))):
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		if c.distance_to(t) < 6.0:
+			rects.append(Placer._rect(c, Vector2(float(f.w), float(f.d)), float(f.get("rot", 0.0))))
+	return [walls, rects]
+
+
+
+## Smart locks at doors: a locked door's leaf is drawn shut across the opening and walking routes go round it.
+## Only rebuilt when a lock actually changes.
+func _apply_locks(refresh := true) -> void:
+	var sig := ""
+	for f in Store.furniture:
+		if f.get("kind", "") == "door":
+			# the door to the room the walker holds the key for opens for them
+			var lk := Store.door_locked(f) and not WalkNav._opens_into(f, Store.key_room)
+			if lk != bool(f.get("locked", false)):
+				if lk:
+					f["locked"] = true
+				else:
+					f.erase("locked")
+			if lk:
+				sig += "%.1f,%.1f;" % [float(f.x), float(f.z)]
+	if sig == _locks_sig:
+		return
+	_locks_sig = sig
+	if not refresh:
+		return
+	if walker:
+		walker.rebuild_nav()   # routes see the change at once
+		return
+	if interior and is_instance_valid(interior):
+		interior.queue_free()
+		interior = Interior.new()
+		interior.name = "Interior"
+		world.add_child(interior)
+		interior.build(Store.furniture if Store.guest_allowed.is_empty() else Store.furniture.filter(func(f):
+			if f.get("kind", "") == "door":
+				return Store.door_open(f)
+			var r: Dictionary = Store.room_at(Vector2(float(f.x), float(f.z)))
+			return r.is_empty() or Store.room_allowed(r.key)))
+
+
+
+# ---- daylight: the light of the time of day (the viewer's local clock, or an hour the host sets) --------------
+
+var _day_hour := -1.0   # -1: the real time
+
+## 0 at night, rising from dawn (6:00) to 1 at noon and back to 0 at dusk (18:00).
+func _daylight() -> float:
+	var h := _day_hour
+	if h < 0:
+		var t := Time.get_datetime_dict_from_system()
+		h = float(t.hour) + float(t.minute) / 60.0
+	return clampf(sin(PI * (h - 6.0) / 12.0), 0.0, 1.0) if h > 6.0 and h < 18.0 else 0.0
+
+
+func _apply_daylight() -> void:
+	if env == null or sun == null or _night_on:
+		return
+	var k := _daylight()
+	var h := _day_hour
+	if h < 0:
+		var t := Time.get_datetime_dict_from_system()
+		h = float(t.hour) + float(t.minute) / 60.0
+	var low := clampf(1.0 - k * 2.5, 0.0, 1.0) * float(k > 0.0)   # warm light near dawn and dusk
+	# the sun crosses from the east (morning) to the west (evening), higher at noon
+	sun.rotation = Vector3(SUN_TILT - 0.9 * k, deg_to_rad(lerpf(-110.0, 40.0, clampf((h - 6.0) / 12.0, 0.0, 1.0))), 0)
+	sun.light_color = Color(1, 0.98, 0.95).lerp(Color(1.0, 0.72, 0.45), low)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(env, "background_color", Color("0b0e12").lerp(Color("1b2430"), k), 2.0)
+	tw.tween_property(env, "ambient_light_color", Color("8e9bb8").lerp(Color("aab4c3"), k).lerp(Color("c8a888"), low * 0.4), 2.0)
+	if walker:
+		tw.tween_property(sun, "light_energy", 0.25 * (0.3 + 0.7 * k), 2.0)
+	else:
+		tw.tween_property(sun, "light_energy", SUN * (0.4 + 0.6 * k), 2.0)
+		tw.tween_property(env, "ambient_light_energy", 0.45 + 0.1 * k, 2.0)
+	_room_light()

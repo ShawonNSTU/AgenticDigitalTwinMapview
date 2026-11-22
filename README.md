@@ -262,8 +262,10 @@ the device list, side panel and chat still work. `next start` only serves files 
 started, so restart it after exporting.
 
 The app starts by asking for a floor plan (http://localhost:3000 sends you to /setup until one is built). Upload the
-image and it is read straight away; check the names, the building and floor, and the scale, then render. The floor
-last built is kept in `web/.data/floor.json` and comes back after a restart (devices placed later are not kept).
+image and it is read straight away; check the names, the building and floor, and the scale, then render. Every
+fresh start of the server begins here again, so each demo shows the plan turning into 3D. To have the floor last
+built come back after a restart instead, start the web app with `KEEP_FLOOR=1` (it is kept in
+`web/.data/floor.json`; devices placed later are not kept).
 "Upload floor plan" in the header replaces it. What the reader does (assistant/app/floorplan/plan_cv.py, OpenCV + Tesseract):
 
 - a photo of a sheet taken at an angle is recognised from the paper outline and straightened on its corners
@@ -344,3 +346,11 @@ start makes a self-signed certificate in `web/.cert/` for this machine's name an
 warns once, so choose *Advanced -> Proceed* (or install `web/.cert/cert.pem` as trusted on those PCs). With a real
 certificate set `HTTPS_CERT` and `HTTPS_KEY`. Ports: `HTTPS_PORT` (3443), `HTTP_PORT` (3000, localhost only).
 Guest links and QR codes use the address you opened, so they work from other PCs and phones too.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request: the web app's type check, tests and build; the
+assistant's tests (with Tesseract for plan reading); then, against the running app, the renderer's
+walk-to-every-room check (`tools/check_routes.sh`: every room must be reachable through the plan's own doors) and
+the UI layout audits (`tools/ui_audit.js`, `tools/ui_audit_deep.js`: every page at desktop, tablet and phone sizes).
+Any issue fails the run; the audit screenshots are attached when it does.

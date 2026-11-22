@@ -15,6 +15,7 @@ var ceilings: Node3D         # walk mode: shown once the camera is down at eye h
 var _veil: MeshInstance3D
 var _veil_tw: Tween
 var _plan_mat: StandardMaterial3D
+var _base_col := {}   # each floor's own colour (its finish), to come back to after a highlight or tint
 
 
 func build() -> void:
@@ -30,18 +31,25 @@ func build() -> void:
 		elif str(r.get("finish", "")) == "lift-lobby":
 			_lobby_floor(mat)
 		else:
-			_finish(mat, str(r.name).to_lower())
+			_finish(mat, str(r.name).to_lower(), Color(r.color))
 		_slabs[r.key] = mat
+		_base_col[r.key] = mat.albedo_color
 		_slab(poly, mat)
 		if Store.room_allowed(r.key):
 			if not Store.walk:   # walking: no names painted on the floor
 				_room_label(r, poly)
+	if Store.walk:
+		_signs()
 	for n in Store.notes:
 		if Store.room_allowed(Store.room_at(Vector2(float(n.x), float(n.z))).get("key", "")) or Store.guest_allowed.is_empty():
 			_note(n)
 	var wall_mat := StandardMaterial3D.new()
-	wall_mat.albedo_color = Color("f2f3f5")
-	wall_mat.roughness = 0.8
+	wall_mat.albedo_color = Color.WHITE
+	wall_mat.albedo_texture = _plaster_tex()
+	wall_mat.uv1_triplanar = true
+	wall_mat.uv1_world_triplanar = true
+	wall_mat.uv1_scale = Vector3.ONE / 0.8
+	wall_mat.roughness = 0.85
 	var h: float = Store.wall_height
 	# Walls follow every room edge (any angle); shared walls are built once; door openings are left open.
 	var doors: Array = Store.furniture.filter(func(f): return f.get("kind", "") == "door" and Store.door_open(f))
@@ -83,6 +91,7 @@ func build() -> void:
 			_zone_walls(r, h, doors)
 		elif str(r.get("finish", "")) == "lift-lobby":
 			_zone_walls(r, h, doors, _lobby_wall_mat(), Color("2e3a5c"))
+	_wall_shade()
 	if Store.walk:
 		_ceilings(h)
 	if Store.outdoor_pad.has("x"):
@@ -110,50 +119,155 @@ func build() -> void:
 		add_child(plane)
 
 
-## Floor finish from the room's name: tiles in wet rooms, carpet where people sit or pray, plain screed elsewhere.
-static var _tile_tex: Texture2D
-static var _carpet_tex: Texture2D
+## Floor finish from the room's name, as such rooms are finished in real buildings: glazed ceramic tiles in wet
+## rooms, carpet tiles where people sit, work or pray, rubber in the gym, polished terrazzo in corridors, lobbies and
+## passages, wood-look vinyl planks elsewhere (cafeterias, offices, any other room). The room's plan colour stays as
+## a faint tint on the map; walking, the floor shows its real colour.
+const WET := ["toilet", "bath", "ablution", "wash", "kitchen", "laundry", "utility", "a/c", "outdoor", "shower", "wc"]
+const SOFT := ["pray", "training", "class", "bed", "maternity", "workspace", "media", "living", "office", "meeting", "conference", "study", "medical"]
+const HARD := ["corridor", "passage", "lobby", "hall", "foyer", "entrance", "stair", "landing", "store", "hub"]
 
-func _finish(mat: StandardMaterial3D, name: String) -> void:
-	var wet := ["toilet", "bath", "ablution", "wash", "kitchen", "laundry", "utility", "a/c", "outdoor", "stair"]
-	var soft := ["pray", "training", "class", "bed", "maternity", "workspace", "zone d", "media", "living", "office", "experience"]
-	for k in wet:
+func _finish(mat: StandardMaterial3D, name: String, tint: Color) -> void:
+	var kind := "vinyl"
+	for k in HARD:
 		if name.contains(k):
-			if _tile_tex == null:
-				var img := Image.create(64, 64, false, Image.FORMAT_RGB8)
-				img.fill(Color(1, 1, 1))
-				for i in 64:
-					for j in [0, 1]:
-						img.set_pixel(i, j, Color(0.72, 0.74, 0.77))
-						img.set_pixel(j, i, Color(0.72, 0.74, 0.77))
-				img.generate_mipmaps()
-				_tile_tex = ImageTexture.create_from_image(img)
-			mat.albedo_texture = _tile_tex
-			mat.uv1_triplanar = true
-			mat.uv1_world_triplanar = true
-			mat.uv1_scale = Vector3.ONE / 0.6  # 600 mm tiles
-			mat.roughness = 0.35
-			return
-	for k in soft:
+			kind = "terrazzo"
+	for k in SOFT:
 		if name.contains(k):
-			if _carpet_tex == null:
-				var n := FastNoiseLite.new()
-				n.frequency = 0.35
-				var nt := NoiseTexture2D.new()
-				nt.noise = n
-				nt.width = 128
-				nt.height = 128
-				nt.seamless = true
-				nt.color_ramp = Gradient.new()
-				nt.color_ramp.set_color(0, Color(0.82, 0.82, 0.84))
-				nt.color_ramp.set_color(1, Color(1, 1, 1))
-				_carpet_tex = nt
-			mat.albedo_texture = _carpet_tex
-			mat.uv1_triplanar = true
-			mat.uv1_world_triplanar = true
-			mat.uv1_scale = Vector3.ONE / 1.5
-			mat.roughness = 1.0
-			return
+			kind = "carpet"
+	for k in WET:
+		if name.contains(k):
+			kind = "ceramic"
+	if name.contains("gym") or name.contains("fitness"):
+		kind = "rubber"
+	var size: float = {"ceramic": 0.6, "carpet": 1.0, "rubber": 1.0, "terrazzo": 1.2, "vinyl": 1.2}[kind]
+	mat.albedo_texture = _floor_tex(kind)
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3.ONE / size
+	mat.roughness = float({"ceramic": 0.28, "carpet": 1.0, "rubber": 0.85, "terrazzo": 0.22, "vinyl": 0.5}[kind])
+	mat.metallic_specular = 0.6 if kind in ["ceramic", "terrazzo"] else 0.4
+	mat.albedo_color = Color.WHITE if Store.walk else Color.WHITE.lerp(tint, 0.28)
+
+
+## Floor textures, one repeat each (sizes in _finish), made once procedurally.
+static func _floor_tex(kind: String) -> ImageTexture:
+	var key := "floor_" + kind
+	if _tex_cache.has(key):
+		return _tex_cache[key]
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var fine := FastNoiseLite.new()
+	fine.seed = 31
+	fine.frequency = 0.5
+	var cloud := FastNoiseLite.new()
+	cloud.seed = 5
+	cloud.frequency = 0.03
+	cloud.fractal_octaves = 3
+	match kind:
+		"ceramic":  # 2 x 2 tiles of 300 mm, each a slightly different shade, light grey grout
+			var tones := [rng.randf_range(-0.03, 0.03), rng.randf_range(-0.03, 0.03), rng.randf_range(-0.03, 0.03), rng.randf_range(-0.03, 0.03)]
+			var base := Color("e6e8ea")
+			for y in n:
+				for x in n:
+					var t: float = tones[int(x >= n / 2) + 2 * int(y >= n / 2)]
+					var c := base.lightened(t) if t > 0 else base.darkened(-t)
+					c = c.darkened(maxf(cloud.get_noise_2d(x, y), 0.0) * 0.05)
+					if x % (n / 2) < 3 or y % (n / 2) < 3:
+						c = Color("b8bcc0")
+					img.set_pixel(x, y, c)
+		"carpet":  # a 500 mm carpet tile, 2 x 2, pile direction turned on alternate tiles (quarter-turn laying)
+			var base := Color("7a828e")
+			for y in n:
+				for x in n:
+					var q := int(x >= n / 2) + int(y >= n / 2)
+					var streak := sin((x if q % 2 == 0 else y) * 0.9) * 0.025
+					var c := base.lightened(fine.get_noise_2d(x, y) * 0.12 + streak + cloud.get_noise_2d(x, y) * 0.04)
+					if x % (n / 2) == 0 or y % (n / 2) == 0:
+						c = c.darkened(0.08)
+					img.set_pixel(x, y, c)
+		"rubber":  # gym rubber tiles: mid grey with light and blue EPDM flecks (dark rubber reads as a hole from above)
+			var base := Color("7b8088")
+			img.fill(base)
+			for y in n:
+				for x in n:
+					img.set_pixel(x, y, base.lightened(fine.get_noise_2d(x, y) * 0.06))
+			for i in 2600:
+				var x := rng.randi_range(0, n - 2)
+				var y := rng.randi_range(0, n - 2)
+				var col: Color = [Color("a7abb1"), Color("6f9fd6"), Color("d9d9d6"), Color("5c6168")][rng.randi_range(0, 3)]
+				img.set_pixel(x, y, col)
+				if rng.randf() < 0.4:
+					img.set_pixel(x + 1, y, col)
+			for i in n:
+				img.set_pixel(i, 0, Color("62666d"))
+				img.set_pixel(0, i, Color("62666d"))
+		"terrazzo":  # polished terrazzo, 2 x 2 tiles of 600 mm: pale grey with stone chips, a fine joint
+			var base := Color("d9d7d2")
+			for y in n:
+				for x in n:
+					img.set_pixel(x, y, base.darkened(maxf(cloud.get_noise_2d(x, y), 0.0) * 0.06).lightened(fine.get_noise_2d(x, y) * 0.02))
+			for i in 1800:
+				var x := rng.randi_range(1, n - 3)
+				var y := rng.randi_range(1, n - 3)
+				var col: Color = [Color("8f8b84"), Color("b6aea2"), Color("6f7377"), Color("efece6"), Color("a39582")][rng.randi_range(0, 4)]
+				var sz := rng.randi_range(1, 2)
+				for dy in sz:
+					for dx in sz:
+						img.set_pixel(x + dx, y + dy, col)
+			for i in n:
+				for k in [0, n / 2]:
+					img.set_pixel(i, k, Color("b3b0aa"))
+					img.set_pixel(k, i, Color("b3b0aa"))
+		_:  # wood-look vinyl planks: 1.2 m x 0.2 m (6 boards across), staggered joints, grain along the board
+			var rows := 6
+			var light := Color("c4a27c")
+			var dark := Color("9b7653")
+			var tones: Array = []
+			var offs: Array = []
+			for i in rows:
+				tones.append(rng.randf_range(-0.07, 0.07))
+				offs.append(rng.randi_range(0, n - 1))
+			var grain := FastNoiseLite.new()
+			grain.seed = 17
+			grain.frequency = 0.01
+			for y in n:
+				var row := y * rows / n
+				for x in n:
+					var t := float(y) * 0.9 + grain.get_noise_2d(x * 0.3, y * 2.0) * 6.0
+					var line := pow(0.5 + 0.5 * sin(t), 8.0)
+					var c := light.lerp(dark, clampf(line * 0.35 + (cloud.get_noise_2d(x * 0.4, y) * 0.5 + 0.5) * 0.25, 0.0, 1.0))
+					var tn: float = tones[row]
+					c = c.lightened(tn) if tn > 0 else c.darkened(-tn)
+					if y % (n / rows) == 0 or (x + int(offs[row])) % n == 0:
+						c = c.darkened(0.3)
+					img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	_tex_cache[key] = ImageTexture.create_from_image(img)
+	return _tex_cache[key]
+
+
+## Painted plaster walls: off-white with the faint orange-peel of rolled emulsion paint.
+static func _plaster_tex() -> ImageTexture:
+	if _tex_cache.has("plaster"):
+		return _tex_cache.plaster
+	var n := 128
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var fine := FastNoiseLite.new()
+	fine.seed = 41
+	fine.frequency = 0.6
+	var cloud := FastNoiseLite.new()
+	cloud.seed = 43
+	cloud.frequency = 0.04
+	var base := Color("f1efea")
+	for y in n:
+		for x in n:
+			img.set_pixel(x, y, base.darkened(maxf(fine.get_noise_2d(x, y), 0.0) * 0.035 + maxf(cloud.get_noise_2d(x, y), 0.0) * 0.025))
+	img.generate_mipmaps()
+	_tex_cache.plaster = ImageTexture.create_from_image(img)
+	return _tex_cache.plaster
 
 
 ## While a device twin is open, walls turn to glass so they never hide it.
@@ -265,6 +379,67 @@ var _glass: StandardMaterial3D
 
 ## One stretch of wall from `start` to `end` metres along the edge. Outside walls get windows: about every
 ## 3 m a 1.2 m wide window (sill and head at real heights, scaled like the walls) with glass between.
+var _skirt_mat: StandardMaterial3D
+## Soft shade on the floor along every wall, darkest where floor meets wall: the light a real corner doesn't get
+## (what ambient occlusion does in games; the web renderer has none). One instanced draw for the whole floor.
+func _wall_shade() -> void:
+	if wall_pieces.is_empty():
+		return
+	var g := Gradient.new()
+	g.set_color(0, Color(0.02, 0.03, 0.05, 0.34))
+	g.set_color(1, Color(0.02, 0.03, 0.05, 0.0))
+	g.add_point(0.3, Color(0.02, 0.03, 0.05, 0.14))
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill_from = Vector2(0, 0)
+	tex.fill_to = Vector2(0, 1)
+	tex.width = 4
+	tex.height = 64
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = tex
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	var q := PlaneMesh.new()
+	q.size = Vector2(1, 1)
+	var width := 0.55
+	var xs: Array[Transform3D] = []
+	for wp in wall_pieces:
+		var a: Vector2 = wp[0]
+		var b: Vector2 = wp[1]
+		var len := a.distance_to(b)
+		if len < 0.05:
+			continue
+		var u := (b - a) / len
+		var nrm := Vector2(-u.y, u.x)
+		var mid := (a + b) / 2
+		var ang := -atan2(u.y, u.x)
+		for side in [1.0, -1.0]:
+			var c: Vector2 = mid + nrm * side * (WALL / 2 + width / 2)
+			# the plane's -z edge (dark) must face the wall: turned half round for the other side
+			xs.append(Transform3D(Basis(Vector3.UP, ang + (0.0 if side > 0 else PI)) * Basis.from_scale(Vector3(len + WALL, 1, width)), Vector3(c.x, 0.011, c.y)))
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = q
+	mm.instance_count = xs.size()
+	for i in xs.size():
+		mm.set_instance_transform(i, xs[i])
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "WallShade"
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
+func _skirting() -> StandardMaterial3D:
+	if _skirt_mat == null:
+		_skirt_mat = StandardMaterial3D.new()
+		_skirt_mat.albedo_color = Color("5c5f63")
+		_skirt_mat.roughness = 0.45
+	return _skirt_mat
+
+
 func _wall_run(a: Vector2, u: Vector2, start: float, end: float, h: float, mat: StandardMaterial3D, exterior: bool) -> void:
 	var rot := -atan2(u.y, u.x)
 	var piece := func(t0: float, t1: float, y0: float, y1: float, m: StandardMaterial3D, depth: float) -> void:
@@ -274,6 +449,10 @@ func _wall_run(a: Vector2, u: Vector2, start: float, end: float, h: float, mat: 
 		var w := _box(Vector3(c.x, (y0 + y1) / 2, c.y), Vector3(t1 - t0, y1 - y0, depth), m)
 		w.rotation.y = rot
 		_walls.append(w)
+		if y0 == 0.0 and m == mat and Store.walk:  # a painted skirting board on both faces, as in any finished room
+			var sk := _box(Vector3(c.x, 0.05, c.y), Vector3(t1 - t0, 0.1, depth + 0.024), _skirting())
+			sk.rotation.y = rot
+			_walls.append(sk)
 	var usable := end - start - 1.2
 	var count := int(floor((usable + 1.8) / 3.0)) if exterior and usable > 1.2 else 0
 	if count <= 0:
@@ -667,8 +846,7 @@ var _selected := ""
 
 
 func _base(key: String) -> Color:
-	var r: Dictionary = Store.room(key)
-	return Color(r.color).lerp(Color("d9dde3"), 0.55) if not r.is_empty() else Color("d9dde3")
+	return _base_col.get(key, Color("d9dde3"))
 
 
 ## A device working in a room tints its floor (amount 0 clears it).
@@ -688,9 +866,7 @@ func climate_tint(key: String, col: Color, amount: float) -> void:
 ## Highlights one room's floor (a click on the map); "" clears it.
 func select_room(key: String) -> void:
 	if _selected != "" and _slabs.has(_selected):
-		var r: Dictionary = Store.room(_selected)
-		if not r.is_empty():
-			_slabs[_selected].albedo_color = Color(r.color).lerp(Color("d9dde3"), 0.55)
+		_slabs[_selected].albedo_color = _base(_selected)
 	_selected = key
 	if key != "" and _slabs.has(key):
 		var m: StandardMaterial3D = _slabs[key]
@@ -706,7 +882,7 @@ func tint_rooms(on: bool) -> void:
 				var h: String = Store.health.get(d.id, "ok")
 				if h == "fault" or (h == "watch" and worst == "ok"):
 					worst = h
-		var base := Color(r.color).lerp(Color("d9dde3"), 0.55)
+		var base := _base(r.key)
 		_slabs[r.key].albedo_color = base.lerp(Store.color_for(worst), 0.45) if on and worst != "ok" else base
 
 
@@ -828,3 +1004,75 @@ static func _mineral_tile_tex() -> ImageTexture:
 	img.generate_mipmaps()
 	_tex_cache.mineral = ImageTexture.create_from_image(img)
 	return _tex_cache.mineral
+
+
+
+## Wayfinding while walking, as in a finished building: a name plate on the wall beside each room's door, read from
+## the side you come from, and a lit EXIT sign over every door into a stair. Corridors, passages and lobbies have
+## no plates.
+const _NO_PLATE := ["corridor", "passage", "lobby", "hall", "foyer", "recess"]
+
+func _signs() -> void:
+	var plate_mat := StandardMaterial3D.new()
+	plate_mat.albedo_color = Color("2b3446")
+	plate_mat.roughness = 0.4
+	var exit_mat := StandardMaterial3D.new()
+	exit_mat.albedo_color = Color("16a34a")
+	exit_mat.emission_enabled = true
+	exit_mat.emission = Color("22c55e")
+	exit_mat.emission_energy_multiplier = 1.4
+	for f in Store.furniture:
+		if f.get("kind", "") != "door" or f.get("opening", false) or not Store.door_open(f):
+			continue
+		var c := Vector2(float(f.x), float(f.z))
+		var rot := float(f.get("rot", 0.0))
+		var u := Vector2(cos(rot), -sin(rot))
+		var n := Vector2(sin(rot), cos(rot))
+		var w := float(f.w)
+		for side in [1.0, -1.0]:
+			var into: Dictionary = Store.room_at(c + n * side * 0.5)
+			var from: Dictionary = Store.room_at(c - n * side * 0.5)
+			if into.is_empty() or from.is_empty() or not Store.room_allowed(str(from.key)):
+				continue
+			var name := Store.room_label(into)
+			var low := name.to_lower()
+			var out_dir: Vector2 = -n * side   # facing the corridor side, where you read it
+			var face := atan2(out_dir.x, out_dir.y)
+			if low.contains("stair"):
+				var at := c + out_dir * (WALL / 2 + 0.03)
+				var y := minf(Walker.LINTEL + 0.14, Store.wall_height - 0.12)
+				var box := _box(Vector3(at.x, y, at.y), Vector3(0.36, 0.14, 0.04), exit_mat)
+				box.rotation.y = face
+				var ex := Label3D.new()
+				ex.text = "EXIT"
+				ex.font_size = 48
+				ex.pixel_size = 0.0022
+				ex.modulate = Color.WHITE
+				ex.outline_size = 0
+				ex.double_sided = false
+				ex.position = Vector3(at.x + out_dir.x * 0.025, y, at.y + out_dir.y * 0.025)
+				ex.rotation.y = face
+				add_child(ex)
+				continue
+			var skip := false
+			for k in _NO_PLATE:
+				if low.contains(k):
+					skip = true
+			if skip:
+				continue
+			# beside the door on the latch side (away from the hinge), at eye level
+			var along := u * (w / 2 + 0.32) * (1.0 if side > 0 else -1.0)
+			var at2 := c + along + out_dir * (WALL / 2 + 0.012)
+			var pw := clampf(0.1 + name.length() * 0.032, 0.3, 0.7)
+			var plate := _box(Vector3(at2.x, 1.5, at2.y), Vector3(pw, 0.13, 0.012), plate_mat)
+			plate.rotation.y = face
+			var lb := Label3D.new()
+			lb.text = name
+			lb.font_size = 48
+			lb.pixel_size = minf(0.0021, (pw - 0.06) / maxf(name.length() * 26.0, 1.0))
+			lb.modulate = Color("f1f5f9")
+			lb.outline_size = 0
+			lb.double_sided = false   # read from the corridor side only
+			lb.position = Vector3(at2.x + out_dir.x * 0.008, 1.5, at2.y + out_dir.y * 0.008)
+			lb.rotation.y = face
+			add_child(lb)

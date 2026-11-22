@@ -34,6 +34,7 @@ const PALETTE := {
 	"shade": [Color("17181b"), 0.1, 0.55], "shade_glow": [Color("ffcf8a"), 0.0, 0.5], "shade_inner": [Color("c9a46a"), 0.3, 0.45], "gloss_white": [Color("f4f4f2"), 0.0, 0.18],
 	"book_red": [Color("c0392b"), 0.0, 0.6], "walnut": [Color("6e4a2f"), 0.0, 0.5], "poster": [Color("d8343f"), 0.0, 0.6],
 	"frosted": [Color(0.86, 0.9, 0.93, 0.5), 0.05, 0.15],
+	"door_frame": [Color("4a3a2e"), 0.0, 0.45],
 	"steel_door": [Color("b9bdc3"), 0.55, 0.28], "box_blue": [Color("b9d3ea"), 0.0, 0.5], "exit_green": [Color("33e07a"), 0.0, 0.4],
 	"bottle": [Color(0.32, 0.5, 0.85, 0.55), 0.1, 0.1], "bottle_cap": [Color("1d4fd1"), 0.0, 0.4],
 }
@@ -48,6 +49,31 @@ const GLOW := ["led", "console", "display", "slide", "drinks", "shade_glow", "ex
 const TEXTURED := {"velvet": 0.2, "walnut": 0.5, "wood": 0.5, "fabric": 0.25, "sofa": 0.3, "cushion": 0.3, "concrete": 1.2, "stair": 0.8, "desk_top": 0.6, "maple": 0.6}
 
 var counts := {}         # kind -> number of items built (for the HUD / tests)
+
+
+## Oak veneer for door leaves: fine vertical grain with a broad figure, made once.
+static var _grain: ImageTexture
+static func _door_grain() -> ImageTexture:
+	if _grain:
+		return _grain
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var wander := FastNoiseLite.new()
+	wander.seed = 9
+	wander.frequency = 0.006
+	var tone := FastNoiseLite.new()
+	tone.seed = 13
+	tone.frequency = 0.02
+	var light := Color("c79a6b")
+	var dark := Color("8c6240")
+	for y in n:
+		for x in n:
+			var t := float(x) / n * 30.0 + wander.get_noise_2d(x * 0.5, y * 0.25) * 4.0
+			var line := pow(0.5 + 0.5 * sin(t * TAU), 10.0)
+			img.set_pixel(x, y, light.lerp(dark, clampf(line * 0.3 + (tone.get_noise_2d(x * 0.3, y) * 0.5 + 0.5) * 0.25, 0.0, 1.0)))
+	img.generate_mipmaps()
+	_grain = ImageTexture.create_from_image(img)
+	return _grain
 var _batches := {}       # "mesh|material" -> Array[Transform3D]
 var _it := Transform3D() # item frame, scaled to its footprint (x, z in fractions of w, d; y in metres)
 var _ir := Transform3D() # item frame, unscaled (metres)
@@ -155,22 +181,83 @@ func _mesh(k: String) -> Mesh:
 			c.top_radius = 0.5
 			c.bottom_radius = 0.5
 			c.height = 1.0
-			c.radial_segments = 14
+			c.radial_segments = 28
 			c.rings = 1
 			m = c
 		"sphere":
 			var s := SphereMesh.new()
 			s.radius = 0.5
 			s.height = 1.0
-			s.radial_segments = 12
-			s.rings = 6
+			s.radial_segments = 24
+			s.rings = 12
 			m = s
 		_:
-			var b := BoxMesh.new()
-			b.size = Vector3.ONE
-			m = b
+			m = bevel_box(0.045)
 	_meshes[k] = m
 	return m
+
+
+## A unit box with its edges rounded off (chamfer c, normals blended across it), so furniture edges catch the
+## light the way real furniture does instead of meeting at knife-sharp corners. 26 faces; shared by every box part.
+static func bevel_box(c: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var h := 0.5
+	var e := h - c
+	var fp := func(axis: int, sg: Vector3) -> Vector3:
+		var q := sg * e
+		q[axis] = sg[axis] * h
+		return q
+	var nrm := func(axis: int, sign: float) -> Vector3:
+		var n := Vector3.ZERO
+		n[axis] = sign
+		return n
+	var tri := func(pa: Vector3, pb: Vector3, pc: Vector3, na: Vector3, nb: Vector3, nc: Vector3, out: Vector3) -> void:
+		if (pb - pa).cross(pc - pa).dot(out) > 0.0:   # Godot's front faces wind clockwise seen from outside
+			var t := pb; pb = pc; pc = t
+			var tn := nb; nb = nc; nc = tn
+		for v in [[pa, na], [pb, nb], [pc, nc]]:
+			st.set_normal(v[1])
+			st.add_vertex(v[0])
+	# the six faces, inset by the chamfer
+	for axis in 3:
+		var u := (axis + 1) % 3
+		var w := (axis + 2) % 3
+		for sign in [-1.0, 1.0]:
+			var n: Vector3 = nrm.call(axis, sign)
+			var q := []
+			for su in [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]:
+				var sg := Vector3.ZERO
+				sg[axis] = sign
+				sg[u] = su[0]
+				sg[w] = su[1]
+				q.append(fp.call(axis, sg))
+			tri.call(q[0], q[1], q[2], n, n, n, n)
+			tri.call(q[0], q[2], q[3], n, n, n, n)
+	# twelve edge strips: each side takes the normal of the face it meets, so the strip shades round
+	for a in 3:
+		var b := (a + 1) % 3
+		var w := (a + 2) % 3
+		for sa in [-1.0, 1.0]:
+			for sb in [-1.0, 1.0]:
+				var na: Vector3 = nrm.call(a, sa)
+				var nb: Vector3 = nrm.call(b, sb)
+				var p := []
+				for sw in [-1.0, 1.0]:
+					var sg := Vector3.ZERO
+					sg[a] = sa
+					sg[b] = sb
+					sg[w] = sw
+					p.append([fp.call(a, sg), fp.call(b, sg)])
+				tri.call(p[0][0], p[1][0], p[1][1], na, na, nb, na + nb)
+				tri.call(p[0][0], p[1][1], p[0][1], na, nb, nb, na + nb)
+	# eight corner triangles
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				var sg := Vector3(sx, sy, sz)
+				tri.call(fp.call(0, sg), fp.call(1, sg), fp.call(2, sg), nrm.call(0, sx), nrm.call(1, sy), nrm.call(2, sz), sg)
+	return st.commit()
 
 
 func _mat(k: String) -> StandardMaterial3D:
@@ -189,7 +276,15 @@ func _mat(k: String) -> StandardMaterial3D:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	if k == "arc":
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	if TEXTURED.has(k):
+	if k == "door":
+		# veneered door leaf: oak grain running up the leaf (triplanar: stripes vary across, so they stand upright)
+		m.albedo_color = Color.WHITE
+		m.albedo_texture = _door_grain()
+		m.uv1_triplanar = true
+		m.uv1_world_triplanar = true
+		m.uv1_scale = Vector3.ONE / 0.9
+		m.roughness = 0.4
+	elif TEXTURED.has(k):
 		# subtle grain/weave so large surfaces don't look flat; world triplanar keeps scale constant on instanced parts
 		var n := FastNoiseLite.new()
 		n.frequency = 0.08 if k in ["wood", "walnut"] else 0.4
@@ -663,15 +758,21 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 		"door":
 			# frame jambs, one or two leaves standing open 70 degrees towards +z, handle, and the swing drawn on the floor
 			var lh := minf(h, 2.05) - 0.02
+			# the zone's glass door keeps its aluminium frame; every other door has a painted hardwood frame and head
+			var fm := "frame" if _cur.get("glass", false) else "door_frame"
 			for sx in [-1, 1]:
-				_bm("frame", Vector3(sx * (w / 2 + 0.025), lh / 2, 0), Vector3(0.05, lh, 0.14))
+				_bm(fm, Vector3(sx * (w / 2 + 0.025), lh / 2, 0), Vector3(0.05, lh, 0.14))
+			if fm == "door_frame":
+				_bm(fm, Vector3(0, lh + 0.03, 0), Vector3(w + 0.1, 0.06, 0.14))
 			var leaves := 2 if w > 1.2 else 1
 			var lw := w / leaves
 			for li in leaves:
 				var side := -1.0 if li == 0 else 1.0  # hinge at -w/2 or +w/2; the leaf reaches towards the middle
 				var hinge := Vector3(side * w / 2, 0, 0)
 				# open 70° on the map; flat against the wall while walking, so the doorway is clear
-				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(92.0 if Store.walk or _cur.get("held_open", false) else 70.0) * side), hinge)
+				# shut across the opening when its smart lock is locked
+				var ang := 0.0 if _cur.get("locked", false) else (92.0 if Store.walk or _cur.get("held_open", false) else 70.0)
+				var leaf := Transform3D(Basis(Vector3.UP, deg_to_rad(ang) * side), hinge)
 				var glass_door: bool = _cur.get("glass", false)
 				_emit("box", "frosted" if glass_door else "door", _ir * leaf * Transform3D(Basis.from_scale(Vector3(lw - 0.02, lh, 0.012 if glass_door else 0.04)), Vector3(-side * lw / 2, lh / 2, 0)))
 				if glass_door:  # pull handle and a frosted band

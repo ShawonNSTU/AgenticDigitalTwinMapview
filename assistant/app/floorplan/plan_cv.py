@@ -563,6 +563,79 @@ def doors(closures: list[Closure], rooms: np.ndarray, foot: np.ndarray, h: float
     return merged
 
 
+def swing_side(gray: np.ndarray, barrier: np.ndarray, d: dict, h: float) -> int:
+    """Which side of the wall a door opens to: +1 along (-uy, ux), -1 the other way, 0 if the plan doesn't say.
+
+    A door is drawn as a leaf and the arc it sweeps, both on the side it opens to; the other side of the opening is
+    clear floor. So the ink (not wall) in the half disc of the door's width on each side decides.
+    """
+    H, W = gray.shape
+    w = d["w"]
+    r = int(max(4, 0.95 * w))
+    cx, cy = d["x"], d["y"]
+    x0, x1 = int(max(0, cx - r - 2)), int(min(W, cx + r + 3))
+    y0, y1 = int(max(0, cy - r - 2)), int(min(H, cy + r + 3))
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return 0
+    inkm = (gray[y0:y1, x0:x1] < 140) & (cv2.dilate(barrier[y0:y1, x0:x1], np.ones((3, 3), np.uint8)) == 0)
+    ys, xs = np.mgrid[y0:y1, x0:x1]
+    dx, dy = xs - cx, ys - cy
+    nx, ny = -d["uy"], d["ux"]
+    along = dx * d["ux"] + dy * d["uy"]
+    off = dx * nx + dy * ny
+    disc = (dx * dx + dy * dy <= r * r) & (np.abs(along) <= 0.6 * w + 2) & (np.abs(off) > 1.2 * h + 1)
+    plus = int((inkm & disc & (off > 0)).sum())
+    minus = int((inkm & disc & (off < 0)).sum())
+    if max(plus, minus) < max(6, 0.1 * w):
+        return 0
+    if plus > 1.4 * minus:
+        return 1
+    if minus > 1.4 * plus:
+        return -1
+    return 0
+
+
+def dimension_scale(gray: np.ndarray, boxes: list[dict], barrier: np.ndarray) -> tuple[float, str] | None:
+    """Pixels per metre from the plan's own printed dimensions: a number in millimetres (e.g. 19179, 1800) with
+    its dimension line running under or over it, parallel to the text and spanning past both ends of it.
+    The line's length in pixels over the number gives the scale; several dimensions are combined (median)."""
+    H, W = gray.shape
+    ink = ((gray < 170) & (barrier == 0)).astype(np.uint8) * 255
+    found: list[tuple[float, int]] = []
+    for b in boxes:
+        n = b.get("num")
+        if not n or not (300 <= n <= 200000):
+            continue
+        x, y, w, h = b["x"], b["y"], b["w"], b["h"]
+        cx = x + w / 2
+        y0, y1 = int(max(0, y - 2.5 * h)), int(min(H, y + 3.5 * h))
+        best = 0.0
+        for yy in range(y0, y1):
+            if y - 1 <= yy <= y + h + 1:
+                continue          # the digits themselves
+            row = ink[yy]
+            xi = int(cx)
+            if xi < 0 or xi >= W or not row[xi]:
+                continue
+            # the run of ink through the text's centre on this row, bridging gaps of a pixel or two
+            a = xi
+            while a > 0 and (row[a - 1] or (a > 2 and (row[a - 2] or row[a - 3]))):
+                a -= 1
+            c = xi
+            while c < W - 1 and (row[c + 1] or (c < W - 3 and (row[c + 2] or row[c + 3]))):
+                c += 1
+            L = float(c - a)
+            if L >= 2.5 * w and a < x and c > x + w:
+                best = max(best, L)
+        if best:
+            found.append((best / (n / 1000.0), n))
+    if not found:
+        return None
+    ppm = float(np.median([f[0] for f in found]))
+    ns = sorted({f[1] for f in found})
+    return ppm, f"from the printed dimension{'s' if len(ns) > 1 else ''} {', '.join(str(v) for v in ns[:3])} mm"
+
+
 def estimate_width_m(W: int, door_px: list[float], h: float) -> tuple[float, str]:
     widths = sorted(w for w in door_px if w > 0)
     if len(widths) >= 2:
@@ -606,7 +679,11 @@ def ocr(gray: np.ndarray) -> tuple[list[dict], list[dict]]:
         x, y, w, h = (int(v) / f for v in p[6:10])
         wordlike = re.fullmatch(r"[A-Za-z][A-Za-z.'&/()-]{2,}|\d{2,5}[A-Za-z]?|[A-Za-z]{1,3}-?\d{1,4}", txt.strip(".,:;"))
         if conf >= 50 and wordlike and w >= 1.1 * h and h < 0.05 * max(gray.shape):
-            boxes.append({"x": x, "y": y, "w": w, "h": h})
+            box = {"x": x, "y": y, "w": w, "h": h}
+            num = txt.strip(".,:;").replace(",", "")
+            if conf >= 60 and re.fullmatch(r"\d{3,6}", num):
+                box["num"] = int(num)       # a printed dimension, perhaps (millimetres)
+            boxes.append(box)
         if conf < 55 or DIM.search(txt) or not re.search(r"[A-Za-z]{2,}|^\d{2,4}$", txt):
             continue
         words.append({"k": (p[2], p[3], p[4]), "text": txt, "x": x, "y": y, "w": w, "h": h, "conf": conf})
@@ -844,6 +921,14 @@ def analyze(img: np.ndarray, use_ocr: bool = True) -> dict:
             r["label"] = nm[1]
         out_rooms.append(r)
     width_m, note = estimate_width_m(W, [d["w"] for d in ds], h)
+    # a plan that prints its dimensions says its scale exactly
+    dim = dimension_scale(gray, boxes, best["barrier"])
+    if dim and 4 <= W / dim[0] <= 400:
+        width_m, note = round(W / dim[0], 1), dim[1]
+    # the leaf opens to the side the plan draws its swing on (the renderer opens it towards (sin rot, cos rot))
+    for d in ds:
+        if swing_side(gray, best["barrier"], d, h) < 0:
+            d["ux"], d["uy"] = -d["ux"], -d["uy"]
     out_doors = [{"kind": "door", "fx": round(d["x"] / W, 5), "fy": round(d["y"] / H, 5), "fw": round(d["w"] / W, 5),
                   "fd": round(max(2 * h, 2) / W, 5), "rot": round(-math.atan2(d["uy"], d["ux"]), 4)} for d in ds]
     return {"rooms": out_rooms, "doors": out_doors, "photo_corners": None, "width_m": width_m, "scale_note": note, "wall_px": round(2 * h / W, 5),

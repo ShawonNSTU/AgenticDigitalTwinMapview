@@ -80,6 +80,7 @@ func handle(msg: Dictionary) -> void:
 		"preview": Bus.preview_requested.emit(str(msg.get("id", "")), msg.get("readings", {}) if msg.get("readings") is Dictionary else {}, str(msg.get("text", "")))
 		"track": Bus.track_requested.emit(str(msg.get("id", "")))
 		"setQuality": Bus.quality_requested.emit(str(msg.get("tier", "auto")))
+		"daylight": Bus.daylight_requested.emit(float(msg.get("hour", -1)) if msg.get("hour") != null else -1.0)
 		"dispatchRoute": Bus.dispatch_requested.emit(str(msg.get("id", "")))
 		"welcome": Bus.welcome_requested.emit(msg)
 		_: push_warning("Bridge: unknown message %s" % msg)

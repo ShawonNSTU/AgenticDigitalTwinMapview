@@ -52,7 +52,7 @@ export default function GuestAssistant({ token, onUi }: { token: string; onUi: (
       <div className="ag-tasks">{TASKS[lang].map(t => <button type="button" key={t} onClick={() => ask(t)}><i>›</i>{t}</button>)}</div>
     </div>
   );
-  return <AgentPanel endpoint={`/api/guest/${token}/chat`} home={home} tools={tools} placeholder={lang === 'bn-BD' ? 'যেমন: এসি ২৪ ডিগ্রি করো' : 'e.g. dim the lights'}
+  return <AgentPanel endpoint={`/api/guest/${token}/chat`} history={`/api/guest/${token}/chat/history`} home={home} tools={tools} placeholder={lang === 'bn-BD' ? 'যেমন: এসি ২৪ ডিগ্রি করো' : 'e.g. dim the lights'}
     status={<div className="ag-status"><i className="dot ok" /><b>Room assistant</b></div>} onUi={a => onUi(a as UiAction & { ids?: string[] })} onText={say}
     value={text} setValue={setText} agentRef={agent} />;
 }

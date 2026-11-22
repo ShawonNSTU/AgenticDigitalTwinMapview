@@ -27,6 +27,7 @@ from app.core.context import Device, TurnContext
 from app.core.llm import LLM, LLMError
 from app.core.skill import REPLY_FORMAT, REPLY_SCHEMA, Skill, SkillResult, register
 from app.devices.catalog import CAPABILITY_LABELS, Action, ValueProblem, build_actions, device_line
+from app.core.fastlane import direct as plain_command
 from app.devices.matching import exact_matches, shortlist
 from app.devices.state import READINGS, DeviceState, format_value, read_states, setter_attribute
 from app.integrations.smartthings import CommandResult, SmartThingsClient
@@ -203,6 +204,12 @@ class DeviceControlSkill(Skill):
             verb = "doesn't" if len(devices) == 1 else "don't"
             return Choice(devices, problem=f"{names} {verb} have any controls available in this demo.")
         ids = [a.id for a in actions]
+        # a plain command on this one device ("turn on Light 1", "dim it to 30%" by name): no model needed
+        if len(devices) == 1 and (fast := plain_command(request, devices)) is not None:
+            a = next(x for x in actions if x.id == fast.action_id)
+            args, shown = a.resolve(fast.value) if (fast.value or a.needs_value) else ([], "")
+            log.info("fast lane: %s -> %s %s", devices[0].name, a.id, fast.value)
+            return Choice(devices, [Pick(a, args, shown)])
         schema = {
             "type": "object",
             "properties": {

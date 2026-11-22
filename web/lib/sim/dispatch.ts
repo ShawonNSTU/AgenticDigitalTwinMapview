@@ -35,6 +35,17 @@ export async function dispatch(id: string, command: string, args: Record<string,
       const r = await dispatch(need, 'power', { on: 'true' }, false, by);
       if (!r.ok) return { ok: false, error: `${String(byId[need].name).split(' · ')[0]} could not be turned on: ${r.error}`, via: r.via };
       note = `${String(byId[need].name).split(' · ')[0]} turned on first`;
+      // the motor is powered by that switch: give it time to come up (online again) before it is told to move, or
+      // it misses the command and the shade stays where it is
+      if (linked) {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 8000) {
+          await ST.refresh(id).catch(() => null);
+          if (ST.realState(id, d.type)?.online) break;
+          await new Promise(r => setTimeout(r, 700));
+        }
+        await new Promise(r => setTimeout(r, 1200));
+      }
     }
   }
   const before = rt.overrides[id] ? { ...rt.overrides[id] } : undefined;

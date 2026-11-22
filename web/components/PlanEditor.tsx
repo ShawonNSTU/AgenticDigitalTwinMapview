@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { straighten } from '@/lib/homography';
 import { useRouter } from 'next/navigation';
-import { interior, rect, roomColor, roomKey, toBuilding, type PlanFurniture, type PlanNote, type PlanRoom, type Pt } from '@/lib/layout';
+import { interior, noWayIn, rect, roomColor, roomKey, toBuilding, type PlanFurniture, type PlanNote, type PlanRoom, type Pt } from '@/lib/layout';
 import { furnish } from '@/lib/furnish';
 
 type Img = { url: string; w: number; h: number };
@@ -56,6 +56,8 @@ export default function PlanEditor() {
   const [hasFloor, setHasFloor] = useState(false);                    // a floor is built already (else this is the first step)
   useEffect(() => { fetch('/api/building').then(r => r.json()).then(b => setHasFloor(!b.empty)).catch(() => {}); }, []);
   const ar = img ? img.h / img.w : 0.6;
+  // rooms the plan's doors give no way into (pointed out in the room list)
+  const shut = useMemo(() => noWayIn(rooms, doors, ar), [rooms, doors, ar]);
   // suggested interiors depend on the real size, so they follow the plan width
   const suggested = useMemo(() => (suggest ? furnish(rooms, furniture, doors, widthM, ar) : []), [suggest, rooms, furniture, doors, widthM, ar]);
 
@@ -190,7 +192,7 @@ export default function PlanEditor() {
       if (j.width_m) setWidthM(j.width_m);
       if (j.location) setLocation(j.location);
       if (j.floor) setFloorName(j.floor);
-      setScaleNote(j.width_m && !j.known ? `Estimated ${j.scale_note ?? ''}.` : '');
+      setScaleNote(j.width_m && !j.known ? `${/printed dimension/.test(j.scale_note ?? '') ? 'Measured' : 'Estimated'} ${j.scale_note ?? ''}.` : '');
       setMode('rooms');
       const named = j.rooms.filter((x: { name: string }) => !/^Room \d+$/.test(x.name)).length;
       setMsg(j.rooms.length ? '' : 'No rooms found. Draw them with the Rooms tool.'); void named;
@@ -308,8 +310,19 @@ export default function PlanEditor() {
               )}
               {drag && <rect x={Math.min(drag.x, drag.x2)} y={Math.min(drag.y, drag.y2) * ar} width={Math.abs(drag.x2 - drag.x)} height={Math.abs(drag.y2 - drag.y) * ar} fill="#4c8dff" fillOpacity={0.25} stroke="#4c8dff" strokeWidth={0.003} />}
               {doors.map((d, i) => {
-                const ux = Math.cos(d.rot), uz = -Math.sin(d.rot), h = d.fw / 2;
-                return <line key={i} x1={d.fx - ux * h} y1={d.fy * ar - uz * h} x2={d.fx + ux * h} y2={d.fy * ar + uz * h} stroke="#22c55e" strokeWidth={0.006} strokeLinecap="round" style={{ cursor: mode === 'doors' ? 'pointer' : undefined }} />;
+                // the doorway, and its leaf and swing drawn as the 3D floor will open it (check them against the plan)
+                const ux = Math.cos(d.rot), uz = -Math.sin(d.rot), nx = Math.sin(d.rot), nz = Math.cos(d.rot), h = d.fw / 2, cy = d.fy * ar;
+                const leaves = d.fw * widthM > 1.2 ? 2 : 1, lw = d.fw / leaves;
+                const swing = d.opening ? null : Array.from({ length: leaves }, (_, k) => {
+                  const side = k === 0 ? -1 : 1, hx = d.fx + ux * side * h, hy = cy + uz * side * h;
+                  const tx = hx + nx * lw, ty = hy + nz * lw, ex = hx - ux * side * lw, ey = hy - uz * side * lw;
+                  const sweep = (tx - hx) * (ey - hy) - (ty - hy) * (ex - hx) > 0 ? 1 : 0;   // round the hinge, the short way
+                  return <g key={k}><line x1={hx} y1={hy} x2={tx} y2={ty} stroke="#16a34a" strokeWidth={0.0025} /><path d={`M ${tx} ${ty} A ${lw} ${lw} 0 0 ${sweep} ${ex} ${ey}`} fill="none" stroke="#16a34a" strokeWidth={0.0018} strokeDasharray="0.004 0.003" /></g>;
+                });
+                return <g key={i} style={{ cursor: mode === 'doors' ? 'pointer' : undefined }}>
+                  <line x1={d.fx - ux * h} y1={cy - uz * h} x2={d.fx + ux * h} y2={cy + uz * h} stroke="#22c55e" strokeWidth={0.006} strokeLinecap="round" strokeDasharray={d.opening ? '0.008 0.005' : undefined} />
+                  {swing}
+                </g>;
               })}
             </svg>
           </>)}
@@ -329,8 +342,9 @@ export default function PlanEditor() {
                   <label className="field" title={scaleNote ? `${scaleNote} Correct it if you know a real dimension.` : ''}>Width (m)<input type="number" min={4} max={400} step={0.5} value={widthM} onChange={e => setWidthM(+e.target.value)} /></label>
                 </div>
                 <div className="sec-title">Rooms</div>
+                {!known && shut.size > 0 && <div className="note">No door found into {shut.size === 1 ? 'one room' : `${shut.size} rooms`}. Add {shut.size === 1 ? 'it' : 'them'} with <b>Doors</b>, or the 3D walk will guess.</div>}
                 {rooms.length ? <div className="room-list">{rooms.map((r, i) => (
-                  <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input aria-label="Room name" value={r.name} onChange={e => rename(i, e.target.value)} /><button className="icon" title="Remove room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
+                  <div key={r.key} className="row"><i className="dot" style={{ background: r.color }} /><input aria-label="Room name" value={r.name} onChange={e => rename(i, e.target.value)} />{!known && shut.has(r.key) && <span className="nodoor" title="No door into this room">no door</span>}<button className="icon" title="Remove room" onClick={() => setRooms(rs => rs.filter((_, j) => j !== i))}>✕</button></div>
                 ))}</div> : <div className="muted">None yet. Use <b>Edit plan</b> to draw them.</div>}
                 <label className="switch"><input type="checkbox" checked={suggest} onChange={e => setSuggest(e.target.checked)} /><span /> Furnish rooms by type</label>
               </>}

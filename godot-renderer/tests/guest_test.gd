@@ -82,6 +82,16 @@ func _run() -> void:
 	# must stay where they tapped, not be walked back to the arrival spot
 	for i in 200:
 		w._process(0.05)
+	await _wait(0.3)
+	await _shot("g2_settled")   # the view a guest gets of their room
+	w.overview(true)
+	for i in 40:
+		w._process(0.05)
+	await _wait(0.3)
+	await _shot("g3_whole_room")
+	w.overview(false)
+	for i in 40:
+		w._process(0.05)
 	var poly := PlanGeo.room_poly(Store.room(room))
 	var spots: Array = []
 	for q in poly:

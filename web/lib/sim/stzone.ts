@@ -282,7 +282,9 @@ function growZone(r: any, furniture: any[]) {
  */
 export const LOBBY_FINISH = 'lift-lobby';
 function fitLiftLobby(rt: { furniture: any[] }) {
-  if ((ROOMS as any[]).some(r => r.key === 'lift-lobby')) return;
+  const drawn = (ROOMS as any[]).find(r => r.key === 'lift-lobby');
+  if (drawn?.finish === LOBBY_FINISH) return;
+  if (drawn) { fitDrawnLobby(rt, drawn); return; }
   const zd = (ROOMS as any[]).find(r => /zone d/i.test(String(r.name)));
   if (!zd) return;
   const inRect = (f: any, x0: number, x1: number, z0: number, z1: number) => f.x > x0 && f.x < x1 && f.z > z0 && f.z < z1;
@@ -319,11 +321,36 @@ function fitLiftLobby(rt: { furniture: any[] }) {
     poly: lobbyPoly, color: '#9fb0e6', labelAt: [cx, cz], zone: zd.zone ?? 'D', finish: LOBBY_FINISH });
   // replace the traced shafts and ceiling squares; keep doors
   rt.furniture = rt.furniture.filter(f => f.kind === 'door' || !(inRect(f, zx0 - 0.01, bx1 + 0.01, bz0 - 0.01, bz1 + 0.01) || inRect(f, zx0, right, lz0, lz1)));
+  furnishLobby(rt, north, south, zx0, lz0, lz1);
+}
+
+/**
+ * The lobby is drawn as its own room (the sheet's survey, sheet4f.ts: passages round both lift blocks stay open):
+ * only the lifts and the doors are fitted. The shafts are the traced "workstations" just north and south of it.
+ */
+function fitDrawnLobby(rt: { furniture: any[] }, lobby: any) {
+  lobby.finish = LOBBY_FINISH;
+  const [x0, x1] = lobby.x, [lz0, lz1] = lobby.z;
+  const shafts = rt.furniture.filter(f => f.kind === 'workstation' && f.x > x0 && f.x < x1 && ((f.z < lz0 && f.z > lz0 - 4) || (f.z > lz1 && f.z < lz1 + 4)));
+  const north = shafts.filter(f => f.z < lz0).sort((p, q) => p.x - q.x), south = shafts.filter(f => f.z > lz1).sort((p, q) => p.x - q.x);
+  if (north.length !== 3 || south.length !== 3) return;
+  const inRect = (f: any, a: number, b: number, c: number, d: number) => f.x > a && f.x < b && f.z > c && f.z < d;
+  rt.furniture = rt.furniture.filter(f => f.kind === 'door' || !(shafts.includes(f) || inRect(f, x0, x1, lz0, lz1)));
+  furnishLobby(rt, north, south, x0, lz0, lz1);
+}
+
+/** The six lifts (shaft and door on the lobby wall), the lobby's open west door and the cafeteria's glass doors. */
+function furnishLobby(rt: { furniture: any[] }, north: any[], south: any[], zx0: number, lz0: number, lz1: number) {
   const items: Item[] = [];
   for (const row of [north, south]) for (const f of row) {
     const isNorth = row === north;
     // the shaft itself (solid), and its door on the lobby wall
-    items.push({ kind: 'lift_shaft', x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, room: 'lift-lobby' });
+    // the shaft stops behind the lobby wall, so its doors and call panels stand in the lobby (the traced boxes can
+    // run a little past the wall line the sheet's survey gives the lobby)
+    const far = isNorth ? f.z - f.d / 2 : f.z + f.d / 2;
+    const near = isNorth ? Math.min(f.z + f.d / 2, lz0 - 0.06) : Math.max(f.z - f.d / 2, lz1 + 0.06);
+    const sd = Math.abs(near - far);
+    items.push({ kind: 'lift_shaft', x: f.x, z: +((near + far) / 2).toFixed(3), w: f.w, d: +sd.toFixed(3), rot: 0, room: 'lift-lobby' });
     items.push({ kind: 'lift_door', x: f.x, z: +(isNorth ? lz0 + 0.09 : lz1 - 0.09).toFixed(3), w: 1.1, d: 0.12, rot: isNorth ? 0 : Math.PI, ...(isNorth ? {} : { panel: true }), room: 'lift-lobby' });
   }
   // the lobby's west door stands open; the cafeteria's glass doors face it across the passage

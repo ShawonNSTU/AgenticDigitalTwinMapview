@@ -74,11 +74,11 @@ export function StTile({ dev, run, big = false, onOpen }: { dev: StDev; run: Run
   const hex = typeof r.col === 'string' && r.col.startsWith('#') ? r.col : '';
   const color = hex || kelvin(num(r.ct, 3000));
   const pos = posDraft ?? Math.round(num(r.pos, 100)); // 100 = rolled up
-  const status = !dev.online ? 'Offline' : kind === 'shade' ? (pos >= 98 ? 'Open' : pos <= 2 ? 'Closed' : `${100 - pos}% down`) : on ? (kind === 'color' ? 'Connected' : 'On') : 'Off';
+  const status = !dev.online ? 'Offline' : kind === 'shade' ? (pos >= 98 ? 'Open' : pos <= 2 ? 'Closed' : `${pos}% open`) : on ? (kind === 'color' ? 'Connected' : 'On') : 'Off';
 
   const slideLv = useSlide(bar, 'x', f => { const v = Math.round(f * 100); setLv(v); preview(dev.id, { lv: v }, `${v} %`); },
     () => setLv(v => { if (v != null) run('setLevel', { percent: v }); return null; }));
-  const slidePos = useSlide(shade, big ? 'y' : 'x', f => { const p = Math.round(100 - f * 100); setPos(p); preview(dev.id, { pos: p }, p >= 98 ? 'Open' : `${100 - p}% down`); },
+  const slidePos = useSlide(shade, big ? 'y' : 'x', f => { const p = Math.round(100 - f * 100); setPos(p); preview(dev.id, { pos: p }, p >= 98 ? 'Open' : p <= 2 ? 'Closed' : `${p}% open`); },
     () => setPos(p => { if (p != null) run('setPosition', { percent: p }); return null; }));
   const hue = (f: number) => { const names = Object.keys(COLORS); return names[Math.min(names.length - 1, Math.floor(f * names.length))]; };
   const slideHue = useSlide(ring, 'x', f => preview(dev.id, { col: COLORS[hue(f)], lv: Math.max(lv, 40) }, hue(f)), () => {});
@@ -136,9 +136,9 @@ export function StTile({ dev, run, big = false, onOpen }: { dev: StDev; run: Run
 
       {kind === 'shade' && dev.online && (
         <div className="st-shade">
-          <small>Shade level</small>
-          <div className={`st-roller ${big ? 'tall' : ''}`} ref={shade} onPointerDown={slidePos} role="slider" aria-label="Shade level" aria-valuenow={100 - pos}>
-            <div className="st-window" /><div className="st-cloth" style={{ [big ? 'height' : 'width']: `${100 - pos}%` }} /><span className="st-pct">{100 - pos}%</span>
+          <small>Open</small>
+          <div className={`st-roller ${big ? 'tall' : ''}`} ref={shade} onPointerDown={slidePos} role="slider" aria-label="Shade open" aria-valuenow={pos}>
+            <div className="st-window" /><div className="st-cloth" style={{ [big ? 'height' : 'width']: `${100 - pos}%` }} /><span className="st-pct">{pos}% open</span>
           </div>
           <div className="st-chips">
             {has('open') && <button className="st-chip" onClick={() => { preview(dev.id, { pos: 100 }, 'Open'); run('open'); }}>Open</button>}
@@ -156,7 +156,7 @@ export function StTile({ dev, run, big = false, onOpen }: { dev: StDev; run: Run
 export function stStatus(dev: StDev) {
   if (!dev.online) return 'Offline';
   const r = { ...dev.readings, ...(dev.overrides ?? {}) } as Record<string, unknown>;
-  if (dev.st?.kind === 'shade') { const p = Math.round(num(r.pos, 100)); return p >= 98 ? 'Open' : p <= 2 ? 'Closed' : `${100 - p}% closed`; }
+  if (dev.st?.kind === 'shade') { const p = Math.round(num(r.pos, 100)); return p >= 98 ? 'Open' : p <= 2 ? 'Closed' : `${p}% open`; }
   if (dev.type === 'light') { const lv = Math.round(num(r.lv, 0)); if (lv <= 0) return 'Off'; return dev.st?.kind === 'color' ? `On · ${lv}%${typeof r.col === 'string' && r.col ? ' · colour' : ''}` : 'On'; }
   return r.on === true || r.on === 'true' ? 'On' : 'Off';
 }

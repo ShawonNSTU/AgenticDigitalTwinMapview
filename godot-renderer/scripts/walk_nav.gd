@@ -12,6 +12,7 @@ const SOFT := ["door", "rug", "exit_sign", "poster"]  # walked over or under (si
 var astar := AStarGrid2D.new()
 var cell := 0.15
 var gaps: Array = []        # door openings [a, b]: routes cross them through the middle, square on
+var locked_doors: Array = []  # doors closed by their smart lock (routes go round them)
 var _near := PackedByteArray()  # 1 where a cell is closer than MARGIN to an obstacle
 var origin := Vector2.ZERO
 var size := Vector2i.ZERO
@@ -34,6 +35,8 @@ func build(wall_pieces: Array, door_gaps: Array = []) -> void:
 	for r in Store.rooms:
 		if not Store.room_allowed(r.key):
 			continue
+		if Store.step_free and str(r.get("name", "")).to_lower().contains("stair") and r.key != Store.key_room:
+			continue   # step-free: never through a stairwell
 		var poly := PlanGeo.room_poly(r)
 		var bb := _bbox(poly)
 		var a := to_cell(bb.position)
@@ -47,6 +50,14 @@ func build(wall_pieces: Array, door_gaps: Array = []) -> void:
 	for f in Store.furniture:
 		if f.get("kind", "") == "door":
 			_fill(Placer._rect(Vector2(float(f.x), float(f.z)), Vector2(float(f.w), 0.7), float(f.get("rot", 0.0))), false)
+	# 2b. a door whose smart lock is locked can't be walked through, except into the room the walker holds the
+	# key for (Store.key_room: a guest's own room, the room a technician is sent to)
+	locked_doors = []
+	for f in Store.furniture:
+		if f.get("kind", "") == "door" and Store.door_locked(f) and not _opens_into(f, Store.key_room):
+			locked_doors.append(f)
+		elif f.get("kind", "") == "door" and Store.step_free and not f.get("opening", false) and float(f.w) < 0.8:
+			locked_doors.append(f)   # step-free: too narrow for a wheelchair
 	# 3. furniture and columns
 	for f in Store.furniture:
 		if SOFT.has(f.get("kind", "")):
@@ -55,8 +66,12 @@ func build(wall_pieces: Array, door_gaps: Array = []) -> void:
 	# 4. walls, kept RADIUS away, and the open door leaves standing out from their hinges
 	for s in wall_pieces:
 		_mark_segment(s[0], s[1])
+	for f in locked_doors:   # closed across the opening
+		var lc := Vector2(float(f.x), float(f.z))
+		var lu := Vector2(cos(float(f.get("rot", 0.0))), -sin(float(f.get("rot", 0.0))))
+		_mark_segment(lc - lu * float(f.w) / 2, lc + lu * float(f.w) / 2)
 	for f in Store.furniture:
-		if f.get("kind", "") != "door":
+		if f.get("kind", "") != "door" or f.get("opening", false):  # an open doorway has no leaf
 			continue
 		var c := Vector2(float(f.x), float(f.z))
 		var rot := float(f.get("rot", 0.0))
@@ -430,7 +445,7 @@ func room_target(r: Dictionary, from: Vector2) -> Vector2:
 	var mid := PlanGeo.interior_point(poly)
 	var cands: Array = [nearest_free(mid, 30)]
 	for f in Store.furniture:
-		if f.get("kind", "") != "door":
+		if f.get("kind", "") != "door" or f.get("opening", false):  # an open doorway has no leaf
 			continue
 		var c := Vector2(float(f.x), float(f.z))
 		var nn := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))
@@ -508,4 +523,28 @@ static func _shared(p: PackedVector2Array, q: PackedVector2Array) -> Array:
 			var t1 := clampf(maxf((c - a).dot(u), (d - a).dot(u)), 0.0, len)
 			if t1 - t0 > 0.5:
 				out.append([a + u * t0, a + u * t1])
+	return out
+
+
+
+## Whether a door leads into the given room (its leaf side or the other side lies in it).
+static func _opens_into(f: Dictionary, key: String) -> bool:
+	if key == "":
+		return false
+	var c := Vector2(float(f.x), float(f.z))
+	var n := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))
+	return Store.room_at(c + n * 0.5).get("key", "") == key or Store.room_at(c - n * 0.5).get("key", "") == key
+
+
+## The rooms behind locked doors on the way to a room, for telling the walker why there is no way in.
+func locked_names() -> Array:
+	var out: Array = []
+	for f in locked_doors:
+		var c := Vector2(float(f.x), float(f.z))
+		var n := Vector2(sin(float(f.get("rot", 0.0))), cos(float(f.get("rot", 0.0))))
+		for side in [1.0, -1.0]:
+			var r: Dictionary = Store.room_at(c + n * side * 0.5)
+			if not r.is_empty() and str(r.get("name", "")) not in out and str(r.get("key", "")) != "corridor":
+				out.append(Store.room_label(r))
+				break
 	return out

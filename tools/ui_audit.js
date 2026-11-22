@@ -98,7 +98,7 @@ const CHECK = () => {
 async function renderer(p, ev) { await p.evaluate(e => window.postMessage({ source: 'twin-renderer', ...e }, '*'), ev); await wait(250); }
 
 async function run() {
-  const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--no-proxy-server'], headless: 'new', protocolTimeout: 120000 });
+  const b = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox', '--no-proxy-server'], headless: 'new', protocolTimeout: 120000 });
   const pass = await (await fetch(B + '/api/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: 'smartthings-experience-zone', hours: 4, label: 'Ayesha Rahman' }) })).json();
   const report = [];
   const pageErrors = [];
@@ -166,5 +166,6 @@ async function run() {
   const n = report.reduce((a, r) => a + r.issues.length, 0);
   console.log(`\n${n} issues in ${report.filter(r => r.issues.length).length}/${report.length} screens; page errors: ${pageErrors.length}`);
   await b.close();
+  process.exitCode = n || pageErrors.length ? 1 : 0;   // CI fails on any layout issue or page error
 }
 run();

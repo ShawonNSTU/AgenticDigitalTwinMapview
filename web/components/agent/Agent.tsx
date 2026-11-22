@@ -19,15 +19,28 @@ export type Run = {
   offer?: { kind: string; text: string; state: 'open' | 'done' | 'dismissed' }; shown: string[];
   reasoning: string; choices: string[]; cards: Card[];
   todo: Todo[]; parallel: boolean;
+  restored?: boolean;   // brought back from the history: shown as it was, not typed again
 };
 export type Todo = { id: number; title: string; skill: string; status: 'pending' | 'running' | 'done' | 'needs_input' | 'failed'; summary?: string; at?: number; took?: number };
 export type Card = { kind: string; title?: string; link?: string; pin?: string | null; room?: string; until?: string; label?: string };
 export type UiAction = { type: string; [k: string]: unknown };
 
 /** Runs one request after another against a streaming endpoint; keeps the conversation for follow-ups. */
-export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void; onSelect?: (id: string) => void; onText?: (t: string) => void } = {}) {
+export type ChatBrief = { id: string; title: string; createdAt: number; updatedAt: number; turns: number; preview: string };
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+
+/** Runs one request after another against a streaming endpoint; keeps the conversation for follow-ups. With a
+ *  history endpoint, each conversation is saved on the server after every answer and can be opened again later
+ *  (lib/chatroutes.ts). */
+export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void; onSelect?: (id: string) => void; onText?: (t: string) => void; history?: string } = {}) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [busy, setBusy] = useState(false);
+  const [chatId, setChatId] = useState(newId);
+  const [chats, setChats] = useState<ChatBrief[] | null>(null);
+  const [saveError, setSaveError] = useState('');
+  const hist = opts.history;
+  const savedSig = useRef('');
+  const dirty = useRef(false);   // something new since the conversation was opened or saved
   const abort = useRef<AbortController | null>(null);
   const seq = useRef(0);
   const cb = useRef(opts); cb.current = opts;
@@ -37,6 +50,7 @@ export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void;
   const ask = useCallback(async (q: string) => {
     q = q.trim(); if (!q || busy) return;
     const id = ++seq.current;
+    dirty.current = true;
     const history = runs.flatMap(r => [{ role: 'user', content: r.ask }, ...(r.text ? [{ role: 'assistant', content: r.text }] : [])]).slice(-12);
     setRuns(rs => [...rs.map(r => (r.offer?.state === 'open' ? { ...r, offer: { ...r.offer, state: 'dismissed' as const } } : r)),
       { id, ask: q, startedAt: Date.now(), status: 'running', steps: [], text: '', results: [], sources: [], suggestions: [], shown: [], reasoning: '', choices: [], cards: [], todo: [], parallel: false }]);
@@ -79,10 +93,50 @@ export function useAgent(endpoint: string, opts: { onUi?: (a: UiAction) => void;
     } finally { setBusy(false); abort.current = null; }
   }, [busy, endpoint, runs]);
 
+  // save the conversation once a run has ended (and when an offer is answered); nothing while it streams
+  useEffect(() => {
+    if (!hist || busy || runs.length === 0 || !dirty.current) return;
+    const body = JSON.stringify({ runs: runs.map(({ restored, ...r }) => r) });
+    const sig = `${chatId}:${body.length}:${runs.length}:${runs[runs.length - 1].status}:${runs.map(r => r.offer?.state ?? '').join()}`;
+    if (sig === savedSig.current) return;
+    const t = setTimeout(() => {
+      fetch(`${hist}/${chatId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body })
+        .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); savedSig.current = sig; dirty.current = false; setSaveError(''); return r.json(); })
+        .then((b: ChatBrief) => setChats(cs => cs ? [b, ...cs.filter(c => c.id !== b.id)] : cs))
+        .catch(e => setSaveError(`Couldn't save this conversation (${(e as Error).message}).`));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [hist, busy, runs, chatId]);
+
+  const loadChats = useCallback(() => {
+    if (!hist) return;
+    fetch(hist).then(r => r.json()).then(b => setChats(Array.isArray(b.chats) ? b.chats : [])).catch(() => setChats([]));
+  }, [hist]);
+  /** Bring a saved conversation back; asking again carries on from it. */
+  const open = useCallback(async (id: string) => {
+    if (!hist || busy) return false;
+    const b = await fetch(`${hist}/${id}`).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (!b || !Array.isArray(b.runs)) return false;
+    const rs = (b.runs as Run[]).map((r, i) => ({ ...r, id: i + 1, restored: true, status: r.status === 'running' ? 'stopped' as const : r.status,
+      steps: r.steps ?? [], results: r.results ?? [], sources: r.sources ?? [], suggestions: r.suggestions ?? [], shown: r.shown ?? [], reasoning: r.reasoning ?? '',
+      choices: r.choices ?? [], cards: r.cards ?? [], todo: r.todo ?? [], text: r.text ?? '' }));
+    seq.current = rs.length;
+    savedSig.current = '';
+    setChatId(id);
+    setRuns(rs);
+    return true;
+  }, [hist, busy]);
+  const remove = useCallback(async (id: string) => {
+    if (!hist) return;
+    await fetch(`${hist}/${id}`, { method: 'DELETE' }).catch(() => {});
+    setChats(cs => cs?.filter(c => c.id !== id) ?? cs);
+    if (id === chatId) { setRuns([]); setChatId(newId()); }
+  }, [hist, chatId]);
+
   const stop = () => abort.current?.abort();
-  const reset = () => { if (!busy) setRuns([]); };
-  const setOffer = (id: number, state: 'done' | 'dismissed') => patch(id, r => (r.offer ? { ...r, offer: { ...r.offer, state } } : r));
-  return { runs, busy, ask, stop, reset, setOffer };
+  const reset = () => { if (!busy) { setRuns([]); setChatId(newId()); savedSig.current = ''; } };
+  const setOffer = (id: number, state: 'done' | 'dismissed') => { dirty.current = true; patch(id, r => (r.offer ? { ...r, offer: { ...r.offer, state } } : r)); };
+  return { runs, busy, ask, stop, reset, setOffer, chatId, chats, loadChats, open, remove, saveError, hasHistory: !!hist };
 }
 
 const secs = (ms: number) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
@@ -201,7 +255,8 @@ export function RunCard({ run, last, busy, onAsk, onFocus, setOffer }: { run: Ru
   const [open, setOpen] = useState(false);
   // the reply is revealed word by word; what comes after it (sources, cards, follow-ups) appears once it is typed
   const [typing, setTyping] = useState(false);
-  const animate = useRef(run.status === 'running').current || last;
+  const started = useRef(run.status === 'running').current;
+  const animate = !run.restored && (started || last);
   const onTyped = useCallback((t: boolean) => setTyping(t), []);
   const after = !typing;
   return (
@@ -265,32 +320,70 @@ export function Composer({ busy, onAsk, onStop, placeholder, tools, value, setVa
 }
 
 /** The whole panel: a home screen until the first request, then the runs, and the composer. */
-export function AgentPanel({ endpoint, home, placeholder, onUi, onSelect, onText, tools, status, value, setValue, agentRef }: {
-  endpoint: string; home: (ask: (q: string) => void) => ReactNode; placeholder: string; onUi?: (a: UiAction) => void; onSelect?: (id: string) => void; onText?: (t: string) => void;
+export function AgentPanel({ endpoint, history, home, placeholder, onUi, onSelect, onText, tools, status, value, setValue, agentRef }: {
+  endpoint: string; history?: string; home: (ask: (q: string) => void) => ReactNode; placeholder: string; onUi?: (a: UiAction) => void; onSelect?: (id: string) => void; onText?: (t: string) => void;
   tools?: ReactNode; status?: ReactNode; value?: string; setValue?: (v: string) => void; agentRef?: React.MutableRefObject<{ ask: (q: string) => void } | null>;
 }) {
-  const a = useAgent(endpoint, { onUi, onSelect, onText });
+  const a = useAgent(endpoint, { onUi, onSelect, onText, history });
   if (agentRef) agentRef.current = { ask: a.ask };
+  const [showHist, setShowHist] = useState(false);
+  const [del, setDel] = useState('');   // the conversation asking "delete?"
   const end = useRef<HTMLDivElement>(null);
   // follow the newest run while it streams and types
   useEffect(() => {
     const t = setInterval(() => { const f = end.current?.parentElement; if (f && f.scrollHeight - f.scrollTop - f.clientHeight < 160) end.current?.scrollIntoView({ block: 'end' }); }, 120);
     return () => clearInterval(t);
   }, []);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [a.runs.length]);
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [a.runs.length, a.chatId]);
   const focus = (ids: string[]) => { onUi?.({ type: 'highlight', ids }); if (ids.length === 1) onUi?.({ type: 'focusDevice', id: ids[0] }); };
+  const toggleHist = () => { if (!showHist) a.loadChats(); setShowHist(h => !h); };
   return (
     <div className="ag">
-      <div className="ag-bar">{status}{a.runs.length > 0 && <button type="button" className="ghost ag-new" onClick={a.reset} disabled={a.busy} title="Start a new conversation">＋ New</button>}</div>
-      <div className="ag-feed">
-        {a.runs.length === 0 ? home(a.ask) : a.runs.map((r, i) => (
-          <RunCard key={r.id} run={r} last={i === a.runs.length - 1} busy={a.busy} onAsk={a.ask} onFocus={focus} setOffer={s => a.setOffer(r.id, s)} />
-        ))}
-        <div ref={end} />
+      <div className="ag-bar">{status}
+        <span className="ag-bar-acts">
+          {a.hasHistory && <button type="button" className={`ghost ag-hist-btn ${showHist ? 'on' : ''}`} onClick={toggleHist} disabled={a.busy} aria-pressed={showHist} title="Earlier conversations">↺ History</button>}
+          {(a.runs.length > 0 || showHist) && <button type="button" className="ghost ag-new" onClick={() => { a.reset(); setShowHist(false); }} disabled={a.busy} title="Start a new conversation">＋ New</button>}
+        </span>
       </div>
-      <Composer busy={a.busy} onAsk={a.ask} onStop={a.stop} placeholder={placeholder} tools={tools} value={value} setValue={setValue} />
+      {showHist ? (
+        <div className="ag-feed ag-hist">
+          <h3>Conversations</h3>
+          {a.chats == null ? <p className="muted">Loading…</p> : a.chats.length === 0 ? <p className="muted">No saved conversations yet. They are kept here after each answer.</p> : (
+            <ul>{a.chats.map(c => (
+              <li key={c.id} className={c.id === a.chatId ? 'cur' : ''}>
+                <button type="button" className="ag-hist-open" onClick={async () => { if (await a.open(c.id)) setShowHist(false); }}>
+                  <b>{c.title}</b>
+                  {c.preview && <small>{c.preview}</small>}
+                  <em>{when(c.updatedAt)} · {c.turns} message{c.turns === 1 ? '' : 's'}{c.id === a.chatId ? ' · open now' : ''}</em>
+                </button>
+                {del === c.id ? (
+                  <span className="ag-hist-ask"><button type="button" className="danger" onClick={() => { a.remove(c.id); setDel(''); }}>Delete</button><button type="button" className="ghost" onClick={() => setDel('')}>Keep</button></span>
+                ) : <button type="button" className="ag-hist-del" aria-label={`Delete ${c.title}`} title="Delete" onClick={() => setDel(c.id)}>✕</button>}
+              </li>
+            ))}</ul>
+          )}
+        </div>
+      ) : (
+        <div className="ag-feed">
+          {a.runs.length === 0 ? home(a.ask) : a.runs.map((r, i) => (
+            <RunCard key={`${a.chatId}-${r.id}`} run={r} last={i === a.runs.length - 1} busy={a.busy} onAsk={a.ask} onFocus={focus} setOffer={s => a.setOffer(r.id, s)} />
+          ))}
+          {a.saveError && <ErrorNote text={a.saveError} />}
+          <div ref={end} />
+        </div>
+      )}
+      <Composer busy={a.busy} onAsk={q => { setShowHist(false); a.ask(q); }} onStop={a.stop} placeholder={placeholder} tools={tools} value={value} setValue={setValue} />
     </div>
   );
+}
+
+/** "14:05" today, "Yesterday 14:05", else "12 Nov 14:05". */
+function when(t: number) {
+  const d = new Date(t), now = new Date();
+  const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86400000);
+  return diff === 0 ? hm : diff === 1 ? `Yesterday ${hm}` : `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${hm}`;
 }
 
 /** An error in one plain sentence; the technical detail (URLs, logs) folded under it. */
