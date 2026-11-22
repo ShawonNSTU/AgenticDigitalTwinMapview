@@ -14,7 +14,10 @@ extends Node3D
 ## handful of draw calls (Forward+ and the web build alike).
 
 const PALETTE := {
-	"seat_blue": [Color("35598f"), 0.0, 0.85], "shell_dark": [Color("33373d"), 0.05, 0.42], "laminate": [Color("f1eee8"), 0.0, 0.32],
+	"leaf_dark": [Color("2f6a35"), 0.0, 0.7], "planter": [Color("d9d5cc"), 0.0, 0.55], "rubber": [Color("2c2f34"), 0.0, 0.85],
+	"steel": [Color("9ba3ad"), 0.55, 0.35], "box_kraft": [Color("b58b5a"), 0.0, 0.9], "duvet": [Color("eef0f3"), 0.0, 0.9],
+	"cabinet_grey": [Color("cfd3d8"), 0.0, 0.5],
+	"seat_blue": [Color("35598f"), 0.0, 0.85], "shell_dark": [Color("40454c"), 0.05, 0.42], "laminate": [Color("f1eee8"), 0.0, 0.32],
 	"edge": [Color("3d4249"), 0.1, 0.4], "seat_grey": [Color("66707e"), 0.0, 0.85],
 	"col_paint": [Color("efede8"), 0.0, 0.9], "col_skirt": [Color("4b5058"), 0.1, 0.55], "col_guard": [Color("d5d9de"), 0.25, 0.38],
 	"col_gap": [Color("8c9096"), 0.0, 0.8],
@@ -27,7 +30,7 @@ const PALETTE := {
 	"belt": [Color("141518"), 0.0, 0.9], "plant": [Color("4f8f4a"), 0.0, 0.8], "pot": [Color("8d6e63"), 0.0, 0.7],
 	"led": [Color("3fb950"), 0.0, 0.5], "console": [Color("3b82f6"), 0.0, 0.4], "door": [Color("b08d6b"), 0.0, 0.6],
 	"frame": [Color("6b7078"), 0.6, 0.35], "arc": [Color("7aa7ff"), 0.0, 1.0], "glass": [Color(0.75, 0.88, 0.95, 0.28), 0.1, 0.05],
-	"mirror": [Color("c9d6e3"), 0.35, 0.12], "monitor": [Color("1a1c20"), 0.3, 0.3], "display": [Color("5b8def"), 0.0, 0.3],
+	"mirror": [Color("c9d6e3"), 0.35, 0.12], "monitor": [Color("2a2e35"), 0.3, 0.3], "display": [Color("5b8def"), 0.0, 0.3],
 	"keyboard": [Color("30343b"), 0.1, 0.6], "cushion": [Color("a3876f"), 0.0, 0.9], "leaf": [Color("3f7f3b"), 0.0, 0.85],
 	"partition2": [Color("d6dbe1"), 0.0, 0.5], "slide": [Color("e9f1ff"), 0.0, 0.4],
 	"wood_dark": [Color("8a6446"), 0.0, 0.55], "porcelain": [Color("f7f8fa"), 0.05, 0.15], "chrome": [Color("d4d8dd"), 0.55, 0.3],
@@ -511,6 +514,193 @@ func _desk(w: float, d: float) -> void:
 			_bm("chrome", Vector3(px, y + 0.03, -d * 0.36 + 0.005), Vector3(0.12, 0.012, 0.012))
 
 
+## A potted plant: a planter with a soil top and a fan of long leaves arching out (a seeded spread, so every plant
+## is a little different but the same on every load).
+func _plant(w: float, d: float, h: float) -> void:
+	var pr := clampf(minf(w, d) * 0.5, 0.14, 0.3)
+	var ph := clampf(pr * 1.6, 0.25, 0.5)
+	_bm("planter", Vector3(0, ph / 2, 0), Vector3(pr * 2, ph, pr * 2), "cyl")
+	_bm("soil", Vector3(0, ph - 0.01, 0), Vector3(pr * 1.8, 0.02, pr * 1.8), "cyl")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(absf(_ir.origin.x * 73.0 + _ir.origin.z * 131.0))
+	var tall := minf(maxf(0.6, minf(w, d) * 2.4), h - ph - 0.1)
+	for i in 14:
+		var a := TAU * i / 14.0 + rng.randf_range(-0.2, 0.2)
+		var lean := rng.randf_range(0.15, 0.55)
+		var len := tall * rng.randf_range(0.55, 1.0)
+		var b := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, lean) * Basis.from_scale(Vector3(rng.randf_range(0.05, 0.08), len, 0.012))
+		var base := Vector3(0, ph, 0)
+		var mid := base + (Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, lean)) * Vector3(0, len / 2, 0)
+		_emit("box", "leaf" if i % 3 else "leaf_dark", _ir * Transform3D(b, mid))
+
+
+## Treadmill: running deck with side rails on a motor hood, two uprights to a console with handlebars.
+func _treadmill(w: float, d: float) -> void:
+	var tw := minf(w, 0.9)
+	var td := d
+	_soft("dark", Vector3(0, 0.1, 0), Vector3(tw, 0.14, td), 0.0, 0.03)
+	_bm("belt", Vector3(0, 0.18, -0.04), Vector3(tw * 0.72, 0.02, td * 0.86))
+	for sx in [-1.0, 1.0]:
+		_bm("steel", Vector3(sx * (tw / 2 - 0.05), 0.185, -0.04), Vector3(0.08, 0.025, td * 0.86))
+		_tube("shell_dark", Vector3(sx * (tw / 2 - 0.06), 0.17, td / 2 - 0.12), Vector3(sx * (tw / 2 - 0.09), 1.2, td / 2 - 0.18), 0.03)
+		_tube("steel", Vector3(sx * (tw / 2 - 0.08), 1.02, td / 2 - 0.2), Vector3(sx * (tw / 2 - 0.08), 1.02, td / 2 - 0.55), 0.016)
+	_soft("shell_dark", Vector3(0, 0.12, td / 2 - 0.1), Vector3(tw, 0.2, 0.2), 0.0, 0.05)
+	_soft("shell_dark", Vector3(0, 1.25, td / 2 - 0.2), Vector3(tw * 0.85, 0.12, 0.22), 0.5, 0.03)
+	_bm("console", Vector3(0, 1.28, td / 2 - 0.25), Vector3(tw * 0.45, 0.004, 0.12))
+
+
+## Exercise bike: a heavy frame on two feet, a flywheel under a cover, saddle and handlebars on posts, pedals.
+func _bike(w: float, d: float) -> void:
+	var L := maxf(d, 0.9)
+	for z in [-L / 2 + 0.08, L / 2 - 0.08]:
+		_soft("shell_dark", Vector3(0, 0.03, z), Vector3(0.55, 0.05, 0.08), 0.0, 0.02)
+	_tube("shell_dark", Vector3(0, 0.05, -L / 2 + 0.1), Vector3(0, 0.45, 0.0), 0.04)
+	_tube("shell_dark", Vector3(0, 0.05, L / 2 - 0.1), Vector3(0, 0.45, 0.0), 0.04)
+	_emit("cyl", "steel", _ir * Transform3D(Basis(Vector3.FORWARD, PI / 2) * Basis.from_scale(Vector3(0.5, 0.06, 0.5)), Vector3(0, 0.38, 0.22)))
+	_soft("shell_dark", Vector3(0, 0.4, 0.22), Vector3(0.09, 0.42, 0.42), 0.0, 0.08)
+	_tube("steel", Vector3(0, 0.45, -0.05), Vector3(0, 0.88, -0.2), 0.025)
+	_soft("rubber", Vector3(0, 0.92, -0.22), Vector3(0.18, 0.06, 0.26), 0.0, 0.03)
+	_tube("steel", Vector3(0, 0.45, 0.2), Vector3(0, 1.08, 0.34), 0.025)
+	_tube("rubber", Vector3(-0.24, 1.1, 0.36), Vector3(0.24, 1.1, 0.36), 0.018)
+	for sx in [-1.0, 1.0]:
+		_tube("steel", Vector3(sx * 0.07, 0.3, 0.05), Vector3(sx * 0.1, 0.22, 0.05), 0.012)
+		_bm("rubber", Vector3(sx * 0.14, 0.22, 0.05), Vector3(0.09, 0.02, 0.05))
+
+
+## Dumbbell rack: a two-tier steel rack with pairs of hex dumbbells, heaviest at the bottom.
+func _dumbbell_rack(w: float, d: float) -> void:
+	for sx in [-1.0, 1.0]:
+		_bm("shell_dark", Vector3(sx * (w / 2 - 0.03), 0.35, 0), Vector3(0.05, 0.7, d * 0.9))
+	for t in 2:
+		var y := 0.32 + t * 0.32
+		var z := -0.08 + t * 0.12
+		_bm("steel", Vector3(0, y, z), Vector3(w - 0.06, 0.03, d * 0.5), "box")
+		var n := maxi(3, int(w / 0.25))
+		for i in n:
+			var x := -w / 2 + 0.1 + (w - 0.2) * (i + 0.5) / n
+			var r := 0.075 - t * 0.02 - i * 0.002
+			for side in [-1.0, 1.0]:
+				_emit("cyl", "rubber", _ir * Transform3D(Basis(Vector3.RIGHT, PI / 2) * Basis.from_scale(Vector3(r * 2, 0.05, r * 2)), Vector3(x + side * 0.055, y + r + 0.015, z)))
+			_tube("chrome", Vector3(x - 0.07, y + r + 0.015, z), Vector3(x + 0.07, y + r + 0.015, z), 0.014)
+
+
+## Bar stool: a round padded seat on a chrome post with a foot ring and a weighted base.
+func _stool(w: float) -> void:
+	var r := clampf(w * 0.5, 0.17, 0.22)
+	_bm("chrome", Vector3(0, 0.012, 0), Vector3(r * 2, 0.024, r * 2), "cyl")
+	_tube("chrome", Vector3(0, 0.02, 0), Vector3(0, 0.62, 0), 0.025)
+	_emit("cyl", "chrome", _ir * Transform3D(Basis.from_scale(Vector3(r * 1.6, 0.02, r * 1.6)), Vector3(0, 0.3, 0)))
+	_bm("shell_dark", Vector3(0, 0.64, 0), Vector3(r * 2, 0.03, r * 2), "cyl")
+	_soft("seat_grey", Vector3(0, 0.675, 0), Vector3(r * 1.9, 0.06, r * 1.9), 0.0, 0.03)
+
+
+## Counter: base cupboards with doors and handles on a recessed plinth, a stone top overhanging the front.
+func _counter(w: float, d: float) -> void:
+	_bm("dark", Vector3(0, 0.05, -0.03), Vector3(w - 0.02, 0.1, d - 0.08))
+	_bm("cabinet_grey", Vector3(0, 0.47, 0), Vector3(w, 0.74, d - 0.02))
+	var n := maxi(1, roundi(w / 0.6))
+	for i in n:
+		var x := -w / 2 + w * (i + 0.5) / n
+		_bm("white", Vector3(x, 0.47, d / 2 - 0.005), Vector3(w / n - 0.012, 0.72, 0.018))
+		_bm("chrome", Vector3(x + w / n * 0.35, 0.72, d / 2 + 0.012), Vector3(0.012, 0.012, 0.012))
+		_bm("chrome", Vector3(x + w / n * 0.35, 0.62, d / 2 + 0.02), Vector3(0.012, 0.22, 0.012))
+	_bm("stone", Vector3(0, 0.865, 0.01), Vector3(w + 0.02, 0.04, d + 0.04))
+
+
+## Wash basin(s): a stone vanity with sunk white basins, mixer taps, a mirror and its light above (a narrow
+## counter-depth sink is a kitchen or laundry sink: no mirror).
+func _basin(w: float, d: float) -> void:
+	var n := maxi(1, roundi(w / 0.7))
+	var top := 0.84
+	_bm("stone", Vector3(0, top, 0), Vector3(w, 0.04, d))
+	_bm("cabinet_grey", Vector3(0, top - 0.12, 0), Vector3(w, 0.2, d - 0.04))
+	for i in n:
+		var x := -w / 2 + w * (i + 0.5) / n
+		_bm("porcelain", Vector3(x, top + 0.005, 0.02), Vector3(minf(0.46, w / n - 0.12), 0.012, d * 0.62), "cyl")
+		_bm("dark", Vector3(x, top + 0.008, 0.02), Vector3(0.04, 0.008, 0.04), "cyl")
+		_tube("chrome", Vector3(x, top, -d / 2 + 0.08), Vector3(x, top + 0.2, -d / 2 + 0.08), 0.016)
+		_tube("chrome", Vector3(x, top + 0.2, -d / 2 + 0.08), Vector3(x, top + 0.18, -d / 2 + 0.2), 0.012)
+	if d < 0.65:
+		_bm("mirror", Vector3(0, 1.45, -d / 2 + 0.01), Vector3(w - 0.06, 0.8, 0.012))
+		_bm("frame", Vector3(0, 1.45, -d / 2 + 0.003), Vector3(w - 0.02, 0.84, 0.01))
+		_bm("frosted", Vector3(0, 1.9, -d / 2 + 0.05), Vector3(w * 0.6, 0.04, 0.06))
+
+
+## WC cubicle: partitions with a door gap, a white pan and cistern, a seat, a flush plate and a roll holder.
+func _wc(w: float, d: float, h: float) -> void:
+	var ph := minf(1.9, h - 0.05)
+	for sx in [-1.0, 1.0]:
+		_bm("partition2", Vector3(sx * 0.6, 0.12 + ph / 2, 0.15), Vector3(0.03, ph, 1.35))
+	_soft("porcelain", Vector3(0, 0.2, 0.05), Vector3(0.36, 0.38, 0.52), 0.0, 0.1)
+	_soft("white", Vector3(0, 0.405, 0.06), Vector3(0.38, 0.03, 0.46), 0.0, 0.08)
+	_soft("porcelain", Vector3(0, 0.62, -0.25), Vector3(0.42, 0.42, 0.18), 0.0, 0.04)
+	_bm("chrome", Vector3(0, 0.8, -0.155), Vector3(0.16, 0.1, 0.008))
+	_bm("chrome", Vector3(0.45, 0.7, 0.05), Vector3(0.12, 0.03, 0.08))
+	_bm("white", Vector3(0.45, 0.66, 0.05), Vector3(0.1, 0.1, 0.1), "cyl")
+
+
+## Storage cabinet: a carcass on a plinth, two doors with a centre seam and bar handles, a top (cut at the wall
+## height on the map).
+func _cabinet(w: float, d: float, h: float) -> void:
+	var ch := minf(h - 0.05, 1.9 if w < 1.2 else 0.9)
+	_bm("dark", Vector3(0, 0.04, -0.02), Vector3(w - 0.03, 0.08, d - 0.05))
+	_bm("cabinet_grey", Vector3(0, 0.08 + (ch - 0.08) / 2, 0), Vector3(w, ch - 0.08, d))
+	var n := maxi(2, roundi(w / 0.5))
+	for i in n:
+		var x := -w / 2 + w * (i + 0.5) / n
+		_bm("white", Vector3(x, 0.08 + (ch - 0.08) / 2, d / 2 - 0.004), Vector3(w / n - 0.008, ch - 0.1, 0.016))
+		var hx := x + (w / n * 0.4 if i % 2 == 0 else -w / n * 0.4)
+		_bm("chrome", Vector3(hx, minf(1.05, ch * 0.55), d / 2 + 0.02), Vector3(0.014, 0.2, 0.014))
+
+
+## Steel shelving: four uprights, shelves, kraft boxes and binders on them.
+func _shelving(w: float, d: float, h: float) -> void:
+	var sh := minf(h - 0.1, 2.0)
+	var run := maxf(w, d)
+	var deep := minf(w, d)
+	var along_x := w >= d
+	var P := func(a: float, y: float, c: float) -> Vector3:
+		return Vector3(a, y, c) if along_x else Vector3(c, y, a)
+	var S := func(a: float, y: float, c: float) -> Vector3:
+		return Vector3(a, y, c) if along_x else Vector3(c, y, a)
+	for sa in [-1.0, 1.0]:
+		for sc in [-1.0, 1.0]:
+			_bm("steel", P.call(sa * (run / 2 - 0.02), sh / 2, sc * (deep / 2 - 0.02)), Vector3(0.035, sh, 0.035))
+	var levels := maxi(2, int(sh / 0.42))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(absf(_ir.origin.x * 37.0 + _ir.origin.z * 91.0))
+	for k in levels:
+		var y := 0.08 + k * (sh - 0.1) / (levels - 1)
+		_bm("steel", P.call(0, y, 0), S.call(run - 0.02, 0.02, deep - 0.02))
+		if k == levels - 1:
+			break
+		var x := -run / 2 + 0.06
+		while x < run / 2 - 0.2:
+			var bw := rng.randf_range(0.22, 0.4)
+			var bh := rng.randf_range(0.18, 0.3)
+			_soft("box_kraft" if rng.randf() < 0.7 else "white", P.call(x + bw / 2, y + 0.01 + bh / 2, 0), S.call(bw - 0.02, bh, deep * 0.8), 0.0, 0.01)
+			x += bw + rng.randf_range(0.02, 0.08)
+
+
+## Bed: a frame with legs, mattress, a duvet folded back at the head, pillows and a headboard.
+func _bed(w: float, d: float) -> void:
+	var long_z := d >= w
+	var L := d if long_z else w
+	var B := w if long_z else d
+	var P := func(a: float, y: float, c: float) -> Vector3:
+		return Vector3(c, y, a) if long_z else Vector3(a, y, c)
+	var S := func(a: float, y: float, c: float) -> Vector3:
+		return Vector3(c, y, a) if long_z else Vector3(a, y, c)
+	_bm("wood_dark", P.call(0, 0.2, 0), S.call(L, 0.16, B))
+	_soft("linen", P.call(0, 0.38, 0), S.call(L - 0.04, 0.2, B - 0.04), 0.0, 0.06)
+	_soft("duvet", P.call(0.15, 0.5, 0), S.call(L - 0.35, 0.06, B + 0.02), 0.0, 0.03)
+	_bm("wood_dark", P.call(-L / 2 + 0.03, 0.55, 0), S.call(0.06, 0.7, B + 0.04))
+	for sc in [-1.0, 1.0]:
+		_soft("white", P.call(-L / 2 + 0.25, 0.53, sc * B * 0.24 if B > 1.2 else 0.0), S.call(0.3, 0.12, minf(0.6, B * 0.42)), 0.0, 0.05)
+		if B <= 1.2:
+			break
+
+
 ## Sofa or armchair: upholstered base, arms, separate seat and back cushions, short dark legs.
 func _sofa(w: float, d: float, seats: int) -> void:
 	var arm := clampf(w * 0.09, 0.14, 0.2)
@@ -624,45 +814,21 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 		"sofa", "armchair":
 			_sofa(w, d, 1 if kind == "armchair" or w < 1.2 else (3 if w > 1.7 else 2))
 		"bed":
-			_swap = {"carpet": "linen", "carpetWhite": "white", "wood": "wood"}
-			# the model's length runs along its z; turn it when the plan's bed is longer across than deep
-			_model("bedSingle", Vector3.ZERO, w, d, 0.6, PI / 2 if w > d else 0.0)
-			_swap = {}
+			_bed(w, d)
 		"cabinet":
-			_swap = {"metal": "stone", "woodDark": "wood_dark"}
-			_model("kitchenCabinet", Vector3.ZERO, w, d, minf(h, 0.9))
-			_swap = {}
+			_cabinet(w, d, h)
 		"shelf":
-			var sh := minf(h - 0.2, 1.8)
-			var turn := PI / 2 if d > w * 1.5 else 0.0  # a run of shelving traced deeper than wide
-			_model("bookcaseOpen", Vector3.ZERO, w, d, sh, turn)
-			var run := maxf(w, d)
-			var deep := minf(w, d)
-			for r in 3:  # books on the lower three shelves
-				var off := Vector3(-run * 0.15, 0.06 + r * sh / 4.0, 0)
-				if turn != 0.0:
-					off = Vector3(0, off.y, -run * 0.15)
-				_model("books", off, run * 0.5 if turn == 0.0 else deep * 0.7, deep * 0.7 if turn == 0.0 else run * 0.5, 0.24, turn)
+			_shelving(w, d, h)
 		"rack":
 			_b("dark", Vector3(0, minf(h, 1.1) / 2, 0), Vector3(1, minf(h, 1.1), 1))
 			for y in [0.3, 0.55, 0.8]:
 				_b("led", Vector3(0, y, 0.51), Vector3(0.6, 0.03, 0.02))
 		"counter":
-			_b("counter", Vector3(0, 0.43, 0), Vector3(1, 0.86, 1))
-			_b("stone", Vector3(0, 0.88, 0), Vector3(1.02, 0.04, 1.05))
+			_counter(w, d)
 		"sink":
-			_swap = {"carpetWhite": "porcelain", "metal": "chrome", "metalLight": "porcelain"}
-			_model("bathroomSink", Vector3.ZERO, w, d)
-			_swap = {}
-			if d < 0.55:  # a wash basin gets a mirror; a counter-depth kitchen or laundry sink does not
-				_bm("mirror", Vector3(0, 1.35, -d * 0.48), Vector3(w * 0.9, 0.7, 0.02))
-				_bm("frame", Vector3(0, 1.35, -d * 0.49), Vector3(w * 0.94, 0.74, 0.01))
+			_basin(w, d)
 		"toilet":
-			for sx in [-1, 1]:  # cubicle side panels
-				_bm("partition2", Vector3(sx * 0.6, 0.62, 0.15), Vector3(0.03, 1.0, 1.35))
-			_swap = {"carpetWhite": "porcelain", "metalLight": "porcelain", "metalDark": "chrome"}
-			_model("toilet", Vector3.ZERO, w * 0.9, d * 0.9)
-			_swap = {}
+			_wc(w, d, h)
 		"stair":
 			# real step count for the run length; rises towards +z (the facing direction)
 			var n := maxi(3, roundi(d / 0.28))
@@ -690,26 +856,11 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			_bm("rail", Vector3(0, 1.0, 0), Vector3(w, 0.05, 0.05))
 			_bm("glass", Vector3(0, 0.52, 0), Vector3(w, 0.86, 0.015))
 		"treadmill":
-			_b("dark", Vector3(0, 0.12, 0), Vector3(0.9, 0.18, 1))
-			_b("belt", Vector3(0, 0.22, -0.05), Vector3(0.7, 0.03, 0.85))
-			for sx in [-0.42, 0.42]:
-				_b("dark", Vector3(sx, 0.65, 0.42), Vector3(0.08, 1.0, 0.06))
-				_b("metal", Vector3(sx, 0.95, 0.15), Vector3(0.05, 0.04, 0.55))
-			_b("console", Vector3(0, 1.15, 0.45), Vector3(0.9, 0.12, 0.1))
+			_treadmill(w, d)
 		"bike":
-			_b("dark", Vector3(0, 0.4, 0), Vector3(0.35, 0.12, 0.9))
-			_b("metal", Vector3(0, 0.68, -0.25), Vector3(0.15, 0.5, 0.06))
-			_b("dark", Vector3(0, 0.95, -0.25), Vector3(0.7, 0.06, 0.3))
-			_b("metal", Vector3(0, 0.82, 0.32), Vector3(0.15, 0.75, 0.06))
-			_b("dark", Vector3(0, 1.18, 0.36), Vector3(1.6, 0.04, 0.06))
-			_b("metal", Vector3(0, 0.3, 0.25), Vector3(0.12, 0.45, 0.45))
+			_bike(w, d)
 		"weight_rack":
-			_b("dark", Vector3(0, 0.55, 0), Vector3(1, 0.05, 1))
-			for sx in [-0.48, 0.48]:
-				_b("dark", Vector3(sx, 0.27, 0), Vector3(0.03, 0.55, 0.9))
-			var n := maxi(3, roundi(w / 0.22))
-			for i in n:
-				_bm("dark", Vector3(-w / 2 + w * (i + 0.5) / n, 0.65, 0), Vector3(0.12, 0.13, minf(0.32, d * 0.9)), "cyl")
+			_dumbbell_rack(w, d)
 		"locker":
 			# a bank of steel lockers (cut at the wall height like the walls), a door per 0.4 m with vents and a handle
 			var lh := minf(h, 1.1)
@@ -726,10 +877,7 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 			for sx in [-1, 1]:
 				_bm("frame", Vector3(sx * (w / 2 - 0.06), 0.21, 0), Vector3(0.04, 0.42, d * 0.85))
 		"stool":
-			_bm("chrome", Vector3(0, 0.18, 0), Vector3(0.05, 0.36, 0.05), "cyl")
-			_bm("fabric", Vector3(0, 0.38, 0), Vector3(w, 0.05, w), "cyl")
-			_bm("chrome", Vector3(0, 0.01, 0), Vector3(w * 0.9, 0.02, w * 0.9), "cyl")
-			_bm("chrome", Vector3(0, 0.75, -0.25), Vector3(0.03, 0.06, 0.12))  # wall tap above
+			_stool(w)
 		"dispenser":
 			# water dispenser: cabinet, taps, a blue bottle upside down on top
 			_bm("white", Vector3(0, 0.5, 0), Vector3(w, 1.0, d))
@@ -887,9 +1035,7 @@ func _item(kind: String, at: Vector3, w: float, d: float, rot: float) -> void:
 		"monitor":
 			_setup(-w * 0.15, d)
 		"plant":
-			_swap = {"wood": "pot", "woodDark": "soil"}
-			_model("pottedPlant", Vector3.ZERO, w, d, maxf(0.9, w * 2.2))
-			_swap = {}
+			_plant(w, d, h)
 		"door" when _cur.get("opening", false):
 			pass  # a plain opening in the wall (the arrival lift); its frame is the lift's own
 		"door":

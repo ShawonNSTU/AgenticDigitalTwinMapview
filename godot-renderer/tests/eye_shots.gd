@@ -35,7 +35,7 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
 	var n := 0
 	for f in cols:
-		if n >= 5:
+		if n >= 1:
 			break
 		var c := Vector2(float(f.x), float(f.z))
 		# a free spot 3-4.5 m away, with the column in front
@@ -60,7 +60,7 @@ func _run() -> void:
 		get_viewport().get_texture().get_image().save_png("%s/column_%d.png" % [out, n])
 		print("shot ", n, " ", Store.room_label(Store.room_at(c)))
 	# close-ups of each kind of furniture, from where someone walking by would see it
-	for kind in ["chair", "table", "task_chair", "desk", "workstation", "sofa", "round_table"]:
+	for kind in ["chair", "table", "task_chair", "desk", "sofa", "round_table", "sink", "toilet", "plant", "treadmill", "bike", "weight_rack", "stool", "counter", "shelf", "cabinet", "bed", "elec_panel", "vending", "shower"]:
 		var f = null
 		for it in Store.furniture:
 			if it.kind == kind:

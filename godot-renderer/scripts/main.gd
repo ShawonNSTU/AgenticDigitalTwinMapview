@@ -1054,6 +1054,21 @@ func start_walk(room_key := "") -> void:
 ## blue, ACES tone mapping (highlights roll off instead of clipping), a soft glow round lamps, a touch of contrast.
 func _walk_look(on: bool) -> void:
 	env.ambient_light_color = Color("d8d0c4") if on else Color("aab4c3")
+	# fill light that depends on which way a surface faces, as in a real room: brightest from the ceiling, warm
+	# from the walls, darker from the floor. A flat fill colour lit every face the same, so furniture read flat.
+	if on and env.sky == null:
+		var sm := ProceduralSkyMaterial.new()
+		sm.sky_top_color = Color("fbf7f0")
+		sm.sky_horizon_color = Color("e6ddd0")
+		sm.ground_horizon_color = Color("b9ad9c")
+		sm.ground_bottom_color = Color("5f5952")
+		sm.sun_angle_max = 0.0
+		var sky := Sky.new()
+		sky.sky_material = sm
+		sky.radiance_size = Sky.RADIANCE_SIZE_32
+		env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY if on else Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_sky_contribution = 0.8   # the rest stays the fill colour, which night and dimming still tint
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES if on else Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.0
 	env.tonemap_white = 6.0 if on else 1.0
