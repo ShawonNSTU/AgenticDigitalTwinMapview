@@ -87,6 +87,8 @@ func _declutter() -> void:
 			if c is Label3D and c.has_meta("declutter") and c.visible:
 				items.append([20, c])
 	items.sort_custom(func(a, b): return a[0] > b[0])
+	# place labels by priority; one that would cover another is moved to the nearest free spot beside its anchor
+	# (above, below, right, left, then further out), and only hidden when there is no room at all
 	var kept: Array[Rect2] = []
 	for it in items:
 		var l: Label3D = it[1]
@@ -101,18 +103,30 @@ func _declutter() -> void:
 		var chars := 0
 		for ln in lines:
 			chars = maxi(chars, ln.length())
-		var size := Vector2(chars * line_px * 0.56 + 6.0, lines.size() * line_px * 1.15 + 4.0)
-		var r := Rect2(c - size * 0.5, size)
-		var clash := false
-		for o in kept:
-			if o.intersects(r):
-				clash = true
-				break
-		if clash and it[0] < 100:
-			l.transparency = 1.0
-		else:
+		var size := Vector2(chars * line_px * 0.58 + 10.0, lines.size() * line_px * 1.2 + 6.0)
+		var px_per_font := line_px / float(l.font_size)   # screen pixels per Label3D offset unit
+		var placed := false
+		for o in [Vector2.ZERO, Vector2(0, -1), Vector2(0, 1), Vector2(1, 0), Vector2(-1, 0), Vector2(1, -1), Vector2(-1, -1), Vector2(1, 1), Vector2(-1, 1), Vector2(0, -2), Vector2(0, 2)]:
+			var shift := Vector2(o.x * (size.x + 4.0), o.y * (size.y + 2.0))
+			var r := Rect2(c + shift - size * 0.5, size)
+			if r.position.x < 4 or r.position.y < 64 or r.end.x > vp.x - 4 or r.end.y > vp.y - 40:  # clear of the HUD lines
+				continue
+			var clash := false
+			for k in kept:
+				if k.intersects(r):
+					clash = true
+					break
+			if clash:
+				continue
+			# Label3D offsets are in its own pixels, y up
+			l.offset = Vector2(shift.x, -shift.y) / maxf(px_per_font, 0.0001)
 			l.transparency = 0.0
 			kept.append(r)
+			placed = true
+			break
+		if not placed:
+			l.offset = Vector2.ZERO
+			l.transparency = 0.0 if it[0] >= 100 else 1.0
 
 
 func scale_factor() -> float:
@@ -172,9 +186,14 @@ func _make_part(p: Dictionary, local: Vector3, size: Vector3, l: Array, out: Vec
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
-	label.font_size = 28
-	label.pixel_size = 0.00033 / scale_factor()  # labels sit in the scaled twin; keep one on-screen size for every device
-	label.outline_size = 8
+	label.font_size = 32
+	label.pixel_size = 0.00048 / scale_factor()  # labels sit in the scaled twin; keep one on-screen size for every device
+	label.outline_size = 12
+	label.render_priority = 20
+	label.outline_render_priority = 19
+	label.outline_modulate = Color(0.04, 0.06, 0.1, 0.95)
+	label.modulate = Color(1, 1, 1)
+	label.width = 900
 	label.visible = false  # labels show once exploded, to avoid a pile-up inside the shell
 	twin.add_child(label)
 	label.position = local + Vector3(0, size.y * 0.5, 0)
@@ -345,11 +364,14 @@ func _build_ports() -> void:
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		l.no_depth_test = true
 		l.fixed_size = true
-		l.font_size = 20
-		l.pixel_size = 0.00028
+		l.font_size = 26
+		l.pixel_size = 0.00042
 		l.set_meta("declutter", 0)
-		l.outline_size = 6
-		l.modulate = col.lightened(0.5)
+		l.outline_size = 10
+		l.render_priority = 20
+		l.outline_render_priority = 19
+		l.outline_modulate = Color(0.04, 0.06, 0.1, 0.95)
+		l.modulate = col.lightened(0.6)
 		_flow_root.add_child(l)
 		l.global_position = at + Vector3(0, 0.07, 0)
 
@@ -406,10 +428,13 @@ func _build_flows() -> void:
 			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			tag.no_depth_test = true
 			tag.fixed_size = true
-			tag.font_size = 24
-			tag.pixel_size = 0.0003
-			tag.outline_size = 6
-			tag.modulate = color.lightened(0.45)
+			tag.font_size = 30
+			tag.pixel_size = 0.00045
+			tag.outline_size = 12
+			tag.render_priority = 20
+			tag.outline_render_priority = 19
+			tag.outline_modulate = Color(0.04, 0.06, 0.1, 0.95)
+			tag.modulate = color.lightened(0.7)
 			holder.add_child(tag)
 			tag.global_position = pts[pts.size() / 2] + Vector3(0, 0.05, 0)
 		_flows.append({"mats": mats, "from": f.from, "to": f.to, "color": color, "rate": rule, "beads": beads, "tag": tag, "tag_reading": tag_reading})

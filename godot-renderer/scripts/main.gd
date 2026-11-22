@@ -747,11 +747,11 @@ func _hud() -> void:
 	add_child(layer)
 	hud = Label.new()
 	hud.position = Vector2(14, 10)
-	hud.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.85))
+	_readable(hud, 1.0)
 	layer.add_child(hud)
 	legend = Label.new()
 	legend.position = Vector2(14, 34)
-	legend.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.7))
+	_readable(legend, 0.95)
 	layer.add_child(legend)
 	if OS.has_feature("web"):
 		# the page shows the clock and its own panels on the left; keep only the flow legend, clear of the palette
@@ -760,11 +760,19 @@ func _hud() -> void:
 	if not OS.has_feature("web"):
 		var help := Label.new()
 		help.text = "Click a device to focus · double-click to open · P piping · Esc back · drag orbit · right-drag pan · wheel zoom"
-		help.add_theme_color_override("font_color", Color(0.06, 0.09, 0.16, 0.55))
+		_readable(help, 0.85)
 		help.anchor_top = 1.0
 		help.anchor_bottom = 1.0
 		help.position = Vector2(14, -30)
 		layer.add_child(help)
+
+
+## Light text on a dark outline reads over both the daylight floor and the night view.
+func _readable(l: Label, alpha: float) -> void:
+	l.add_theme_color_override("font_color", Color(0.96, 0.97, 1.0, alpha))
+	l.add_theme_color_override("font_outline_color", Color(0.04, 0.06, 0.1, 0.9))
+	l.add_theme_constant_override("outline_size", 6)
+	l.add_theme_font_size_override("font_size", 17)
 
 
 ## The clock no longer moves the sun: the map keeps one fixed evening light (see SUN).
