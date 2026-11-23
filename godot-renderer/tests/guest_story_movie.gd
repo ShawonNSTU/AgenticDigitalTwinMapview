@@ -1,7 +1,7 @@
 extends Node
 ## --guest-story: the Climate Vision film told as one guest's afternoon and evening. Run with the movie maker:
 ##   godot --path . --write-movie out/f.png --fixed-fps 30 -- --guest-story
-## Ayesha walks into her hot room (eye level, real walk mode), asks the assistant to cool it without draught, the
+## Shaon walks into her hot room (eye level, real walk mode), asks the assistant to cool it without draught, the
 ## real AC is switched; in the evening candles raise PM2.5 and the real purifier clears it. Device commands go
 ## through the web app; the assistant's lines are scripted for the film (said so on the end card).
 
@@ -140,7 +140,7 @@ func _build_overlay() -> void:
 	_title_box.add_theme_constant_override("separation", 12)
 	_title.add_child(_title_box)
 	cl.add_child(_title)
-	_card([["AI-POWERED 3D CLIMATE VISION", 18, Color(0.45, 0.65, 1.0)], ["Ayesha's afternoon", 56, Color.WHITE],
+	_card([["AI-POWERED 3D CLIMATE VISION", 18, Color(0.45, 0.65, 1.0)], ["Shaon's afternoon", 56, Color.WHITE],
 		["A guest story in a live SmartThings hotel room", 22, Color(0.75, 0.81, 0.9)]])
 
 
@@ -211,14 +211,14 @@ func _run() -> void:
 	await _until(func(): return not bool(Store.live.get("AC-01", {}).get("on", true)))
 	await _wait(3.0)
 	_fade(_title, 0.0, 1.0)
-	caption("14:30 · A hot afternoon, 33 °C outside", "Ayesha arrives at her room on the 4th floor")
+	caption("14:30 · A hot afternoon, 33 °C outside", "Shaon arrives at the room on the 4th floor")
 	await _wait(3.5)
 	# into the room at eye level, then the air she walks into
 	main.start_walk(ROOM)
 	await _wait(2.6)
 	Bridge.handle({"type": "climate", "on": true, "room": ROOM, "hud": false, "reset": true, "windfree": false, "people": 1, "speed": 1.0, "heat": true, "airflow": true, "dust": true})
 	main.climate.readings.connect(_readings)
-	caption("The room has been shut all day", "Climate Vision shows the heat she walks into: orange is too warm")
+	caption("The room has been shut all day", "Climate Vision shows the heat waiting inside: orange is too warm")
 	await _wait(5.5)
 	# she asks the assistant
 	_fade(_phone, 1.0, 0.5)
@@ -238,7 +238,7 @@ func _run() -> void:
 	await _wait(7.0)
 	# where she will sit
 	main.walker.look_at_point(Vector3(7.52, 0.7, 6.02))
-	caption("Comfortable where she sits", "The sofa, desk and window read live from the simulated air")
+	caption("Comfortable where Shaon sits", "The sofa, desk and window read live from the simulated air")
 	await _wait(5.0)
 	main.walker.overview(true)
 	caption("From above: the whole room in the comfort band", "22 - 26 °C is drawn clear; the AC eases off near its set point")
@@ -259,7 +259,7 @@ func _run() -> void:
 	Bridge.handle({"type": "climate", "speed": 1.5})
 	await _wait(7.0)
 	main.walker.overview(true)
-	caption("Comfort she can feel, and the hotel can see")
+	caption("Comfort a guest can feel, and the hotel can see")
 	await _wait(5.0)
 	_card([["AI-Powered 3D Climate Vision", 48, Color.WHITE],
 		["Real-time airflow, heat & air-quality rendering of a live SmartThings room", 21, Color(0.75, 0.81, 0.9)],
