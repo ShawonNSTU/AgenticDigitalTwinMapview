@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { onRenderer, send } from '@/lib/bridge';
+import { createPortal } from 'react-dom';
+import ClimateVision from './ClimateVision';
 
 const LAYERS = [
   { key: 'piping', label: 'Piping' },
@@ -12,11 +14,18 @@ const LAYERS = [
 ] as const;
 const TIERS = [['auto', 'Auto'], ['lite', 'Lite'], ['balanced', 'Balanced'], ['high', 'High'], ['ultra', 'Ultra']] as const;
 
+async function runHost(id: string, command: string, args: Record<string, unknown> = {}) {
+  await fetch(`/api/devices/${id}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, args, by: 'host' }) });
+  send({ type: 'refreshDevices' });
+}
+
 /** Floating map controls: layers and view. */
 export default function MapToolbar() {
   const [on, setOn] = useState<Record<string, boolean>>({ piping: true, furniture: true, names: false, temperature: false, comfort: false, energy: false });
+  const [climate, setClimate] = useState(false);
   const [q, setQ] = useState<{ tier: string; auto: boolean; fps: number } | null>(null);
   // the renderer reports its quality tier (it adapts to the device's frame rate), and layers the assistant switched on
+  useEffect(() => { const f = () => setClimate(true); window.addEventListener('twin-climate', f); return () => window.removeEventListener('twin-climate', f); }, []);
   useEffect(() => onRenderer(m => { if (m.type === 'quality') setQ({ tier: m.tier, auto: m.auto, fps: m.fps }); }), []);
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.layer) setOn(o => ({ ...o, [d.layer]: !!d.on })); }; window.addEventListener('twin-layer', f); return () => window.removeEventListener('twin-layer', f); }, []);
   // send() announces every layer switch (twin-layer), which sets the button state, from here or anywhere else
@@ -35,7 +44,9 @@ export default function MapToolbar() {
           </div>
         </div>
       </details>
+      <button className={climate ? 'on cv-btn' : 'cv-btn'} aria-pressed={climate} onClick={() => setClimate(!climate)} title="See the room's air in 3D: heat, airflow and dust">Climate Vision</button>
       <button onClick={() => send({ type: 'resetView' })} title="Back to the whole floor">Whole floor</button>
+      {climate && typeof document !== 'undefined' && createPortal(<ClimateVision run={runHost} onClose={() => setClimate(false)} />, document.querySelector('[data-fullscreen]') ?? document.body)}
     </div>
   );
 }

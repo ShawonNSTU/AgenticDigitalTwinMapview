@@ -9,6 +9,7 @@ import { stStatus, type StProfile } from '@/components/StZone';
 import GuestAssistant from '@/components/GuestAssistant';
 import GuestJourney from '@/components/GuestJourney';
 import Locator from '@/components/Locator';
+import ClimateVision, { openClimateVision } from '@/components/ClimateVision';
 import FullscreenButton from '@/components/FullscreenButton';
 import { SideFold, SideTab, useSideOpen } from '@/components/SidePanel';
 import { send, type FromRenderer } from '@/lib/bridge';
@@ -57,6 +58,7 @@ export default function GuestPage() {
   const [tab, setTab] = useState<'stay' | 'room'>('stay');
   const [sideOpen, setSideOpen] = useSideOpen('guest');
   const [tour, setTour] = useState<number | null>(null);
+  const [climate, setClimate] = useState(false);
   const [overview, setOverview] = useState(false);
   const [hintShown, setHintShown] = useState(true);   // the "You're in …" card: closable, gone once the tour is over
   const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
@@ -211,11 +213,12 @@ export default function GuestPage() {
             <span className="walk-dot" />
             <span><b>You’re in {view?.room.name}</b><small>Tap a device to control it</small></span>
             {stops.length > 0 && <button className="pri" onClick={() => { setOverview(false); setTour(0); }}>Take the tour</button>}
+            {view?.devices.some(d => d.type === 'ac') && <button onClick={() => { setOverview(false); setClimate(true); setHintShown(false); }} title="See your room's air: heat, airflow and dust">Climate Vision</button>}
             <button className={overview ? 'on' : ''} aria-pressed={overview} onClick={() => { send({ type: 'walk', action: 'overview', on: !overview }); setOverview(!overview); }}>{overview ? 'Back to eye level' : 'See the whole room'}</button>
             <button className="hint-x" aria-label="Close" title="Close" onClick={() => setHintShown(false)}>✕</button>
           </div>
         )}
-        {view && <div className="locator-wrap"><Locator token={token} route={route} roomName={view.room.name}
+        {view && !climate && <div className="locator-wrap"><Locator token={token} route={route} roomName={view.room.name}
           onUnlock={(() => { const lock = view.devices.find(d => d.type === 'lock'); return lock && view.allowUnlock ? () => run(lock.id)('unlock') : undefined; })()} /></div>}
         {stepUp && (
           <div className="modal-back" onClick={() => setStepUp(null)}>
@@ -233,6 +236,7 @@ export default function GuestPage() {
           return <HoloControl dev={d} anchor={anchor && anchor.id === holo ? anchor : null} run={run(d.id)} onClose={() => openHolo(null)}
             lockNote={view.allowUnlock ? '' : 'Unlocking is done at the front desk'} />;
         })()}
+        {climate && view && <ClimateVision room={view.room.key} run={(id, c, a) => run(id)(c, a ?? {})} onClose={() => { setClimate(false); send({ type: 'walk', action: 'overview', on: false }); }} />}
         {tour != null && stops[tour] && (
           <div className="tour glass">
             <small>{tour + 1} of {stops.length}</small>
@@ -245,7 +249,7 @@ export default function GuestPage() {
           </div>
         )}
         {!sideOpen && <SideTab label={tab === 'room' ? 'Room' : 'Your stay'} count={tab === 'room' ? view?.devices.length : undefined} onOpen={() => setSideOpen(true)} />}
-        {view && <GuestAssistant token={token} right={sideOpen ? 380 : 0} onUi={a => { const x = a as any; if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); else if (x.type === 'setLayer' && ['comfort', 'energy'].includes(x.layer)) send({ type: 'setLayer', layer: x.layer, on: x.on !== false }); }} />}
+        {view && <GuestAssistant token={token} right={sideOpen ? 380 : 0} onUi={a => { const x = a as any; if (x.type === 'climateVision') { setClimate(true); setHintShown(false); openClimateVision({ smoke: !!x.smoke }); } else if (x.type === 'highlight' && x.ids) send({ type: 'highlight', ids: x.ids }); else if (x.type === 'focusDevice' && x.id) { send({ type: 'focusDevice', id: x.id }); setFocus(x.id); } else if (x.type === 'selectRoom' && x.room) send({ type: 'selectRoom', room: x.room }); else if (x.type === 'setLayer' && ['comfort', 'energy'].includes(x.layer)) send({ type: 'setLayer', layer: x.layer, on: x.on !== false }); }} />}
       </section>
       <aside className="guest-panel" hidden={!sideOpen}>
         <div className="tabs"><button className={tab === 'stay' ? 'on' : ''} onClick={() => setTab('stay')}>Your stay</button><button className={tab === 'room' ? 'on' : ''} onClick={() => setTab('room')}>Room <i>{view?.devices.length ?? 0}</i></button><SideFold onFold={() => setSideOpen(false)} /></div>

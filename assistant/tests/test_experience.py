@@ -107,3 +107,16 @@ async def test_not_offered_without_the_twin_session(settings):
     s = ExperienceSkill(None, settings)
     assert s.is_available(TurnContext(message="hi", history=[], devices=[], extras={"role": "guest"})) is True
     assert s.is_available(TurnContext(message="hi", history=[], devices=[], extras={})) is False
+
+
+async def test_climate_vision_opens_the_3d_air_view(settings):
+    agent, _ = build(settings, {"router": [ROUTE], "experience": [step("climate_vision")]}, staff_twin())
+    r = await ask(agent, settings, "show me how the AC cools the zone")
+    assert r.status == "success" and "Climate Vision" in r.message
+    assert r.data["ui"] == [{"type": "climateVision", "on": True}]
+
+
+async def test_climate_vision_smoke_test(settings):
+    agent, _ = build(settings, {"router": [ROUTE], "experience": [step("climate_vision", room="zone")]}, staff_twin())
+    r = await ask(agent, settings, "show the smoke spreading and the purifier cleaning it")
+    assert r.data["ui"] == [{"type": "climateVision", "on": True, "room": "zone", "smoke": True}]

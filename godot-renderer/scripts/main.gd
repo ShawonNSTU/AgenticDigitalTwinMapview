@@ -38,6 +38,7 @@ func _ready() -> void:
 	quality.sun = sun
 	add_child(quality)
 	Bus.quality_requested.connect(quality.request)
+	Bus.climate_requested.connect(_on_climate)
 	Bus.daylight_requested.connect(func(hr: float):
 		_day_hour = hr
 		_apply_daylight())
@@ -144,6 +145,10 @@ func _ready() -> void:
 			var gs := Node.new()
 			gs.set_script(load("res://tests/guest_stress.gd"))
 			add_child(gs)
+		if a.begins_with("--climate-shots"):
+			var cs := Node.new()
+			cs.set_script(load("res://tests/climate_shot.gd"))
+			add_child(cs)
 		if a.begins_with("--eye-shots"):
 			var es := Node.new()
 			es.set_script(load("res://tests/eye_shots.gd"))
@@ -1625,3 +1630,117 @@ func _apply_daylight() -> void:
 		tw.tween_property(sun, "light_energy", SUN * (0.4 + 0.6 * k), 2.0)
 		tw.tween_property(env, "ambient_light_energy", 0.45 + 0.1 * k, 2.0)
 	_room_light()
+
+
+# ---------------- Climate Vision ----------------
+
+var climate: Climate
+var _climate_hud: CanvasLayer
+var _climate_hud_text: RichTextLabel
+
+
+## Climate Vision for a room (the SmartThings zone unless the message names another room with an AC): the air's
+## heat, flow and dust drawn over the room. {on, room?, heat?, airflow?, dust?, windfree?, speed?, people?, smoke?,
+## reset?, frame?, hud?}
+func _on_climate(msg: Dictionary) -> void:
+	if not bool(msg.get("on", true)):
+		if climate:
+			climate.queue_free()
+			climate = null
+		if _climate_hud:
+			_climate_hud.queue_free()
+			_climate_hud = null
+		Bridge.emit_event({"type": "climate", "on": false})
+		return
+	var key := str(msg.get("room", ""))
+	if key == "" or Store.room(key).is_empty():
+		key = "smartthings-experience-zone"
+		if Store.room(key).is_empty():
+			for d in Store.devices:
+				if str(d.type) == "ac" and not Store.room(str(d.get("room", ""))).is_empty():
+					key = str(d.room)
+					break
+	if Store.room(key).is_empty() or world == null:
+		Bridge.emit_event({"type": "climate", "on": false, "error": "No room with an air conditioner"})
+		return
+	if climate == null or climate.room_key != key:
+		if climate:
+			climate.queue_free()
+		climate = Climate.new()
+		climate.name = "Climate"
+		var ceiling := 2.4
+		for d in Store.devices:
+			if str(d.get("room", "")) == key and str(d.type) == "ac":
+				ceiling = maxf(2.2, float(d.position[1]) + 0.07)
+				break
+		world.add_child(climate)
+		climate.setup(Store.room(key), Store.devices, Store.furniture, ceiling)
+		climate.readings.connect(func(r: Dictionary):
+			Bridge.emit_event({"type": "climate", "on": true, "readings": r})
+			_climate_hud_update(r))
+		if bool(msg.get("frame", true)) and walker == null:
+			var c := climate.lo + climate.size / 2
+			rig.fly_to(Vector3(c.x, 0.6, c.z), clampf(maxf(climate.size.x, climate.size.z) * 1.55, 7.0, 16.0), deg_to_rad(-40.0), deg_to_rad(28.0), 1.2)
+	climate.show_heat = bool(msg.get("heat", climate.show_heat))
+	climate.show_air = bool(msg.get("airflow", climate.show_air))
+	climate.show_dust = bool(msg.get("dust", climate.show_dust))
+	climate.windfree = bool(msg.get("windfree", climate.windfree))
+	climate.speed = clampf(float(msg.get("speed", climate.speed)), 0.25, 4.0)
+	climate.people = clampi(int(msg.get("people", climate.people)), 0, 8)
+	if bool(msg.get("smoke", false)):
+		climate.smoke_left = 90.0
+	if bool(msg.get("reset", false)):
+		climate.reset()
+	if msg.has("hud"):
+		_climate_hud_on(bool(msg.hud))
+
+
+## The readings on screen (the page has its own panel; this card is for recordings and full screen).
+func _climate_hud_on(on: bool) -> void:
+	if not on:
+		if _climate_hud:
+			_climate_hud.queue_free()
+			_climate_hud = null
+		return
+	if _climate_hud:
+		return
+	_climate_hud = CanvasLayer.new()
+	_climate_hud.layer = 5
+	add_child(_climate_hud)
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.07, 0.11, 0.78)
+	sb.set_corner_radius_all(14)
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 14
+	sb.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.position = Vector2(24, 24)
+	panel.custom_minimum_size = Vector2(330, 0)
+	_climate_hud.add_child(panel)
+	_climate_hud_text = RichTextLabel.new()
+	_climate_hud_text.bbcode_enabled = true
+	_climate_hud_text.fit_content = true
+	_climate_hud_text.scroll_active = false
+	_climate_hud_text.add_theme_font_size_override("normal_font_size", 17)
+	_climate_hud_text.add_theme_font_size_override("bold_font_size", 17)
+	_climate_hud_text.custom_minimum_size = Vector2(300, 0)
+	panel.add_child(_climate_hud_text)
+
+
+func _climate_hud_update(r: Dictionary) -> void:
+	if _climate_hud_text == null:
+		return
+	var tcol := "#7cc4ff" if float(r.temp) < 22.0 else ("#a7f3d0" if float(r.temp) <= 26.0 else "#ffb36b")
+	var ac := "Off"
+	if bool(r.ac):
+		ac = "Cooling to %s °C · %s" % [r.acSet, "WindFree" if bool(r.windfree) else "Normal airflow"]
+	_climate_hud_text.text = ("[b][font_size=20]Climate Vision[/font_size][/b]\n" +
+		"[color=#9aa4b2]Room air (0.1-1.8 m)[/color]   [b][color=%s]%.1f °C[/color][/b]\n" % [tcol, float(r.temp)] +
+		"[color=#9aa4b2]Comfortable (22-26 °C)[/color]   [b]%d %%[/b]\n" % int(r.comfort) +
+		"[color=#9aa4b2]PM2.5[/color]   [b]%d µg/m³[/b]\n" % int(r.pm) +
+		"[color=#9aa4b2]AC[/color]   %s\n" % ac +
+		"[color=#9aa4b2]Purifier[/color]   %s\n" % ("On" if bool(r.purifier) else "Off") +
+		"[color=#9aa4b2]Air time simulated[/color]   %.1f min" % float(r.minutes))
+

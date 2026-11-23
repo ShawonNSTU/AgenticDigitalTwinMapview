@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { openClimateVision } from './ClimateVision';
 import { send, type ToRenderer } from '@/lib/bridge';
 import { AgentPanel, ErrorNote } from './agent/Agent';
 import AgentPopup from './agent/AgentPopup';
@@ -56,7 +57,7 @@ export default function ChatPanel({ onSelect, role = 'Administrator', right = 39
   return (
     <AgentPopup right={right} top={64}>
       {ctl => <AgentPanel endpoint="/api/chat" history="/api/chat/history" home={home} title="Twin Assistant" subtitle={subtitle} ctl={ctl} placeholder="Ask anything or tell me what to do…"
-        onUi={a => send(a as ToRenderer)} onSelect={onSelect} />}
+        onUi={a => { if (a.type === 'climateVision') openClimateVision({ smoke: !!a.smoke }); else send(a as ToRenderer); }} onSelect={onSelect} />}
     </AgentPopup>
   );
 }

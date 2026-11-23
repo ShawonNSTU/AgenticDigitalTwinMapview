@@ -31,9 +31,20 @@ export type ToRenderer =
   | { type: 'dispatchRoute'; id: string }
   | { type: 'daylight'; hour?: number | null }   // show the light of this local hour (0-24); null: the real time
   | { type: 'welcome'; room: string; guest?: string; state?: string }
+  | { type: 'climate'; on: boolean; room?: string; heat?: boolean; airflow?: boolean; dust?: boolean; windfree?: boolean; speed?: number; people?: number; smoke?: boolean; reset?: boolean; frame?: boolean; hud?: boolean }
   | { type: 'story'; action: 'build' | 'shot' | 'room' | 'wave' | 'walk' | 'endWalk' | 'tv' | 'heat' | 'night' | 'cast'; [k: string]: unknown };
 
 /** Where the renderer put a dropped or moved device (metres; rotationY 0 faces +z). */
+/** Climate Vision's live numbers from the simulated room air (godot-renderer/scripts/climate.gd _report). */
+export type ClimateReadings = {
+  room: string; temp: number; comfort: number; pm: number; minutes: number;
+  ac: boolean; acSet: number | null; fan: number | null; windfree: boolean;
+  purifier: boolean; purFan: number | null; smoke: boolean; people: number; speed: number; acLoad: number; cpuMs: number;
+  probes: { name: string; temp: number }[];
+  ids: { ac: string; purifier: string; blinds: string; temphum: string };
+  layers: { heat: boolean; airflow: boolean; dust: boolean };
+};
+
 export type Placement = { x: number; y: number; z: number; rotationY: number; room: string };
 
 export type FromRenderer =
@@ -52,6 +63,7 @@ export type FromRenderer =
   | { type: 'guestDenied'; code: number }
   | { type: 'anchor'; id: string; x: number; y: number; visible: boolean }
   | { type: 'quality'; tier: string; auto: boolean; fps: number; scale: number; renderer: string }
+  | { type: 'climate'; on: boolean; error?: string; readings?: ClimateReadings }
   | { type: 'techRoute'; id: string; metres: number; from: string; phase: 'started' | 'arrived' | 'failed' };
 
 /** The renderer build this page expects (godot-renderer/autoloads/bridge.gd VERSION). An older export in

@@ -19,8 +19,8 @@ from app.core.skill import Skill, SkillResult, register
 from app.integrations.twin import TwinClient
 from app.skills._staff import enum_schema, need_op, one_of
 
-STAFF_ACTIONS = ["comfort_status", "comfort_apply", "energy", "journeys", "eta", "prepare", "checkout", "predictions", "dispatch"]
-GUEST_ACTIONS = ["comfort_status", "comfort_apply", "energy", "journey_status", "on_my_way", "prepare", "away", "prefs"]
+STAFF_ACTIONS = ["climate_vision", "comfort_status", "comfort_apply", "energy", "journeys", "eta", "prepare", "checkout", "predictions", "dispatch"]
+GUEST_ACTIONS = ["climate_vision", "comfort_status", "comfort_apply", "energy", "journey_status", "on_my_way", "prepare", "away", "prefs"]
 
 SYSTEM = """You are {bot}, the hotel's assistant. Pick what the user wants from the hotel's experience services.
 
@@ -33,6 +33,7 @@ Rules: pick exactly one action. "minutes" only for an ETA ("in 20 minutes", "hal
 Reply with JSON only."""
 
 ACTION_HELP = {
+    "climate_vision": "show / visualise / see the air in 3D: heat map, airflow, how the AC cools the room, where the cold air goes, dust or smoke spreading, the purifier cleaning the air (Climate Vision)",
     "comfort_status": "how comfortable a room is / is it too warm / air quality / why it feels stuffy (no change)",
     "comfort_apply": "make a room comfortable / fix the comfort / optimise the room (changes devices)",
     "energy": "power, energy, kWh, electricity cost, carbon, savings, what uses the most power",
@@ -53,7 +54,7 @@ ACTION_HELP = {
 class ExperienceSkill(Skill):
     name = "experience"
     progress_text = "Checking the room"
-    description = "Room comfort, energy and savings, guest arrival / check-out, predicted failures, technician dispatch."
+    description = "Climate Vision (the room's heat, airflow and dust shown live in 3D), room comfort, energy and savings, guest arrival / check-out, predicted failures, technician dispatch."
     examples = ["make the room comfortable", "I'll be there in 20 minutes", "what will fail next?"]
     capability = "tell you how comfortable a room is, its energy use, prepare a room for arrival, and predict failures"
 
@@ -93,8 +94,24 @@ class ExperienceSkill(Skill):
         out = await self.llm.complete_json(
             system=SYSTEM.format(bot=self.settings.bot_name, actions="\n".join(f"- {k}: {ACTION_HELP[k]}" for k in actions), targets=targets),
             user=f"Request: {request}", schema=enum_schema(props, ["action"]), label="experience")
-        act = out.get("action") if out.get("action") in actions else actions[0]
+        act = out.get("action") if out.get("action") in actions else actions[1]
+        out["_request"] = f"{request} {ctx.message}".lower()
         return await getattr(self, f"_{act}")(ctx, out, rooms, guests)
+
+    # ---- Climate Vision ----
+    async def _climate_vision(self, ctx, out, rooms, guests) -> SkillResult:
+        smoke = any(w in out.get("_request", "") for w in ("smoke", "dust", "pollut"))
+        room = out.get("room") or ""
+        ui: dict[str, Any] = {"type": "climateVision", "on": True}
+        if room:
+            ui["room"] = room
+        if smoke:
+            ui["smoke"] = True
+        msg = ("Opening **Climate Vision**: the room's air, simulated live from the AC and purifier and drawn in 3D. "
+               "Orange is too warm, blue is the AC's cool air, the streaks are the airflow and the haze is dust. "
+               + ("I've started a smoke test so you can watch it spread and the purifier clear it. " if smoke else "")
+               + "Change the AC or purifier and the picture follows.")
+        return SkillResult("success", msg, {"ui": [ui]})
 
     # ---- comfort ----
     async def _comfort_status(self, ctx, out, rooms, guests) -> SkillResult:
