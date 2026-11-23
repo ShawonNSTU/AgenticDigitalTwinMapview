@@ -720,6 +720,7 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	var t0 := Time.get_ticks_usec()
+	_inside_fade(delta)
 	# the air's own time, as a time-lapse
 	var a0 := Time.get_ticks_usec()
 	# a step's two passes over the cells, spread over frames: the faster the time-lapse, the more cells a frame
@@ -747,6 +748,23 @@ func _process(delta: float) -> void:
 
 var _sbuf := PackedFloat32Array()
 var _heat_lut := PackedColorArray()
+
+
+## From inside the room every ray crosses metres of air, so the volume is thinned there (it would wash the view out);
+## from outside it is drawn at full strength. Blended, so walking in and out is smooth.
+var _inside := 0.0
+
+
+func _inside_fade(delta: float) -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or _vol == null:
+		return
+	var q := cam.global_position
+	var inside := q.x > lo.x and q.z > lo.z and q.x < lo.x + size.x and q.z < lo.z + size.z and q.y < size.y + 0.3
+	_inside = move_toward(_inside, 1.0 if inside else 0.0, delta * 2.0)
+	var sm := _vol.material_override as ShaderMaterial
+	sm.set_shader_parameter("heat_strength", lerpf(0.9, 0.2, _inside))
+	sm.set_shader_parameter("dust_strength", lerpf(3.2, 1.6, _inside))
 
 
 func _move_streaks(delta: float) -> void:

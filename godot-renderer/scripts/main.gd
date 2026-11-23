@@ -149,6 +149,10 @@ func _ready() -> void:
 			var cs := Node.new()
 			cs.set_script(load("res://tests/climate_shot.gd"))
 			add_child(cs)
+		if a.begins_with("--guest-story"):
+			var gs2 := Node.new()
+			gs2.set_script(load("res://tests/guest_story_movie.gd"))
+			add_child(gs2)
 		if a.begins_with("--climate-movie"):
 			var cm := Node.new()
 			cm.set_script(load("res://tests/climate_movie.gd"))
